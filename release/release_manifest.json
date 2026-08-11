@@ -1,7 +1,7 @@
 {
-  "version": "0.5.0",
-  "system_name": "MiniMax H3 Architecture System Release Packager",
-  "package_filename": "MiniMax-H3-Architecture-System-v0.5.0.zip",
+  "version": "0.6.0",
+  "system_name": "MiniMax H3 Architecture System Production Release Packager",
+  "package_filename": "MiniMax-H3-Architecture-System-v0.6.0.zip",
   "include_directories": [
     "launcher",
     "runtime",
@@ -15,6 +15,7 @@
     "workflows",
     "sync",
     "plugins",
+    "tests",
     "docs"
   ],
   "include_files": [
@@ -29,6 +30,7 @@
     "__pycache__",
     ".git",
     "userdata/outputs/*",
+    "userdata/*",
     "release/*.zip"
   ]
 }

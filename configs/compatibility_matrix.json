@@ -1,0 +1,21 @@
+{
+  "system_version": "v0.6.0",
+  "comfyui_version": "0.27+",
+  "custom_node_version": "1.0+",
+  "workflow_version": "1.0+",
+  "plugin_version": "1.0+",
+  "cuda_version": "12+",
+  "minimum_vram_gb": 8.0,
+  "supported_profiles": [
+    "H3_LOW",
+    "H3_STANDARD",
+    "H3_PRO"
+  ],
+  "supported_gpus": [
+    "NVIDIA GeForce RTX 2060 Super (8GB)",
+    "NVIDIA GeForce RTX 3060 / 3070 / 3080",
+    "NVIDIA GeForce RTX 4070 / 4080 / 4090",
+    "NVIDIA GeForce RTX 5070 / 5080 / 5090",
+    "NVIDIA A100 / H100 / RTX 6000 Ada"
+  ]
+}
