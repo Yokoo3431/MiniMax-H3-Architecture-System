@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.7.1",
   "system_name": "MiniMax H3 Categorized Workflow Registry",
   "categories": {
     "architecture_visualization": {
@@ -10,12 +10,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "建筑效果图单图转动画",
           "category": "Architecture Visualization",
-          "purpose": "Single architectural rendering to smooth video animation",
-          "input_type": "single_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "standard",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["rendering", "villa", "facade", "street_view", "animation", "pan"],
+          "intent_match": ["exterior", "single_rendering", "general_visualization"],
           "supported_tasks": ["rendering", "villa", "facade", "street_view", "animation", "pan"]
         },
         "2_aerial_view": {
@@ -23,12 +19,8 @@
           "filename": "2_建筑鸟瞰动画_AerialView.json",
           "name": "建筑鸟瞰大场景动画",
           "category": "Architecture Visualization",
-          "purpose": "High-altitude drone flight animation for architectural complexes and master plans",
-          "input_type": "single_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "high",
-          "prompt_template_key": "2_aerial_view",
+          "keywords": ["aerial", "drone", "masterplan", "birdview", "high_altitude", "flythrough"],
+          "intent_match": ["aerial", "high_altitude_drone", "masterplan_view"],
           "supported_tasks": ["aerial", "drone", "masterplan", "birdview", "high_altitude", "flythrough"]
         },
         "3_night_transition": {
@@ -36,12 +28,8 @@
           "filename": "3_建筑夜景灯光变化_NightTransition.json",
           "name": "建筑日景转夜景灯光变化",
           "category": "Architecture Visualization",
-          "purpose": "Time-lapse day to twilight night lighting transition animation",
-          "input_type": "single_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "high",
-          "prompt_template_key": "3_night_transition",
+          "keywords": ["night", "lighting", "transition", "sunset", "twilight", "dusk", "illumination", "glow"],
+          "intent_match": ["night_transition", "lighting_change", "environment_transition"],
           "supported_tasks": ["night", "lighting", "transition", "sunset", "twilight", "dusk", "illumination"]
         },
         "4_camera_orbit": {
@@ -49,12 +37,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "建筑环绕飞行动画",
           "category": "Architecture Visualization",
-          "purpose": "Smooth 360-degree orbital camera rotation around building exterior",
-          "input_type": "single_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "high",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["orbit", "rotation", "encircle", "360_pan"],
+          "intent_match": ["slow_orbit", "360_rotation"],
           "supported_tasks": ["orbit", "rotation", "encircle", "360_pan"]
         },
         "5_walkthrough": {
@@ -62,12 +46,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "漫游透视动画",
           "category": "Architecture Visualization",
-          "purpose": "First-person eye-level pedestrian walkthrough perspective",
-          "input_type": "single_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "high",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["walkthrough", "pedestrian", "eye_level", "interior_pan"],
+          "intent_match": ["interior", "pedestrian_walkthrough"],
           "supported_tasks": ["walkthrough", "pedestrian", "eye_level", "interior_pan"]
         }
       }
@@ -80,12 +60,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "体块演变动画",
           "category": "Architecture Analysis",
-          "purpose": "Conceptual massing extrusion, subtraction, and volume evolution animation",
-          "input_type": "diagram_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "standard",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["massing", "evolution", "concept", "volume", "diagram"],
+          "intent_match": ["massing_evolution", "volumetric_growth"],
           "supported_tasks": ["massing", "evolution", "concept", "volume", "diagram"]
         },
         "7_circulation_diagram": {
@@ -93,12 +69,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "流线分析动画",
           "category": "Architecture Analysis",
-          "purpose": "Pedestrian and vehicle circulation flow line animation",
-          "input_type": "diagram_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "standard",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["circulation", "flow", "pedestrian_flow", "diagram_motion"],
+          "intent_match": ["circulation_analysis", "flow_line"],
           "supported_tasks": ["circulation", "flow", "pedestrian_flow", "diagram_motion"]
         },
         "8_exploded_axon": {
@@ -106,12 +78,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "爆炸轴侧图动画",
           "category": "Architecture Analysis",
-          "purpose": "Vertical exploded axonometric floor plate layer separation animation",
-          "input_type": "diagram_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "high",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["exploded", "axonometric", "floorplate", "layer_split"],
+          "intent_match": ["exploded_axon", "vertical_explode"],
           "supported_tasks": ["exploded", "axonometric", "floorplate", "layer_split"]
         },
         "9_structure_animation": {
@@ -119,12 +87,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "结构施工动画",
           "category": "Architecture Analysis",
-          "purpose": "Structural steel framing and column assembly sequence",
-          "input_type": "diagram_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "standard",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["structure", "steel_frame", "construction", "assembly"],
+          "intent_match": ["structure_animation", "assembly_sequence"],
           "supported_tasks": ["structure", "steel_frame", "construction", "assembly"]
         },
         "10_envelope_analysis": {
@@ -132,12 +96,8 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "表皮分析动画",
           "category": "Architecture Analysis",
-          "purpose": "Kinetic facade glass panel shading and sun tracking animation",
-          "input_type": "diagram_image",
-          "recommended_gpu": "H3_STANDARD",
-          "resolution": "hardware_dependent",
-          "quality_level": "high",
-          "prompt_template_key": "1_image_to_video",
+          "keywords": ["envelope", "facade_shading", "sun_tracking", "kinetic_facade"],
+          "intent_match": ["facade_analysis", "kinetic_facade"],
           "supported_tasks": ["envelope", "facade_shading", "sun_tracking", "kinetic_facade"]
         }
       }

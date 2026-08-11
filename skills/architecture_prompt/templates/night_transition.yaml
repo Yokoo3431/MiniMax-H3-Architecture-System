@@ -1,0 +1,4 @@
+template_id: night_transition
+template_name: Day to Night Lighting Transition Template
+positive_preset: "Architectural day to night transition timelapse, dusk twilight sky with golden hour glow, warm 3500K interior lighting turning on through glass facade, 4k cinematic"
+negative_preset: "warped building structure, flickering streetlights, unnatural sky color shifts, distorted windows"

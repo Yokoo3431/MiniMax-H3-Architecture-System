@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ArchitecturalIntentSchema",
+  "type": "object",
+  "required": [
+    "task_type",
+    "building_type",
+    "scene_type",
+    "camera",
+    "lighting",
+    "constraints"
+  ],
+  "properties": {
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "architecture_visualization",
+        "architecture_analysis"
+      ]
+    },
+    "building_type": {
+      "type": "string",
+      "description": "Architectural building topology (museum, villa, skyscraper, campus, office, cultural)"
+    },
+    "scene_type": {
+      "type": "string",
+      "enum": [
+        "exterior",
+        "interior",
+        "aerial",
+        "night_transition",
+        "walkthrough",
+        "massing_evolution",
+        "circulation_analysis",
+        "exploded_axon",
+        "structure_animation",
+        "facade_analysis"
+      ]
+    },
+    "camera": {
+      "type": "object",
+      "properties": {
+        "movement": {
+          "type": "string",
+          "enum": [
+            "slow_push",
+            "slow_orbit",
+            "pedestrian_walkthrough",
+            "high_altitude_drone",
+            "stationary_timelapse",
+            "vertical_explode"
+          ]
+        },
+        "lens": {
+          "type": "string",
+          "default": "35mm architectural lens"
+        }
+      }
+    },
+    "lighting": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "string",
+          "enum": [
+            "daylight",
+            "golden_hour",
+            "twilight_dusk",
+            "night_illumination"
+          ]
+        },
+        "temperature": {
+          "type": "string",
+          "enum": [
+            "warm",
+            "neutral",
+            "cool"
+          ]
+        },
+        "interior_light": {
+          "type": "string",
+          "default": "3500K warm interior glow"
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "geometry_lock": {
+          "type": "boolean",
+          "default": true
+        },
+        "material_lock": {
+          "type": "boolean",
+          "default": true
+        },
+        "composition_lock": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  }
+}

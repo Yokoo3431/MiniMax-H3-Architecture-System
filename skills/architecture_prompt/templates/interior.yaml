@@ -1,0 +1,4 @@
+template_id: interior
+template_name: Interior Space Walkthrough Template
+positive_preset: "Architectural interior walkthrough, eye-level pedestrian perspective, multi-story atrium with warm 3500K interior lighting, realistic material textures, cinematic 4k"
+negative_preset: "warped interior walls, distorted furniture, flickering light fixtures, low resolution"

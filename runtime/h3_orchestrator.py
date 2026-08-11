@@ -1,5 +1,5 @@
-"""MiniMax H3 Orchestrator (V0.5 Agent Runtime Main Engine)
-Orchestrates TaskPlanner -> WorkflowSelector -> PromptComposer -> HardwareAdapter -> ComfyExecutor.
+"""MiniMax H3 Orchestrator (V0.7.1 Upgraded Engine)
+Integrates ArchitecturePromptEngine for automatic intent parsing, prompt generation, workflow recommendation, and ComfyUI execution.
 """
 
 import os
@@ -11,9 +11,8 @@ from pathlib import Path
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
 
-from runtime.task_planner import TaskPlanner
+from skills.architecture_prompt.prompt_engine import ArchitecturePromptEngine
 from runtime.workflow_selector import WorkflowSelector
-from runtime.prompt_composer import PromptComposer
 from runtime.hardware_adapter import HardwareAdapter
 from runtime.comfy_executor import ComfyExecutor
 
@@ -22,9 +21,8 @@ class H3Orchestrator:
 
     def __init__(self, comfy_url: str = "http://127.0.0.1:8188", profile_override: str = None):
         self.system_root = SYSTEM_ROOT
-        self.planner = TaskPlanner()
+        self.prompt_engine = ArchitecturePromptEngine()
         self.selector = WorkflowSelector(self.system_root / "configs" / "workflow_registry.json")
-        self.composer = PromptComposer(self.system_root / "prompts" / "architectural_animation_prompts.json")
         self.adapter = HardwareAdapter(profile_override=profile_override)
         self.executor = ComfyExecutor(comfy_url=comfy_url)
         self.output_dir = self.system_root / "userdata" / "outputs"
@@ -41,26 +39,30 @@ class H3Orchestrator:
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"Input rendering image not found: {image_path}")
 
-        # 1. Intent Task Planning
-        plan = self.planner.plan_task(task_description)
+        # 1. Architecture Prompt Skill Engine (Intent Parsing & Prompt Generation)
+        prompt_res = self.prompt_engine.process_request(task_description)
+        intent_schema = prompt_res["intent_schema"]
+        pos_prompt = prompt_res["positive_prompt"]
+        neg_prompt = prompt_res["negative_prompt"]
+        recommended_wf = prompt_res["recommended_workflow"]
 
         # 2. Workflow Selection
+        plan = {"raw_task": task_description, "intent_type": intent_schema["task_type"]}
         wf_spec, wf_filename = self.selector.select_workflow(plan)
         if workflow_override:
             wf_filename = workflow_override
+        elif recommended_wf and recommended_wf in ["3_night_transition", "2_aerial_view", "5_walkthrough"]:
+            wf_filename = f"{recommended_wf}.json"
 
-        # 3. Prompt Composition
-        prompt_key = wf_spec.get("prompt_template_key", "1_image_to_video")
-        pos_prompt, neg_prompt = self.composer.compose_prompt(task_description, prompt_key)
-
-        # 4. Hardware Adaptation
+        # 3. Hardware Adaptation
         hw_params = self.adapter.adapt_parameters(duration_override=duration_override)
 
-        print(f"[H3 Orchestrator V0.5] Processing Task : '{task_description}'", flush=True)
-        print(f"[H3 Orchestrator V0.5] Selected WF   : {wf_filename}", flush=True)
-        print(f"[H3 Orchestrator V0.5] HAL Profile   : {hw_params['profile_key']} ({hw_params['width']}x{hw_params['height']})", flush=True)
+        print(f"[H3 Orchestrator V0.7.1] Request Task : '{task_description}'", flush=True)
+        print(f"[H3 Orchestrator V0.7.1] Scene Type   : {intent_schema['scene_type']}", flush=True)
+        print(f"[H3 Orchestrator V0.7.1] Selected WF  : {wf_filename}", flush=True)
+        print(f"[H3 Orchestrator V0.7.1] HAL Profile  : {hw_params['profile_key']} ({hw_params['width']}x{hw_params['height']})", flush=True)
 
-        # 5. Payload Construction
+        # 4. Payload Construction
         input_filename = os.path.basename(image_path)
         payload = {
             "1": {"class_type": "LoadImage", "inputs": {"image": input_filename}},
@@ -143,7 +145,7 @@ class H3Orchestrator:
                     "images": ["10", 0],
                     "frame_rate": hw_params["fps"],
                     "loop_count": 0,
-                    "filename_prefix": f"H3_V0.5_{hw_params['profile_key']}_Video",
+                    "filename_prefix": f"H3_V0.7.1_{hw_params['profile_key']}_Video",
                     "format": "video/h264-mp4",
                     "pingpong": False,
                     "save_output": True
@@ -151,21 +153,24 @@ class H3Orchestrator:
             }
         }
 
-        # 6. ComfyUI Execution Backend
+        # 5. ComfyUI Execution Backend
         res = self.executor.execute_payload(payload, self.system_root.parent / "ComfyUI" / "output")
+        res["intent_schema"] = intent_schema
+        res["positive_prompt"] = pos_prompt
+        res["negative_prompt"] = neg_prompt
         res["task_description"] = task_description
         res["workflow_selected"] = wf_filename
         res["hardware_profile"] = hw_params["profile_key"]
         return res
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.5")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.1")
     parser.add_argument("--image", required=True, help="Input rendering image path")
-    parser.add_argument("--task", default="Massing evolution diagram animation", help="Task description")
+    parser.add_argument("--task", default="把这个博物馆效果图制作成黄昏动画，保持建筑体量不变，镜头缓慢推进，室内增加暖光", help="Task description")
     parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
 
     args = parser.parse_args()
     orchestrator = H3Orchestrator(profile_override=args.profile)
     res = orchestrator.process_agent_request(image_path=args.image, task_description=args.task)
-    print("\n[H3 Orchestrator V0.5 Result]:")
+    print("\n[H3 Orchestrator V0.7.1 Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))

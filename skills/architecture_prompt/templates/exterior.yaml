@@ -1,0 +1,4 @@
+template_id: exterior
+template_name: Exterior Hero Render Animation Template
+positive_preset: "Architectural exterior visualization, slow cinematic push-in dolly shot, preserve building facade structural integrity, pristine glass reflections, 4k ultra detailed"
+negative_preset: "warped building geometry, melted columns, flickering glass facade, artifacting, low resolution"

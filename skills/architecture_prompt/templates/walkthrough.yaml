@@ -1,0 +1,4 @@
+template_id: walkthrough
+template_name: Pedestrian Perspective Walkthrough Template
+positive_preset: "Pedestrian perspective architectural walkthrough, steady eye-level camera movement, threshold to courtyard spatial sequence, realistic material textures, 4k resolution"
+negative_preset: "warped pavement, flickering walls, camera distortion, unnatural perspective tilt"

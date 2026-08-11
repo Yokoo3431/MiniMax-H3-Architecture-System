@@ -1,0 +1,38 @@
+{
+  "vocabulary_version": "1.0.0",
+  "system_name": "MiniMax H3 Architectural Vocabulary System",
+  "building_types": {
+    "museum": ["museum", "art gallery", "cultural center", "exhibition hall", "博物馆", "美术馆", "展览馆"],
+    "villa": ["modern villa", "luxury residence", "private house", "courtyard villa", "别墅", "住宅", "私宅"],
+    "skyscraper": ["highrise office tower", "skyscraper", "commercial tower", "超高层", "办公塔楼", "摩天大楼"],
+    "campus": ["university campus", "research park", "tech campus", "校园", "园区", "科技园"],
+    "resort": ["resort hotel", "hospitality architecture", "waterfront pavilion", "度假酒店", "滨水展厅"]
+  },
+  "spatial_concepts": {
+    "courtyard": "central landscape courtyard",
+    "atrium": "multi-story glass atrium",
+    "circulation_spine": "pedestrian circulation spine",
+    "threshold": "translucent entrance threshold",
+    "public_plaza": "civic public plaza",
+    "cantilever": "dramatic cantilevered structural volume"
+  },
+  "design_actions": {
+    "massing_evolution": "conceptual massing extrusion and volumetric subtraction sequence",
+    "facade_transformation": "kinetic facade panel rotation and shading shift",
+    "material_transition": "smooth material transition from raw concrete to glass",
+    "structural_assembly": "structural steel framing and column assembly sequence"
+  },
+  "camera_language": {
+    "slow_push": "slow cinematic push-in dolly shot",
+    "slow_orbit": "smooth 360-degree orbital camera pan",
+    "pedestrian_walkthrough": "eye-level pedestrian perspective walkthrough",
+    "high_altitude_drone": "high-altitude sweeping drone flight",
+    "stationary_timelapse": "stationary architectural photography camera view"
+  },
+  "lighting_language": {
+    "daylight": "crisp natural daylight with soft realistic shadows",
+    "golden_hour": "golden hour twilight glow with long warm shadows",
+    "twilight_dusk": "dusk sky with 3500K warm interior light glowing through glass facade",
+    "night_illumination": "dramatic night architectural illumination with soft accent lighting"
+  }
+}

@@ -1,0 +1,4 @@
+template_id: analysis
+template_name: Architectural Diagrammatic Analysis Template
+positive_preset: "Architectural diagrammatic analysis animation, clear volumetric massing evolution, clean vector line highlights, white background studio lighting, crisp 4k detail"
+negative_preset: "blurred lines, warped geometry, noisy artifacts, flickering background"

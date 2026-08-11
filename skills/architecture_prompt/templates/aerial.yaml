@@ -1,0 +1,4 @@
+template_id: aerial
+template_name: High Altitude Drone Aerial View Template
+positive_preset: "Architectural aerial masterplan visualization, high-altitude sweeping drone flight, birdview context, stable site landscaping and building footprint, crisp 4k rendering"
+negative_preset: "warped site terrain, flickering landscape, distorted building roofs, jittering drone camera"
