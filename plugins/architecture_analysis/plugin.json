@@ -1,0 +1,15 @@
+{
+  "plugin_id": "architecture_analysis",
+  "name": "Architecture Analysis Plugin Bundle",
+  "version": "1.0.0",
+  "author": "MiniMax AI Architecture Team",
+  "category": "Analysis",
+  "workflows": [
+    "6_massing_evolution",
+    "7_circulation_diagram",
+    "8_exploded_axon",
+    "9_structure_animation",
+    "10_envelope_analysis"
+  ],
+  "description": "Architectural diagrammatic animation workflows including massing evolution, circulation flow, exploded axonometric layer split, structural assembly, and kinetic facade envelope tracking."
+}

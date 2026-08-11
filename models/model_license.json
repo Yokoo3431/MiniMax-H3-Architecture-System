@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "system_name": "MiniMax H3 Model Weight License Agreement",
+  "license_type": "MiniMax-AI Model License (Non-Commercial / Research & Architectural Visualization)",
+  "official_repo": "https://huggingface.co/MiniMaxAI/MiniMax-H3",
+  "terms": [
+    "You agree to use MiniMax H3 weights for research, educational, and architectural visualization purposes.",
+    "You must not redistribute modified raw model weights under false attribution.",
+    "You acknowledge that generated videos are produced under local hardware execution."
+  ],
+  "require_acceptance": true,
+  "acceptance_file": "models/LICENSE_ACCEPTANCE.md"
+}

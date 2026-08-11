@@ -1,0 +1,13 @@
+{
+  "plugin_id": "architecture_visualization",
+  "name": "Architecture Visualization Plugin Bundle",
+  "version": "1.0.0",
+  "author": "MiniMax AI Architecture Team",
+  "category": "Visualization",
+  "workflows": [
+    "1_建筑效果图_ImageToVideo.json",
+    "2_建筑鸟瞰动画_AerialView.json",
+    "3_建筑夜景灯光变化_NightTransition.json"
+  ],
+  "description": "High-definition rendering animation workflows including villa facade pan, aerial view drone flight, and day-to-night lighting transitions."
+}
