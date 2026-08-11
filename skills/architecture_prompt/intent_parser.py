@@ -1,16 +1,16 @@
-"""Architectural Natural Language Intent Parser.
-Extracts task type, building type, scene type, camera motion, and lighting settings from text.
+"""Architectural Natural Language Intent Parser (V0.7.1.6 Upgraded).
+Extracts task type, building type, scene type, camera motion, lighting, and reasoning dimensions.
 """
 
 import json
 from pathlib import Path
-from skills.architecture_prompt.intent_schema import ArchitecturalIntent, CameraIntent, LightingIntent, ConstraintIntent
+from skills.architecture_prompt.intent_schema import ArchitecturalIntent, CameraIntent, LightingIntent, ConstraintIntent, ReasoningIntent
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent.parent
 VOCAB_FILE = SYSTEM_ROOT / "configs" / "architecture_vocabulary.json"
 
 class IntentParser:
-    """Parses natural language requests into ArchitecturalIntent."""
+    """Parses natural language requests into ArchitecturalIntent with reasoning."""
 
     def __init__(self):
         self.vocab = self._load_vocab()
@@ -69,7 +69,25 @@ class IntentParser:
         elif any(kw in desc for kw in ["园区", "校园", "campus"]):
             intent.building_type = "campus"
 
-        # 4. Camera Push Detection
+        # 4. Reasoning Dimension Extraction
+        if any(kw in desc for kw in ["安藤", "日式", "极简", "minimalism", "japanese"]):
+            intent.reasoning.design_language = "minimalism"
+            intent.reasoning.spatial_character = "quiet"
+            intent.reasoning.emotional_target = "poetic"
+        elif any(kw in desc for kw in ["粗野", "野兽派", "brutalism"]):
+            intent.reasoning.design_language = "brutalism"
+            intent.reasoning.spatial_character = "monumental"
+            intent.reasoning.emotional_target = "dramatic"
+        elif any(kw in desc for kw in ["工业", "高技", "industrial"]):
+            intent.reasoning.design_language = "industrial"
+            intent.reasoning.spatial_character = "transparent"
+
+        if "混凝土" in desc or "concrete" in desc:
+            intent.reasoning.material_expression = "raw_concrete"
+        elif "木" in desc or "timber" in desc:
+            intent.reasoning.material_expression = "natural_timber"
+
+        # 5. Camera Push Detection
         if "推进" in desc or "push" in desc or "dolly" in desc:
             intent.camera.movement = "slow_push"
 

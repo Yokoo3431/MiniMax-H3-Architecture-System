@@ -1,57 +1,57 @@
 {
-  "dataset_version": "1.5.0",
-  "total_examples": 100,
-  "categories": ["Visualization", "Analysis"],
+  "dataset_version": "1.6.0",
+  "total_examples": 50,
+  "categories": ["Visualization Reasoning", "Analysis Reasoning"],
   "examples": [
     {
       "id": 1,
-      "category": "Visualization",
-      "input": "把这个博物馆效果图制作成黄昏动画，保持建筑体量不变，镜头缓慢推进，室内增加暖光",
+      "category": "Visualization Reasoning",
+      "input": "安藤风格清水混凝土博物馆，黄昏光影静谧氛围推进动画",
       "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "museum"},
-      "knowledge_mapping": ["monumental architectural museum facade", "dramatic skylight illumination"],
-      "positive_prompt": "Architectural visualization of museum, slow push in shot with 35mm lens, twilight dusk illumination, 3500K warm interior glow, preserve building geometry, monumental architectural museum facade",
-      "negative_prompt": "warped building geometry, melted columns, flickering glass facade, artifacting",
-      "quality_score": 95
+      "reasoning": {"design_language": "japanese_minimalism", "spatial_character": "quiet", "material_expression": "raw_concrete", "emotional_target": "poetic"},
+      "prompt_mapping": ["fair-faced architectural concrete texture", "quiet monumental atmosphere", "controlled daylight filtering"],
+      "final_prompt": "Architectural visualization of museum, slow push in shot with 35mm lens, twilight dusk illumination, 3500K warm interior glow, fair-faced architectural concrete texture, quiet monumental atmosphere",
+      "quality_scores": {"architectural_accuracy": 100, "camera_quality": 100, "lighting_quality": 95, "material_quality": 95, "constraint_compliance": 100, "overall_score": 98.0}
     },
     {
       "id": 2,
-      "category": "Visualization",
-      "input": "生成半围合庭院现代别墅日景转夜景渐变动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "villa"},
-      "knowledge_mapping": ["semi-enclosed landscape courtyard", "filtered daylight through trees"],
-      "positive_prompt": "Architectural visualization of modern villa, twilight dusk timelapse, warm interior lighting glow, semi-enclosed landscape courtyard",
-      "negative_prompt": "warped geometry, flickering window frames, low resolution",
-      "quality_score": 92
+      "category": "Visualization Reasoning",
+      "input": "粗野主义重型混凝土雕塑画廊日夜转换动画",
+      "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "gallery"},
+      "reasoning": {"design_language": "brutalism", "spatial_character": "monumental", "material_expression": "raw_concrete", "emotional_target": "dramatic"},
+      "prompt_mapping": ["monumental brutalist concrete architecture", "heroic cantilevered volume", "deep shadow reveals"],
+      "final_prompt": "Architectural visualization of gallery, twilight dusk illumination, monumental brutalist concrete architecture, heroic cantilevered volume, deep shadow reveals",
+      "quality_scores": {"architectural_accuracy": 95, "camera_quality": 90, "lighting_quality": 90, "material_quality": 95, "constraint_compliance": 100, "overall_score": 94.0}
     },
     {
       "id": 3,
-      "category": "Visualization",
-      "input": "制作商业高层办公塔楼鸟瞰环绕飞行动画，展示城市上下文关系",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "aerial", "building_type": "skyscraper"},
-      "knowledge_mapping": ["commercial tower glass curtainwall", "vertical aluminum mullions"],
-      "positive_prompt": "Architectural aerial visualization of skyscraper tower, high-altitude sweeping drone flight, stable urban landscape context",
-      "negative_prompt": "warped city terrain, distorted building roofs, camera jitter",
-      "quality_score": 90
+      "category": "Visualization Reasoning",
+      "input": "北欧现代温润木质展亭自然光漫游动画",
+      "intent": {"task_type": "architecture_visualization", "scene_type": "interior", "building_type": "cultural"},
+      "reasoning": {"design_language": "modernism", "spatial_character": "intimate", "material_expression": "natural_timber", "emotional_target": "serene"},
+      "prompt_mapping": ["warm Scandinavian cedar timber architecture", "slender wood louvers", "serene nature integration"],
+      "final_prompt": "Architectural interior walkthrough of pavilion, eye-level pedestrian perspective, warm Scandinavian cedar timber architecture, slender wood louvers",
+      "quality_scores": {"architectural_accuracy": 95, "camera_quality": 95, "lighting_quality": 90, "material_quality": 95, "constraint_compliance": 100, "overall_score": 95.0}
     },
     {
       "id": 4,
-      "category": "Visualization",
-      "input": "生成大学校园图书馆中庭室内漫游透视动画，第一人称视角",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "interior", "building_type": "campus"},
-      "knowledge_mapping": ["soaring multi-story glass atrium", "polished floor reflections"],
-      "positive_prompt": "Architectural interior walkthrough of library atrium, eye-level pedestrian perspective, soaring multi-story glass atrium",
-      "negative_prompt": "warped interior walls, distorted furniture, low resolution",
-      "quality_score": 88
+      "category": "Visualization Reasoning",
+      "input": "高技派全玻璃幕墙商业塔楼鸟瞰环绕动画",
+      "intent": {"task_type": "architecture_visualization", "scene_type": "aerial", "building_type": "skyscraper"},
+      "reasoning": {"design_language": "industrial", "spatial_character": "transparent", "material_expression": "glass_transparency", "emotional_target": "cinematic"},
+      "prompt_mapping": ["transparent high-tech glass curtainwall tower", "exposed steel structural mullions", "crisp reflections"],
+      "final_prompt": "Architectural aerial visualization of skyscraper tower, high-altitude sweeping drone flight, transparent high-tech glass curtainwall tower",
+      "quality_scores": {"architectural_accuracy": 95, "camera_quality": 100, "lighting_quality": 90, "material_quality": 95, "constraint_compliance": 100, "overall_score": 96.0}
     },
     {
       "id": 5,
-      "category": "Visualization",
-      "input": "制作滨水文化中心效果图 360 度镜头环绕动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "cultural"},
-      "knowledge_mapping": ["performing arts center", "fluid curved roof canopy"],
-      "positive_prompt": "Architectural visualization of waterfront cultural center, smooth 360-degree orbital camera pan, fluid curved roof canopy",
-      "negative_prompt": "warped facade, melted structure, flickering water reflection",
-      "quality_score": 91
+      "category": "Visualization Reasoning",
+      "input": "日式禅意枯山水庭院私宅静谧光影动画",
+      "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "villa"},
+      "reasoning": {"design_language": "japanese_architecture", "spatial_character": "quiet", "material_expression": "natural_timber", "emotional_target": "poetic"},
+      "prompt_mapping": ["quiet Japanese courtyard residence", "framed garden view", "poetic serene atmosphere"],
+      "final_prompt": "Architectural visualization of courtyard villa, smooth orbital camera pan, quiet Japanese courtyard residence, framed garden view, poetic serene atmosphere",
+      "quality_scores": {"architectural_accuracy": 100, "camera_quality": 95, "lighting_quality": 95, "material_quality": 95, "constraint_compliance": 100, "overall_score": 97.0}
     }
   ]
 }

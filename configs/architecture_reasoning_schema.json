@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ArchitecturalReasoningSchema",
+  "type": "object",
+  "required": [
+    "design_language",
+    "spatial_character",
+    "material_expression",
+    "emotional_target"
+  ],
+  "properties": {
+    "design_language": {
+      "type": "string",
+      "enum": [
+        "minimalism",
+        "brutalism",
+        "modernism",
+        "japanese_architecture",
+        "industrial",
+        "deconstructivism",
+        "parametricism"
+      ],
+      "default": "modernism"
+    },
+    "spatial_character": {
+      "type": "string",
+      "enum": [
+        "quiet",
+        "monumental",
+        "transparent",
+        "intimate",
+        "open",
+        "fluid",
+        "rhythmic"
+      ],
+      "default": "monumental"
+    },
+    "material_expression": {
+      "type": "string",
+      "enum": [
+        "raw_concrete",
+        "natural_timber",
+        "glass_transparency",
+        "honed_stone",
+        "weathering_steel",
+        "plaster"
+      ],
+      "default": "glass_transparency"
+    },
+    "emotional_target": {
+      "type": "string",
+      "enum": [
+        "poetic",
+        "calm",
+        "dramatic",
+        "cinematic",
+        "serene",
+        "heroic"
+      ],
+      "default": "cinematic"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "graph_version": "1.0.0",
+  "system_name": "MiniMax H3 Architecture Reasoning Graph",
+  "nodes": {
+    "ando_concrete": {
+      "concept": "minimal concrete architecture",
+      "design_language": "japanese_minimalism",
+      "meaning": ["material honesty", "controlled light shadow", "spiritual quietness"],
+      "visual": ["monolithic volume", "deep shadow reveals", "smooth tie-rod hole concrete"],
+      "prompt": ["fair-faced architectural concrete texture", "quiet monumental atmosphere", "controlled daylight filtering"]
+    },
+    "brutalist_monument": {
+      "concept": "raw brutalist sculpture",
+      "design_language": "brutalism",
+      "meaning": ["heroic massing", "weighty presence", "structural honesty"],
+      "visual": ["heavy concrete cantilevers", "deeply recessed window apertures", "raw texture"],
+      "prompt": ["monumental brutalist concrete architecture", "heroic cantilevered volume", "deep shadow reveals"]
+    },
+    "scandinavian_timber": {
+      "concept": "warm Nordic timber pavilion",
+      "design_language": "modernism",
+      "meaning": ["harmony with nature", "tactile warmth", "human scale"],
+      "visual": ["warm cedar wood slats", "slender timber columns", "open glass framing"],
+      "prompt": ["warm Scandinavian cedar timber architecture", "slender wood louvers", "serene nature integration"]
+    },
+    "hightech_glass_tower": {
+      "concept": "transparent commercial tower",
+      "design_language": "high_tech_modernism",
+      "meaning": ["openness", "structural efficiency", "urban clarity"],
+      "visual": ["floor-to-ceiling double glass skin", "exposed steel mullions", "sky reflection"],
+      "prompt": ["transparent high-tech glass curtainwall tower", "exposed steel structural mullions", "crisp reflections"]
+    },
+    "zen_courtyard_house": {
+      "concept": "quiet courtyard residence",
+      "design_language": "japanese_architecture",
+      "meaning": ["intimate enclosure", "poetic tranquility", "framed view"],
+      "visual": ["screened timber louvers", "gravel courtyard garden", "soft ambient glow"],
+      "prompt": ["quiet Japanese courtyard residence", "framed garden view", "poetic serene atmosphere"]
+    }
+  }
+}

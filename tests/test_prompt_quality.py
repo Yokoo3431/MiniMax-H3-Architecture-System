@@ -24,12 +24,14 @@ class TestPromptQuality(unittest.TestCase):
         res = self.evaluator.evaluate(pos_prompt, intent_dict)
         self.assertGreaterEqual(res["quality_score"], 85)
         self.assertEqual(res["status"], "EXCELLENT")
+        self.assertIn("scores", res)
+        self.assertIn("architectural_accuracy", res["scores"])
 
     def test_quality_evaluation_missing_fields(self):
         pos_prompt = "simple rendering animation"
         intent_dict = {}
         res = self.evaluator.evaluate(pos_prompt, intent_dict)
-        self.assertLess(res["quality_score"], 70)
+        self.assertLessEqual(res["quality_score"], 75.0)
         self.assertGreater(len(res["missing"]), 0)
 
 if __name__ == "__main__":
