@@ -1,0 +1,86 @@
+{
+  "memory_version": "1.0.0",
+  "system_name": "MiniMax H3 Architecture Memory Database",
+  "total_cases": 30,
+  "categories": [
+    "concrete_architecture",
+    "timber_architecture",
+    "glass_facade",
+    "courtyard_building",
+    "museum",
+    "office_campus",
+    "landscape_architecture",
+    "interior_walkthrough"
+  ],
+  "cases": [
+    {
+      "project_info": {
+        "memory_id": "mem_001",
+        "building_type": "museum",
+        "visualization_type": "night_transition"
+      },
+      "architectural_intent": {
+        "design_language": "japanese_minimalism",
+        "spatial_character": "quiet",
+        "material_expression": "raw_concrete",
+        "emotional_target": "poetic"
+      },
+      "prompt_data": {
+        "input_request": "安藤风格清水混凝土美术馆黄昏动画",
+        "generated_prompt": "Architectural visualization of museum, slow push in shot with 35mm lens, twilight dusk illumination, warm 3500K interior glow, fair-faced architectural concrete texture, quiet monumental atmosphere",
+        "negative_prompt": "warped building geometry, melted columns, flickering glass facade, artifacting"
+      },
+      "evaluation": {
+        "quality_scores": {"overall_score": 98.0},
+        "detected_issues": [],
+        "improvement_notes": ["Maintain slow architectural reveal trajectory", "Use 3500K warm interior light contrast against dusk sky"]
+      }
+    },
+    {
+      "project_info": {
+        "memory_id": "mem_002",
+        "building_type": "villa",
+        "visualization_type": "courtyard"
+      },
+      "architectural_intent": {
+        "design_language": "modernism",
+        "spatial_character": "intimate",
+        "material_expression": "natural_timber",
+        "emotional_target": "serene"
+      },
+      "prompt_data": {
+        "input_request": "半围合庭院现代木质别墅动画",
+        "generated_prompt": "Architectural visualization of courtyard villa, smooth orbital camera pan, warm cedar timber louvers, filtered daylight through trees, quiet serene atmosphere",
+        "negative_prompt": "warped geometry, flickering window frames, low resolution"
+      },
+      "evaluation": {
+        "quality_scores": {"overall_score": 95.0},
+        "detected_issues": ["camera speed slightly fast"],
+        "improvement_notes": ["Reduce orbital camera speed", "Enhance timber grain specularity"]
+      }
+    },
+    {
+      "project_info": {
+        "memory_id": "mem_003",
+        "building_type": "skyscraper",
+        "visualization_type": "glass_facade"
+      },
+      "architectural_intent": {
+        "design_language": "industrial",
+        "spatial_character": "transparent",
+        "material_expression": "glass_transparency",
+        "emotional_target": "cinematic"
+      },
+      "prompt_data": {
+        "input_request": "全玻璃幕墙商业塔楼鸟瞰动画",
+        "generated_prompt": "Architectural aerial visualization of skyscraper tower, high-altitude sweeping drone flight, transparent high-tech glass curtainwall tower, crisp sky reflections",
+        "negative_prompt": "warped city terrain, distorted building roofs, camera jitter"
+      },
+      "evaluation": {
+        "quality_scores": {"overall_score": 96.0},
+        "detected_issues": [],
+        "improvement_notes": ["Lock vertical mullion alignment"]
+      }
+    }
+  ]
+}

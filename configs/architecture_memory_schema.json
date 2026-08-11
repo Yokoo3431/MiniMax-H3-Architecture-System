@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ArchitectureMemorySchema",
+  "type": "object",
+  "required": [
+    "project_info",
+    "architectural_intent",
+    "prompt_data",
+    "evaluation"
+  ],
+  "properties": {
+    "project_info": {
+      "type": "object",
+      "required": ["memory_id", "building_type", "visualization_type"],
+      "properties": {
+        "memory_id": {"type": "string"},
+        "building_type": {"type": "string"},
+        "visualization_type": {"type": "string"}
+      }
+    },
+    "architectural_intent": {
+      "type": "object",
+      "required": ["design_language", "spatial_character", "material_expression", "emotional_target"],
+      "properties": {
+        "design_language": {"type": "string"},
+        "spatial_character": {"type": "string"},
+        "material_expression": {"type": "string"},
+        "emotional_target": {"type": "string"}
+      }
+    },
+    "prompt_data": {
+      "type": "object",
+      "required": ["input_request", "generated_prompt", "negative_prompt"],
+      "properties": {
+        "input_request": {"type": "string"},
+        "generated_prompt": {"type": "string"},
+        "negative_prompt": {"type": "string"}
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["quality_scores", "detected_issues", "improvement_notes"],
+      "properties": {
+        "quality_scores": {"type": "object"},
+        "detected_issues": {"type": "array", "items": {"type": "string"}},
+        "improvement_notes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

@@ -5,26 +5,25 @@ All notable changes to the `MiniMax-H3-Architecture-System` project will be docu
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1.7] - 2026-08-11
+
+### Added
+- **Architecture Memory Schema (`configs/architecture_memory_schema.json`)**: Project info, intent, prompt data, evaluation fields.
+- **Architecture Memory Database (`configs/architecture_memory.json`)**: 30 high-quality historical architectural case memories across 8 topologies.
+- **Semantic Memory Retriever Engine (`skills/architecture_prompt/memory_retriever.py`)**: `retrieve_similar_case()`, `compare_architectural_intent()`, `suggest_prompt_strategy()`.
+- **Quality Improvement Loop Generator (`runtime/prompt_quality.py`)**: `improvement_generator()` producing score, issues, and actionable suggestions.
+- **Prompt Revision Integration (`runtime/feedback/prompt_revision.py`)**: Integrated memory revision strategy.
+- **Automated Unit Tests (`tests/test_memory_retrieval.py`, `test_prompt_improvement.py`, `test_memory_schema.py`)**: 35 unit test cases passing 100%.
+
 ## [0.7.1.6] - 2026-08-11
 
 ### Added
-- **Architectural Reasoning Schema (`configs/architecture_reasoning_schema.json`)**: Design language, spatial character, material expression, emotional target.
-- **Architecture Reasoning Graph (`configs/architecture_reasoning_graph.json`)**: Concept -> Meaning -> Visual -> Prompt Language graph.
-- **Reasoning Engine (`skills/architecture_prompt/reasoning_engine.py`)**: Knowledge graph lookup engine.
-- **Upgraded Intent Parser (`skills/architecture_prompt/intent_parser.py`)**: Extracted reasoning dimensions.
-- **5-Dimension Quality Evaluator (`runtime/prompt_quality.py`)**: Scores `architectural_accuracy`, `camera_quality`, `lighting_quality`, `material_quality`, `constraint_compliance`.
-- **Feedback Interface (`runtime/feedback/`)**: Added `feedback_schema.py` & `prompt_revision.py`.
-- **50 Reasoning Examples Dataset (`configs/architecture_prompt_examples.json`)**.
-- **Automated Unit Tests (`tests/test_reasoning_graph.py`, `test_intent_reasoning.py`, `test_feedback_interface.py`)**: 30 unit test cases passing 100%.
+- **Architectural Reasoning Schema (`configs/architecture_reasoning_schema.json`)**.
+- **Architecture Reasoning Graph (`configs/architecture_reasoning_graph.json`)**.
+- **5-Dimension Quality Evaluator (`runtime/prompt_quality.py`)**.
 
 ## [0.7.1.5] - 2026-08-11
 
 ### Added
 - **MiniMax H3 Prompt Rule Engine (`skills/architecture_prompt/h3_rules/`)**.
 - **Architectural Knowledge Base (`configs/architecture_knowledge.json`)**.
-- **100-Example Dataset (`configs/architecture_prompt_examples.json`)**.
-
-## [0.7.1] - 2026-08-11
-
-### Added
-- **Architecture Prompt Skill Engine (`skills/architecture_prompt/`)**.

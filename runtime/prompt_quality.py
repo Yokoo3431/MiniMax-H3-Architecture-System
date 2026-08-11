@@ -1,11 +1,11 @@
-"""Prompt Quality Evaluator Module (V0.7.1.6 Upgraded).
-Evaluates completeness and architectural accuracy across 5 distinct dimensions.
+"""Prompt Quality Evaluator Module (V0.7.1.7 Upgraded).
+Evaluates completeness, 5-dimension accuracy, and generates actionable quality improvement suggestions.
 """
 
 from typing import Dict, Any, List
 
 class PromptQualityEvaluator:
-    """Scores generated prompts across 5 architectural dimensions."""
+    """Scores generated prompts across 5 architectural dimensions and provides improvement loop recommendations."""
 
     def evaluate(self, positive_prompt: str, intent_dict: Dict[str, Any]) -> dict:
         prompt_lower = positive_prompt.lower()
@@ -51,6 +51,8 @@ class PromptQualityEvaluator:
             1
         )
 
+        improve_res = self.improvement_generator(overall_score, missing)
+
         return {
           "scores": {
             "architectural_accuracy": max(50, arch_acc),
@@ -61,5 +63,35 @@ class PromptQualityEvaluator:
           },
           "quality_score": overall_score,
           "status": "EXCELLENT" if overall_score >= 85 else ("GOOD" if overall_score >= 70 else "NEEDS_IMPROVEMENT"),
-          "missing": missing
+          "missing": missing,
+          "issues": improve_res["issues"],
+          "suggestions": improve_res["suggestions"]
+        }
+
+    def improvement_generator(self, score: float, missing: List[str]) -> dict:
+        issues = []
+        suggestions = []
+
+        for item in missing:
+            if "material" in item:
+                issues.append("material expression weak")
+                suggestions.append("enhance facade material texture detail (e.g. fair-faced concrete or glass curtainwall)")
+            elif "camera" in item:
+                issues.append("camera description missing")
+                suggestions.append("specify 35mm lens tilt-shift and slow steady camera movement")
+            elif "lighting" in item:
+                issues.append("lighting atmosphere unspecified")
+                suggestions.append("add 3500K warm interior light or twilight dusk sky illumination")
+            elif "geometry" in item:
+                issues.append("geometry preservation unconstrained")
+                suggestions.append("add strict structural geometry preservation lock constraint")
+
+        if not issues:
+            issues.append("none")
+            suggestions.append("prompt quality meets production excellence baseline")
+
+        return {
+            "score": score,
+            "issues": issues,
+            "suggestions": suggestions
         }
