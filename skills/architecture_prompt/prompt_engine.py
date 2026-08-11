@@ -1,5 +1,5 @@
-"""Main Architecture Prompt Skill Engine Entrance (V0.7.1.7 Upgraded).
-Integrates IntentParser -> KnowledgeMapper -> ReasoningEngine -> MemoryRetriever -> PromptBuilder -> QualityEvaluator.
+"""Main Architecture Prompt Skill Engine Entrance (V0.7.2 Upgraded).
+Integrates IntentParser -> ReasoningEngine -> MemoryRetriever -> WorkflowSelector -> PromptBuilder -> QualityEvaluator.
 """
 
 from pathlib import Path
@@ -7,6 +7,7 @@ from skills.architecture_prompt.intent_parser import IntentParser
 from skills.architecture_prompt.knowledge_mapper import KnowledgeMapper
 from skills.architecture_prompt.reasoning_engine import ArchitectureReasoningEngine
 from skills.architecture_prompt.memory_retriever import MemoryRetriever
+from runtime.workflow_intelligence.workflow_selector import WorkflowIntelligenceSelector
 from skills.architecture_prompt.prompt_builder import PromptBuilder
 from runtime.prompt_quality import PromptQualityEvaluator
 
@@ -18,6 +19,7 @@ class ArchitecturePromptEngine:
         self.mapper = KnowledgeMapper()
         self.reasoning = ArchitectureReasoningEngine()
         self.retriever = MemoryRetriever()
+        self.workflow_selector = WorkflowIntelligenceSelector()
         self.builder = PromptBuilder()
         self.evaluator = PromptQualityEvaluator()
 
@@ -34,7 +36,10 @@ class ArchitecturePromptEngine:
         # 4. Semantic Memory Retrieval Strategy
         memory_strategy = self.retriever.suggest_prompt_strategy(text)
 
-        # 5. Prompt Building
+        # 5. Workflow Intelligence Selection
+        wf_package = self.workflow_selector.select_intelligence_workflow(intent.scene_type, text)
+
+        # 6. Prompt Building
         pos_prompt, neg_prompt = self.builder.build_prompts(intent, text)
         extra_keywords = list(set(
             km_res["mapped_keywords"] +
@@ -44,25 +49,21 @@ class ArchitecturePromptEngine:
         if extra_keywords:
             pos_prompt = f"{pos_prompt}, {', '.join(extra_keywords)}"
 
-        # 6. Quality Evaluation with Improvement Loop
+        # 7. Quality Evaluation with Improvement Loop
         quality_res = self.evaluator.evaluate(pos_prompt, intent.to_dict())
 
-        # Map scene_type -> recommended workflow ID
-        workflow_mapping = {
-            "exterior": "1_image_to_video",
-            "aerial": "2_aerial_view",
-            "night_transition": "3_night_transition",
-            "interior": "5_walkthrough",
-            "massing_evolution": "6_massing_evolution",
-            "circulation_analysis": "7_circulation_diagram",
-            "exploded_axon": "8_exploded_axon",
-            "structure_animation": "9_structure_animation",
-            "facade_analysis": "10_envelope_analysis"
-        }
-
-        rec_wf = workflow_mapping.get(intent.scene_type, "1_image_to_video")
-
         return {
+            "intent": intent.to_dict(),
+            "workflow": wf_package.to_dict(),
+            "prompt": {
+                "positive": pos_prompt,
+                "negative": neg_prompt
+            },
+            "parameters": {
+                "quality_score": quality_res["quality_score"],
+                "preset_id": wf_package.preset_id,
+                "quality_profile": wf_package.quality_profile
+            },
             "intent_schema": intent.to_dict(),
             "knowledge_mapping": km_res,
             "reasoning_graph": reasoning_res,
@@ -71,6 +72,6 @@ class ArchitecturePromptEngine:
             "negative_prompt": neg_prompt,
             "quality_score": quality_res["quality_score"],
             "quality_evaluation": quality_res,
-            "recommended_workflow": rec_wf,
-            "recommended_profile": "H3_STANDARD"
+            "recommended_workflow": wf_package.workflow_id,
+            "recommended_profile": wf_package.quality_profile
         }

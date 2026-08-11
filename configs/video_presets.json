@@ -1,0 +1,71 @@
+{
+  "preset_version": "1.0.0",
+  "system_name": "MiniMax H3 Architecture Video Preset Database",
+  "presets": {
+    "exterior_hero": {
+      "preset_id": "exterior_hero",
+      "name": "Exterior Hero Architectural Render",
+      "purpose": "Architectural competition render animation",
+      "parameters": {
+        "camera_motion": "slow_push",
+        "preserve_geometry": true,
+        "lighting_atmosphere": "cinematic_daylight",
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "resolution": "1280x720"
+      }
+    },
+    "walkthrough": {
+      "preset_id": "walkthrough",
+      "name": "Pedestrian Spatial Walkthrough",
+      "purpose": "Interior/exterior spatial experience",
+      "parameters": {
+        "camera_motion": "human_eye_level_dolly",
+        "preserve_geometry": true,
+        "lighting_atmosphere": "warm_ambient",
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "resolution": "1280x720"
+      }
+    },
+    "aerial_drone": {
+      "preset_id": "aerial_drone",
+      "name": "High-Altitude Masterplan Aerial",
+      "purpose": "Masterplan / campus / urban context animation",
+      "parameters": {
+        "camera_motion": "high_altitude_orbit",
+        "preserve_geometry": true,
+        "lighting_atmosphere": "golden_hour",
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "resolution": "1280x720"
+      }
+    },
+    "day_night_transition": {
+      "preset_id": "day_night_transition",
+      "name": "Day to Night Lighting Shift",
+      "purpose": "Facade lighting transformation and interior glow",
+      "parameters": {
+        "camera_motion": "slow_push",
+        "preserve_geometry": true,
+        "lighting_atmosphere": "twilight_3500k_glow",
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "resolution": "1280x720"
+      }
+    },
+    "architecture_analysis": {
+      "preset_id": "architecture_analysis",
+      "name": "Architectural Diagram & Massing Analysis",
+      "purpose": "Exploded axonometric and volumetric growth animation",
+      "parameters": {
+        "camera_motion": "stationary_timelapse",
+        "preserve_geometry": true,
+        "lighting_atmosphere": "studio_white",
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "resolution": "1280x720"
+      }
+    }
+  }
+}

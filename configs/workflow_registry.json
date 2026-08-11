@@ -1,6 +1,6 @@
 {
-  "version": "1.7.1",
-  "system_name": "MiniMax H3 Categorized Workflow Registry",
+  "version": "1.7.20",
+  "system_name": "MiniMax H3 Semantic Architecture Workflow Registry",
   "categories": {
     "architecture_visualization": {
       "name": "Architecture Visualization (建筑视觉与效果图渲染动画)",
@@ -10,45 +10,44 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "建筑效果图单图转动画",
           "category": "Architecture Visualization",
-          "keywords": ["rendering", "villa", "facade", "street_view", "animation", "pan"],
-          "intent_match": ["exterior", "single_rendering", "general_visualization"],
-          "supported_tasks": ["rendering", "villa", "facade", "street_view", "animation", "pan"]
+          "supported_intents": ["exterior", "single_rendering", "general_visualization", "villa", "facade"],
+          "camera_modes": ["slow_push", "orbit", "pan"],
+          "lighting_modes": ["day", "twilight", "sunset"],
+          "recommended_vram": "8GB+",
+          "keywords": ["rendering", "villa", "facade", "street_view", "animation", "pan"]
         },
         "2_aerial_view": {
           "id": "2_aerial_view",
           "filename": "2_建筑鸟瞰动画_AerialView.json",
           "name": "建筑鸟瞰大场景动画",
           "category": "Architecture Visualization",
-          "keywords": ["aerial", "drone", "masterplan", "birdview", "high_altitude", "flythrough"],
-          "intent_match": ["aerial", "high_altitude_drone", "masterplan_view"],
-          "supported_tasks": ["aerial", "drone", "masterplan", "birdview", "high_altitude", "flythrough"]
+          "supported_intents": ["aerial", "high_altitude_drone", "masterplan_view", "campus", "office"],
+          "camera_modes": ["high_altitude_drone", "orbit", "flythrough"],
+          "lighting_modes": ["day", "sunset", "twilight"],
+          "recommended_vram": "12GB+",
+          "keywords": ["aerial", "drone", "masterplan", "birdview", "high_altitude", "flythrough"]
         },
         "3_night_transition": {
           "id": "3_night_transition",
           "filename": "3_建筑夜景灯光变化_NightTransition.json",
           "name": "建筑日景转夜景灯光变化",
           "category": "Architecture Visualization",
-          "keywords": ["night", "lighting", "transition", "sunset", "twilight", "dusk", "illumination", "glow"],
-          "intent_match": ["night_transition", "lighting_change", "environment_transition"],
-          "supported_tasks": ["night", "lighting", "transition", "sunset", "twilight", "dusk", "illumination"]
-        },
-        "4_camera_orbit": {
-          "id": "4_camera_orbit",
-          "filename": "1_建筑效果图_ImageToVideo.json",
-          "name": "建筑环绕飞行动画",
-          "category": "Architecture Visualization",
-          "keywords": ["orbit", "rotation", "encircle", "360_pan"],
-          "intent_match": ["slow_orbit", "360_rotation"],
-          "supported_tasks": ["orbit", "rotation", "encircle", "360_pan"]
+          "supported_intents": ["night_transition", "lighting_change", "museum", "gallery", "courtyard"],
+          "camera_modes": ["slow_push", "orbit", "stationary"],
+          "lighting_modes": ["twilight", "night"],
+          "recommended_vram": "12GB+",
+          "keywords": ["night", "lighting", "transition", "sunset", "twilight", "dusk", "illumination", "glow"]
         },
         "5_walkthrough": {
           "id": "5_walkthrough",
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "漫游透视动画",
           "category": "Architecture Visualization",
-          "keywords": ["walkthrough", "pedestrian", "eye_level", "interior_pan"],
-          "intent_match": ["interior", "pedestrian_walkthrough"],
-          "supported_tasks": ["walkthrough", "pedestrian", "eye_level", "interior_pan"]
+          "supported_intents": ["interior", "pedestrian_walkthrough", "atrium", "lobby"],
+          "camera_modes": ["walkthrough", "pedestrian_eye_level"],
+          "lighting_modes": ["day", "warm_interior"],
+          "recommended_vram": "8GB+",
+          "keywords": ["walkthrough", "pedestrian", "eye_level", "interior_pan"]
         }
       }
     },
@@ -60,45 +59,22 @@
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "体块演变动画",
           "category": "Architecture Analysis",
-          "keywords": ["massing", "evolution", "concept", "volume", "diagram"],
-          "intent_match": ["massing_evolution", "volumetric_growth"],
-          "supported_tasks": ["massing", "evolution", "concept", "volume", "diagram"]
-        },
-        "7_circulation_diagram": {
-          "id": "7_circulation_diagram",
-          "filename": "1_建筑效果图_ImageToVideo.json",
-          "name": "流线分析动画",
-          "category": "Architecture Analysis",
-          "keywords": ["circulation", "flow", "pedestrian_flow", "diagram_motion"],
-          "intent_match": ["circulation_analysis", "flow_line"],
-          "supported_tasks": ["circulation", "flow", "pedestrian_flow", "diagram_motion"]
+          "supported_intents": ["massing_evolution", "volumetric_growth", "concept"],
+          "camera_modes": ["stationary", "slow_push"],
+          "lighting_modes": ["studio_white"],
+          "recommended_vram": "8GB+",
+          "keywords": ["massing", "evolution", "concept", "volume", "diagram"]
         },
         "8_exploded_axon": {
           "id": "8_exploded_axon",
           "filename": "1_建筑效果图_ImageToVideo.json",
           "name": "爆炸轴侧图动画",
           "category": "Architecture Analysis",
-          "keywords": ["exploded", "axonometric", "floorplate", "layer_split"],
-          "intent_match": ["exploded_axon", "vertical_explode"],
-          "supported_tasks": ["exploded", "axonometric", "floorplate", "layer_split"]
-        },
-        "9_structure_animation": {
-          "id": "9_structure_animation",
-          "filename": "1_建筑效果图_ImageToVideo.json",
-          "name": "结构施工动画",
-          "category": "Architecture Analysis",
-          "keywords": ["structure", "steel_frame", "construction", "assembly"],
-          "intent_match": ["structure_animation", "assembly_sequence"],
-          "supported_tasks": ["structure", "steel_frame", "construction", "assembly"]
-        },
-        "10_envelope_analysis": {
-          "id": "10_envelope_analysis",
-          "filename": "1_建筑效果图_ImageToVideo.json",
-          "name": "表皮分析动画",
-          "category": "Architecture Analysis",
-          "keywords": ["envelope", "facade_shading", "sun_tracking", "kinetic_facade"],
-          "intent_match": ["facade_analysis", "kinetic_facade"],
-          "supported_tasks": ["envelope", "facade_shading", "sun_tracking", "kinetic_facade"]
+          "supported_intents": ["exploded_axon", "layer_split"],
+          "camera_modes": ["axonometric_tilt", "vertical_explode"],
+          "lighting_modes": ["studio_white"],
+          "recommended_vram": "8GB+",
+          "keywords": ["exploded", "axonometric", "floorplate", "layer_split"]
         }
       }
     }

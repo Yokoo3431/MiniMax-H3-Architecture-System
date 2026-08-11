@@ -5,25 +5,23 @@ All notable changes to the `MiniMax-H3-Architecture-System` project will be docu
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-08-11
+
+### Added
+- **Workflow Intelligence Engine (`runtime/workflow_intelligence/`)**: `workflow_schema.py`, `workflow_matcher.py`, `workflow_parameter_mapper.py`, `workflow_selector.py`.
+- **Semantic Workflow Registry (`configs/workflow_registry.json`)**: Upgraded to semantic workflow database.
+- **Architecture Video Preset System (`configs/video_presets.json`)**: Added Exterior Hero, Walkthrough, Aerial Drone, Day Night Transition, and Architecture Analysis presets.
+- **ComfyUI Workflow Parameter Adapter (`runtime/comfy_workflow_adapter.py`)**: Parameter and node payload injector.
+- **Documentation (`docs/V0.7.2_Workflow_Intelligence_Report.md`, `V0.7.2_User_Workflow_Guide.md`)**.
+- **Automated Unit Tests (`tests/test_workflow_selector.py`, `test_workflow_matching.py`, `test_video_preset.py`, `test_comfy_adapter.py`)**: 39 unit test cases passing 100%.
+
 ## [0.7.1.7] - 2026-08-11
 
 ### Added
-- **Architecture Memory Schema (`configs/architecture_memory_schema.json`)**: Project info, intent, prompt data, evaluation fields.
-- **Architecture Memory Database (`configs/architecture_memory.json`)**: 30 high-quality historical architectural case memories across 8 topologies.
-- **Semantic Memory Retriever Engine (`skills/architecture_prompt/memory_retriever.py`)**: `retrieve_similar_case()`, `compare_architectural_intent()`, `suggest_prompt_strategy()`.
-- **Quality Improvement Loop Generator (`runtime/prompt_quality.py`)**: `improvement_generator()` producing score, issues, and actionable suggestions.
-- **Prompt Revision Integration (`runtime/feedback/prompt_revision.py`)**: Integrated memory revision strategy.
-- **Automated Unit Tests (`tests/test_memory_retrieval.py`, `test_prompt_improvement.py`, `test_memory_schema.py`)**: 35 unit test cases passing 100%.
+- **Architecture Memory Schema & Database (`configs/architecture_memory_schema.json`, `architecture_memory.json`)**.
+- **Semantic Memory Retriever Engine (`skills/architecture_prompt/memory_retriever.py`)**.
 
 ## [0.7.1.6] - 2026-08-11
 
 ### Added
-- **Architectural Reasoning Schema (`configs/architecture_reasoning_schema.json`)**.
-- **Architecture Reasoning Graph (`configs/architecture_reasoning_graph.json`)**.
-- **5-Dimension Quality Evaluator (`runtime/prompt_quality.py`)**.
-
-## [0.7.1.5] - 2026-08-11
-
-### Added
-- **MiniMax H3 Prompt Rule Engine (`skills/architecture_prompt/h3_rules/`)**.
-- **Architectural Knowledge Base (`configs/architecture_knowledge.json`)**.
+- **Architectural Reasoning Schema & Graph (`configs/architecture_reasoning_schema.json`, `architecture_reasoning_graph.json`)**.
