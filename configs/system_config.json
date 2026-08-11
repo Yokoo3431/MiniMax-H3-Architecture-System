@@ -1,0 +1,25 @@
+{
+  "system_name": "MiniMax-H3-Architecture-System",
+  "version": "1.0.0",
+  "comfyui_defaults": {
+    "server_address": "http://127.0.0.1:8188",
+    "comfyui_root": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI",
+    "python_executable": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe"
+  },
+  "hardware_targets": {
+    "gpu": "NVIDIA GeForce RTX 5070 12GB",
+    "vram_allocation_mode": "--lowvram",
+    "attention_optimization": "--use-split-cross-attention"
+  },
+  "default_generation_parameters": {
+    "width": 512,
+    "height": 512,
+    "duration_seconds": 4.0,
+    "fps": 24,
+    "steps": 25,
+    "cfg": 6.0,
+    "video_shift": 12.0,
+    "audio_shift": 3.0,
+    "accel": "off"
+  }
+}

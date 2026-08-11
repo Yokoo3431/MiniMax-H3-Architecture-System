@@ -1,0 +1,17 @@
+# Git Ignore Rules for MiniMax H3 Architecture System
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Local Output Media (Excluded from Git, kept in local ComfyUI/output)
+*.mp4
+*.avi
+*.mov
+
+# Environment / Temp
+*.tmp
+*.log
+.DS_Store
+Thumbs.db

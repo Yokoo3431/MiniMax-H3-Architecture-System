@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "system_name": "MiniMax H3 Architecture Animation System",
+  "prompt_templates": {
+    "1_image_to_video": {
+      "name": "建筑效果图单图转动画 (Image to Video)",
+      "default_positive": "cinematic architectural animation of modern villa building, pristine glass facade, realistic evening lighting, smooth camera pan, subtle gentle breeze in surrounding foliage, static geometry, 4k ultra detailed",
+      "default_negative": "warped architecture, distorted walls, sudden camera shake, flickering, low resolution, artifacting, fast motion, morphing building structure",
+      "recommended_duration": 4.0,
+      "recommended_fps": 24,
+      "recommended_cfg": 6.0
+    },
+    "2_aerial_view": {
+      "name": "建筑鸟瞰大场景动画 (Aerial View)",
+      "default_positive": "breathtaking aerial view animation of architectural complex, smooth high-altitude drone pan, realistic sunlight reflections on glass curtain walls, surrounding trees moving softly in wind, 8k resolution, photorealistic",
+      "default_negative": "shaky motion, geometric distortion, blurring, artificial artifacts, noise, unnatural lighting changes, building morphing",
+      "recommended_duration": 5.0,
+      "recommended_fps": 24,
+      "recommended_cfg": 6.5
+    },
+    "3_night_transition": {
+      "name": "建筑日景转夜景灯光变化 (Day to Night Transition)",
+      "default_positive": "time-lapse animation of modern architectural facade transitioning from golden hour sunset to twilight night, warm interior lights gradually illuminating windows, subtle car light trails on nearby street, serene ambiance",
+      "default_negative": "abrupt lighting jump, wall deformation, window artifacting, noise, flickering, unstable structure",
+      "recommended_duration": 5.0,
+      "recommended_fps": 24,
+      "recommended_cfg": 6.0
+    }
+  }
+}
