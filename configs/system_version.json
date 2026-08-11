@@ -1,13 +1,11 @@
 {
-  "system": "0.3.0",
-  "system_name": "MiniMax H3 Architecture System Runtime Platform",
+  "system": "0.4.0",
+  "system_name": "MiniMax H3 Architecture System Distributable Platform",
   "comfyui": "0.27.0",
-  "workflow_version": "1.0",
-  "skill_version": "1.0",
-  "node_version": "1.0",
-  "release_tag": "v0.3.0",
-  "release_name": "MiniMax H3 Architecture System V0.3 Deployment Platform",
-  "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System",
-  "last_sync_timestamp": "2026-08-11T16:35:00+08:00",
-  "last_commit_pc": "PC-A-Primary-RTX5070"
+  "workflow_version": "1.4.0",
+  "skill_version": "1.4.0",
+  "node_version": "1.0.0",
+  "release_tag": "v0.4.0",
+  "release_name": "MiniMax H3 Architecture System V0.4 Distribution & Lifecycle Platform",
+  "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

@@ -1,0 +1,53 @@
+{
+  "version": "1.4.0",
+  "system_name": "MiniMax H3 Asset Registry",
+  "assets": {
+    "workflows": [
+      {
+        "id": "1_image_to_video",
+        "name": "1_建筑效果图_ImageToVideo.json",
+        "version": "1.4.0",
+        "author": "MiniMax AI Architecture Team",
+        "updated_date": "2026-08-11",
+        "gpu_profile": ["H3_LOW", "H3_STANDARD", "H3_PRO"],
+        "changelog": "Added HAL hardware adaptation support"
+      },
+      {
+        "id": "2_aerial_view",
+        "name": "2_建筑鸟瞰动画_AerialView.json",
+        "version": "1.4.0",
+        "author": "MiniMax AI Architecture Team",
+        "updated_date": "2026-08-11",
+        "gpu_profile": ["H3_LOW", "H3_STANDARD", "H3_PRO"],
+        "changelog": "Optimized drone flight camera pan conditioning"
+      },
+      {
+        "id": "3_night_transition",
+        "name": "3_建筑夜景灯光变化_NightTransition.json",
+        "version": "1.4.0",
+        "author": "MiniMax AI Architecture Team",
+        "updated_date": "2026-08-11",
+        "gpu_profile": ["H3_LOW", "H3_STANDARD", "H3_PRO"],
+        "changelog": "Time-lapse twilight window lighting transition"
+      }
+    ],
+    "skills": [
+      {
+        "name": "minimax-h3-architectural-video",
+        "version": "1.4.0",
+        "author": "MiniMax AI Agent Team",
+        "updated_date": "2026-08-11",
+        "changelog": "Added Codex, Hermes, OpenClaw Agent API support"
+      }
+    ],
+    "prompts": [
+      {
+        "name": "architectural_animation_prompts.json",
+        "version": "1.4.0",
+        "author": "MiniMax AI Prompt Engineering Team",
+        "updated_date": "2026-08-11",
+        "changelog": "Categorized positive and negative architectural presets"
+      }
+    ]
+  }
+}

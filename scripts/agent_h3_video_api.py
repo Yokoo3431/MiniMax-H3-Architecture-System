@@ -1,6 +1,6 @@
-"""MiniMax H3 Task Router & Agent API Layer (V0.2 Upgraded)
+"""MiniMax H3 Task Router & Agent API Layer (V0.4 Upgraded)
 Unified Task Router for AI Agents (Antigravity, Codex, Hermes, OpenClaw).
-Routes user natural language tasks -> Workflow Selection -> Prompt Composition -> Hardware Adaptation (HAL) -> ComfyUI API Execution.
+Routes user natural language tasks -> Categorized Workflow Registry -> Prompt Composition -> Hardware Adapter (HAL) -> ComfyUI API Execution.
 """
 
 import os
@@ -27,7 +27,8 @@ class MiniMaxH3TaskRouter:
         self.configs_dir = self.system_root / "configs"
         
         # Load registry & prompts
-        self.registry = self._load_json(self.configs_dir / "workflow_registry.json").get("workflows", {})
+        self.registry_data = self._load_json(self.configs_dir / "workflow_registry.json")
+        self.categories = self.registry_data.get("categories", {})
         self.prompt_library = self._load_json(self.system_root / "prompts" / "architectural_animation_prompts.json").get("prompt_templates", {})
 
         # Hardware Abstraction Layer (HAL)
@@ -53,20 +54,33 @@ class MiniMaxH3TaskRouter:
     def parse_task_and_select_workflow(self, task_description: str) -> tuple[dict, str]:
         """Task Understanding & Workflow Selection Router."""
         desc = task_description.lower()
-        matched_wf_id = "1_image_to_video"
+        matched_spec = None
 
-        for wf_id, wf_meta in self.registry.items():
-            for kw in wf_meta.get("supported_tasks", []):
-                if kw in desc:
-                    matched_wf_id = wf_id
+        # Search across categories
+        for cat_key, cat_data in self.categories.items():
+            wfs = cat_data.get("workflows", {})
+            for wf_id, wf_meta in wfs.items():
+                for kw in wf_meta.get("supported_tasks", []):
+                    if kw in desc:
+                        matched_spec = wf_meta
+                        break
+                if matched_spec:
                     break
+            if matched_spec:
+                break
 
-        wf_spec = self.registry.get(matched_wf_id, self.registry.get("1_image_to_video", {}))
-        filename = wf_spec.get("filename", "1_建筑效果图_ImageToVideo.json")
-        return wf_spec, filename
+        if not matched_spec:
+            # Fallback
+            vis_wfs = self.categories.get("architecture_visualization", {}).get("workflows", {})
+            matched_spec = vis_wfs.get("1_image_to_video", {
+                "filename": "1_建筑效果图_ImageToVideo.json",
+                "prompt_template_key": "1_image_to_video"
+            })
+
+        filename = matched_spec.get("filename", "1_建筑效果图_ImageToVideo.json")
+        return matched_spec, filename
 
     def compose_prompt(self, task_description: str, prompt_template_key: str) -> tuple[str, str]:
-        """Prompt Composition Layer."""
         preset = self.prompt_library.get(prompt_template_key, {})
         default_pos = preset.get("default_positive", "cinematic architectural animation of modern building, pristine facade, 4k ultra detailed")
         default_neg = preset.get("default_negative", "warped architecture, flickering, low resolution, artifacting")
@@ -90,8 +104,6 @@ class MiniMaxH3TaskRouter:
         duration_seconds: float = None,
         seed: int = 123456
     ) -> dict:
-        """Full Task Router Pipeline Execution."""
-
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"Input image not found: {image_path}")
 
@@ -110,12 +122,13 @@ class MiniMaxH3TaskRouter:
         fps = self.profile["fps"]
         duration = duration_seconds or self.profile["duration_seconds"]
 
-        print(f"[H3 Router] Route Task : '{task_description}'", flush=True)
-        print(f"[H3 Router] Selected WF : {wf_filename}", flush=True)
-        print(f"[H3 Router] HAL Profile : {self.profile_key} ({res_w}x{res_h} @ {steps} steps)", flush=True)
+        print(f"[H3 Router V0.4] Route Task  : '{task_description}'", flush=True)
+        print(f"[H3 Router V0.4] Category    : {wf_spec.get('category', 'Architecture Visualization')}", flush=True)
+        print(f"[H3 Router V0.4] Selected WF : {wf_filename}", flush=True)
+        print(f"[H3 Router V0.4] HAL Profile : {self.profile_key} ({res_w}x{res_h} @ {steps} steps)", flush=True)
 
         if not self.is_comfyui_active():
-            print(f"[H3 Router] WARNING: ComfyUI Server at {self.comfy_url} is offline. Returning Dry-Run Payload.", flush=True)
+            print(f"[H3 Router V0.4] WARNING: ComfyUI Server at {self.comfy_url} is offline. Returning Dry-Run Payload.", flush=True)
             return {
                 "status": "DRY_RUN",
                 "task_description": task_description,
@@ -127,7 +140,6 @@ class MiniMaxH3TaskRouter:
                 "video_path": "output/simulated_output.mp4"
             }
 
-        # 4. Construct Payload
         input_filename = os.path.basename(image_path)
         prompt_payload = {
             "1": {"class_type": "LoadImage", "inputs": {"image": input_filename}},
@@ -218,7 +230,6 @@ class MiniMaxH3TaskRouter:
             }
         }
 
-        # 5. POST to ComfyUI
         data = json.dumps({"prompt": prompt_payload}).encode("utf-8")
         req = urllib.request.Request(f"{self.comfy_url}/prompt", data=data, headers={"Content-Type": "application/json"})
         
@@ -227,7 +238,6 @@ class MiniMaxH3TaskRouter:
             res_json = json.loads(resp.read().decode("utf-8"))
             prompt_id = res_json.get("prompt_id")
 
-        # 6. Poll Execution
         completed = False
         for poll in range(120):
             time.sleep(2)
@@ -263,13 +273,13 @@ class MiniMaxH3TaskRouter:
         }
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Agent Task Router CLI")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Agent Task Router CLI V0.4")
     parser.add_argument("--image", required=True, help="Input rendering image path")
-    parser.add_argument("--task", default="Villa evening animation", help="Task description")
+    parser.add_argument("--task", default="Massing evolution diagram animation", help="Task description")
     parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
 
     args = parser.parse_args()
     router = MiniMaxH3TaskRouter(profile_override=args.profile)
     res = router.route_and_execute(image_path=args.image, task_description=args.task)
-    print("\n[H3 Task Router Execution Result]:")
+    print("\n[H3 Task Router V0.4 Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))

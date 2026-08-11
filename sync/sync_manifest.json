@@ -1,0 +1,8 @@
+{
+  "version": "1.4.0",
+  "system_name": "MiniMax H3 Sync Manifest",
+  "remote_repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System",
+  "release_tag": "v0.4.0",
+  "auto_backup_user_workflows": true,
+  "safe_merge_mode": true
+}

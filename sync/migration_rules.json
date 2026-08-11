@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "system_name": "MiniMax H3 Asset Migration Rules",
+  "rules": {
+    "workflow_migration": {
+      "backup_existing": true,
+      "overwrite_official_workflows": true,
+      "preserve_custom_user_workflows": true,
+      "fallback_on_schema_error": true
+    },
+    "prompt_migration": {
+      "merge_keys": true,
+      "overwrite_defaults": true
+    },
+    "skill_migration": {
+      "update_skll_md": true
+    }
+  }
+}
