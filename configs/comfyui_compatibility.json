@@ -1,0 +1,22 @@
+{
+  "system_version": "v0.6.5",
+  "comfyui_version_matrix": {
+    "recommended_stable": "0.27.0",
+    "supported_stable_range": "0.27.x",
+    "experimental_untested": "0.28+"
+  },
+  "custom_nodes_matrix": {
+    "ComfyUI_RH_MinMaxH3": {
+      "repo": "https://github.com/RH-Custom-Nodes/ComfyUI_RH_MinMaxH3",
+      "required_version": "1.0.0+",
+      "status": "STABLE_COMPATIBLE"
+    },
+    "ComfyUI-VideoHelperSuite": {
+      "repo": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite",
+      "required_version": "latest",
+      "status": "STABLE_COMPATIBLE"
+    }
+  },
+  "python_compatibility": "3.10 - 3.11",
+  "cuda_compatibility": "12.0+"
+}

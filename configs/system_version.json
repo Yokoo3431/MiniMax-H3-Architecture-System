@@ -1,11 +1,11 @@
 {
-  "system": "0.6.0",
-  "system_name": "MiniMax H3 Architecture System Production Engineering Platform",
+  "system": "0.6.5",
+  "system_name": "MiniMax H3 Architecture System Production Deployment Ready Baseline",
   "comfyui": "0.27.0",
-  "workflow_version": "1.6.0",
-  "skill_version": "1.6.0",
+  "workflow_version": "1.6.5",
+  "skill_version": "1.6.5",
   "node_version": "1.0.0",
-  "release_tag": "v0.6.0",
-  "release_name": "MiniMax H3 Architecture System V0.6 Production QA & Automation Platform",
+  "release_tag": "v0.6.5",
+  "release_name": "MiniMax H3 Architecture System V0.6.5 Production Deployment Readiness Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

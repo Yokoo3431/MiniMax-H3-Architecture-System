@@ -1,7 +1,7 @@
 {
-  "version": "0.6.0",
-  "system_name": "MiniMax H3 Architecture System Production Release Packager",
-  "package_filename": "MiniMax-H3-Architecture-System-v0.6.0.zip",
+  "version": "0.6.5",
+  "system_name": "MiniMax H3 Architecture System Production Deployment Ready Packager",
+  "package_filename": "MiniMax-H3-Architecture-System-v0.6.5.zip",
   "include_directories": [
     "launcher",
     "runtime",
