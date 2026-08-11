@@ -1,0 +1,14 @@
+rule_id: negative_prompt
+rule_name: Comprehensive Architectural Artifact Prevention Rule
+base_negatives:
+  - "building deformation"
+  - "warped facade geometry"
+  - "melted structural columns"
+  - "flickering glass curtainwall"
+  - "unstable architectural proportions"
+  - "distorted window frames"
+  - "camera perspective skew"
+  - "handheld camera jitter"
+  - "material texture morphing"
+  - "low resolution render artifacts"
+  - "motion blur"

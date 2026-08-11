@@ -1,0 +1,12 @@
+rule_id: geometry_lock
+rule_name: Architectural Structural Geometry Preservation Rule
+positive_additions:
+  - "strict architectural geometry preservation"
+  - "original facade structural proportions unchanged"
+  - "maintain roofline and balcony alignment"
+  - "uncompromising structural integrity"
+negative_additions:
+  - "building deformation"
+  - "facade structural modification"
+  - "window frame distortion"
+  - "melted structural columns"

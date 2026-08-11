@@ -1,0 +1,86 @@
+{
+  "knowledge_version": "1.0.0",
+  "system_name": "MiniMax H3 Architectural Knowledge Base",
+  "building_types": {
+    "museum": {
+      "concept": "civic cultural institution for art & heritage",
+      "visual": ["monumental volume", "curated natural light skylights", "sculptural facade massing"],
+      "prompt_keywords": ["monumental architectural museum facade", "sculptural volume", "dramatic skylight illumination"]
+    },
+    "gallery": {
+      "concept": "intimate exhibition and display space",
+      "visual": ["clean white plaster walls", "track lighting", "translucent glass partitions"],
+      "prompt_keywords": ["minimalist exhibition gallery interior", "translucent glass partitions", "track lighting glow"]
+    },
+    "office": {
+      "concept": "commercial highrise corporate workspace",
+      "visual": ["double-glazed glass curtainwall", "vertical aluminum mullions", "multi-story entrance lobby"],
+      "prompt_keywords": ["commercial tower glass curtainwall", "vertical aluminum mullions", "multi-story entrance lobby"]
+    },
+    "residential": {
+      "concept": "private house and villa living",
+      "visual": ["warm timber cladding", "landscape courtyard", "cantilevered roof terrace"],
+      "prompt_keywords": ["modern villa residence", "warm cedar timber cladding", "landscape courtyard garden"]
+    },
+    "campus": {
+      "concept": "educational & research building complex",
+      "visual": ["pedestrian circulation spine", "brick and glass facade", "connected green quadrangle"],
+      "prompt_keywords": ["university campus masterplan", "pedestrian circulation spine", "connected green quadrangle"]
+    },
+    "cultural": {
+      "concept": "public performing arts & theater center",
+      "visual": ["fluid curved roof canopy", "dramatic twilight illumination", "civic entrance plaza"],
+      "prompt_keywords": ["performing arts center", "fluid curved roof canopy", "civic entrance plaza dusk illumination"]
+    }
+  },
+  "spatial_concepts": {
+    "courtyard": {
+      "concept": "semi-enclosed landscape courtyard",
+      "visual": ["layered spatial sequence", "filtered daylight through foliage", "controlled openness"],
+      "prompt_keywords": ["semi-enclosed landscape courtyard", "filtered daylight through trees", "layered spatial sequence"]
+    },
+    "atrium": {
+      "concept": "central multi-story lightwell",
+      "visual": ["soaring vertical lightwell", "polished marble flooring reflections", "glass bridge walkways"],
+      "prompt_keywords": ["soaring multi-story glass atrium", "polished floor reflections", "glass bridge walkways"]
+    },
+    "circulation_spine": {
+      "concept": "primary pedestrian movement corridor",
+      "visual": ["rhythmic structural column colonnade", "glowing pathway lighting", "linear sightlines"],
+      "prompt_keywords": ["linear pedestrian circulation spine", "rhythmic structural colonnade", "linear sightlines"]
+    },
+    "threshold": {
+      "concept": "entrance spatial transition",
+      "visual": ["recessed entryway portal", "translucent canopy shadow", "material contrast"],
+      "prompt_keywords": ["recessed entrance threshold portal", "translucent canopy shadow"]
+    },
+    "plaza": {
+      "concept": "civic urban gathering space",
+      "visual": ["stone paved plaza", "water reflection pool", "ambient evening bollard light"],
+      "prompt_keywords": ["civic urban plaza", "stone paving", "water reflection pool"]
+    }
+  },
+  "materials": {
+    "exposed_concrete": {
+      "visual": ["fair-faced architectural concrete", "tie-rod hole pattern", "matte gray texture"],
+      "prompt_keywords": ["fair-faced architectural concrete facade", "raw tactile concrete texture"]
+    },
+    "glass_curtain_wall": {
+      "visual": ["double-glazed low-E glass", "seamless structural silicone joints", "sky reflections"],
+      "prompt_keywords": ["double-glazed glass curtainwall", "crisp sky reflections", "silicone joint detail"]
+    },
+    "timber": {
+      "visual": ["warm cedar timber louvers", "wood grain texture", "horizontal slat rhythm"],
+      "prompt_keywords": ["warm cedar timber louvers", "horizontal wood slat rhythm"]
+    },
+    "stone": {
+      "visual": ["honed granite cladding panels", "deep shadow reveals", "durable stone texture"],
+      "prompt_keywords": ["honed granite architectural stone cladding", "deep shadow reveals"]
+    }
+  },
+  "design_intents": {
+    "minimalism": ["clean rectilinear geometry", "uncluttered spatial composition", "concealed mechanical details"],
+    "monumentality": ["heroic scale facade", "deeply recessed openings", "weighty material presence"],
+    "transparency": ["floor-to-ceiling glass skin", "visual connection indoor outdoor", "lightweight structural frame"]
+  }
+}

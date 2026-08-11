@@ -1,0 +1,12 @@
+rule_id: camera_motion
+rule_name: Architectural Photography & Camera Trajectory Rule
+positive_additions:
+  - "two-point architectural perspective with straight vertical lines"
+  - "smooth cinematic camera movement"
+  - "35mm architectural tilt-shift lens perspective"
+  - "steady tripod camera motion"
+negative_additions:
+  - "camera tilt distortion"
+  - "fisheye lens warping"
+  - "shaky handheld camera motion"
+  - "unnatural perspective skew"

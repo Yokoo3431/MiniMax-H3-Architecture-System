@@ -1,11 +1,11 @@
 {
-  "system": "0.7.1",
-  "system_name": "MiniMax H3 Architecture System Prompt Intelligence Core",
+  "system": "0.7.1.5",
+  "system_name": "MiniMax H3 Architecture System Prompt Intelligence Enhancement Platform",
   "comfyui": "0.27.0",
-  "workflow_version": "1.7.1",
-  "skill_version": "1.7.1",
+  "workflow_version": "1.7.15",
+  "skill_version": "1.7.15",
   "node_version": "1.0.0",
-  "release_tag": "v0.7.1",
-  "release_name": "MiniMax H3 Architecture System V0.7.1 Prompt Intelligence Core Release",
+  "release_tag": "v0.7.1.5",
+  "release_name": "MiniMax H3 Architecture System V0.7.1.5 Prompt Intelligence Enhancement Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

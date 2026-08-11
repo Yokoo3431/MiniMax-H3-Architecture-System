@@ -1,21 +1,36 @@
-"""Main Architecture Prompt Skill Engine Entrance.
-Integrates IntentParser, PromptBuilder, and Workflow matching.
+"""Main Architecture Prompt Skill Engine Entrance (V0.7.1.5 Upgraded).
+Integrates IntentParser -> KnowledgeMapper -> RuleEngine -> PromptBuilder -> QualityEvaluator.
 """
 
 from pathlib import Path
 from skills.architecture_prompt.intent_parser import IntentParser
+from skills.architecture_prompt.knowledge_mapper import KnowledgeMapper
 from skills.architecture_prompt.prompt_builder import PromptBuilder
+from runtime.prompt_quality import PromptQualityEvaluator
 
 class ArchitecturePromptEngine:
     """Core Prompt Intelligence Skill Engine."""
 
     def __init__(self):
         self.parser = IntentParser()
+        self.mapper = KnowledgeMapper()
         self.builder = PromptBuilder()
+        self.evaluator = PromptQualityEvaluator()
 
     def process_request(self, text: str) -> dict:
+        # 1. Intent Parsing
         intent = self.parser.parse(text)
+
+        # 2. Knowledge Mapping
+        km_res = self.mapper.map_text_to_keywords(text)
+
+        # 3. Prompt Building
         pos_prompt, neg_prompt = self.builder.build_prompts(intent, text)
+        if km_res["mapped_keywords"]:
+            pos_prompt = f"{pos_prompt}, {', '.join(km_res['mapped_keywords'])}"
+
+        # 4. Quality Evaluation
+        quality_res = self.evaluator.evaluate(pos_prompt, intent.to_dict())
 
         # Map scene_type -> recommended workflow ID
         workflow_mapping = {
@@ -34,8 +49,11 @@ class ArchitecturePromptEngine:
 
         return {
             "intent_schema": intent.to_dict(),
+            "knowledge_mapping": km_res,
             "positive_prompt": pos_prompt,
             "negative_prompt": neg_prompt,
+            "quality_score": quality_res["quality_score"],
+            "quality_evaluation": quality_res,
             "recommended_workflow": rec_wf,
             "recommended_profile": "H3_STANDARD"
         }

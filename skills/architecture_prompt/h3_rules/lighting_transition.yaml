@@ -1,0 +1,12 @@
+rule_id: lighting_transition
+rule_name: Architectural Lighting & Dusk Shift Rule
+positive_additions:
+  - "golden hour dusk sky with soft ambient glow"
+  - "3500K warm interior light glowing through glass facade"
+  - "dramatic architectural lighting contrast"
+  - "soft realistic long shadows"
+negative_additions:
+  - "flickering light fixtures"
+  - "unnatural sky color shifts"
+  - "overexposed light glare"
+  - "flat ambient lighting"

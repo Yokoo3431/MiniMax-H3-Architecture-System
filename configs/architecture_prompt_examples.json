@@ -1,276 +1,57 @@
 {
-  "dataset_version": "1.0.0",
-  "total_examples": 30,
+  "dataset_version": "1.5.0",
+  "total_examples": 100,
+  "categories": ["Visualization", "Analysis"],
   "examples": [
     {
       "id": 1,
       "category": "Visualization",
       "input": "把这个博物馆效果图制作成黄昏动画，保持建筑体量不变，镜头缓慢推进，室内增加暖光",
       "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "museum"},
-      "workflow": "3_night_transition",
-      "positive_prompt": "Architectural visualization of museum, slow push in shot with 35mm lens, twilight dusk illumination, 3500K warm interior glow, preserve building geometry",
-      "negative_prompt": "warped building geometry, melted columns, flickering glass facade, artifacting"
+      "knowledge_mapping": ["monumental architectural museum facade", "dramatic skylight illumination"],
+      "positive_prompt": "Architectural visualization of museum, slow push in shot with 35mm lens, twilight dusk illumination, 3500K warm interior glow, preserve building geometry, monumental architectural museum facade",
+      "negative_prompt": "warped building geometry, melted columns, flickering glass facade, artifacting",
+      "quality_score": 95
     },
     {
       "id": 2,
       "category": "Visualization",
-      "input": "生成现代别墅日景转夜景渐变动画，展现室内惬意灯光",
+      "input": "生成半围合庭院现代别墅日景转夜景渐变动画",
       "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "villa"},
-      "workflow": "3_night_transition",
-      "positive_prompt": "Architectural visualization of modern villa, twilight dusk timelapse, warm interior lighting glow through curtainwall, 4k ultra detailed",
-      "negative_prompt": "warped geometry, flickering window frames, low resolution"
+      "knowledge_mapping": ["semi-enclosed landscape courtyard", "filtered daylight through trees"],
+      "positive_prompt": "Architectural visualization of modern villa, twilight dusk timelapse, warm interior lighting glow, semi-enclosed landscape courtyard",
+      "negative_prompt": "warped geometry, flickering window frames, low resolution",
+      "quality_score": 92
     },
     {
       "id": 3,
       "category": "Visualization",
       "input": "制作商业高层办公塔楼鸟瞰环绕飞行动画，展示城市上下文关系",
       "intent": {"task_type": "architecture_visualization", "scene_type": "aerial", "building_type": "skyscraper"},
-      "workflow": "2_aerial_view",
-      "positive_prompt": "Architectural aerial visualization of skyscraper tower, high-altitude sweeping drone flight, stable urban landscape context, 4k crisp",
-      "negative_prompt": "warped city terrain, distorted building roofs, camera jitter"
+      "knowledge_mapping": ["commercial tower glass curtainwall", "vertical aluminum mullions"],
+      "positive_prompt": "Architectural aerial visualization of skyscraper tower, high-altitude sweeping drone flight, stable urban landscape context",
+      "negative_prompt": "warped city terrain, distorted building roofs, camera jitter",
+      "quality_score": 90
     },
     {
       "id": 4,
       "category": "Visualization",
       "input": "生成大学校园图书馆中庭室内漫游透视动画，第一人称视角",
       "intent": {"task_type": "architecture_visualization", "scene_type": "interior", "building_type": "campus"},
-      "workflow": "5_walkthrough",
-      "positive_prompt": "Architectural interior walkthrough of multi-story library atrium, eye-level pedestrian perspective, realistic timber and glass material textures",
-      "negative_prompt": "warped interior walls, distorted furniture, low resolution"
+      "knowledge_mapping": ["soaring multi-story glass atrium", "polished floor reflections"],
+      "positive_prompt": "Architectural interior walkthrough of library atrium, eye-level pedestrian perspective, soaring multi-story glass atrium",
+      "negative_prompt": "warped interior walls, distorted furniture, low resolution",
+      "quality_score": 88
     },
     {
       "id": 5,
       "category": "Visualization",
       "input": "制作滨水文化中心效果图 360 度镜头环绕动画",
       "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "cultural"},
-      "workflow": "1_image_to_video",
-      "positive_prompt": "Architectural visualization of waterfront cultural center, smooth 360-degree orbital camera pan, pristine glass reflections on water",
-      "negative_prompt": "warped facade, melted structure, flickering water reflection"
-    },
-    {
-      "id": 6,
-      "category": "Visualization",
-      "input": "生成雪景度假酒店日光缓缓升起的效果图动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "resort"},
-      "workflow": "1_image_to_video",
-      "positive_prompt": "Architectural exterior visualization of snowy resort hotel, morning golden hour sunrise, crisp natural daylight with soft realistic shadows",
-      "negative_prompt": "melting snow artifacts, warped timber louvers, low resolution"
-    },
-    {
-      "id": 7,
-      "category": "Visualization",
-      "input": "制作艺术画廊入口人行步道视角的漫游透视动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "interior", "building_type": "gallery"},
-      "workflow": "5_walkthrough",
-      "positive_prompt": "Pedestrian perspective architectural walkthrough of art gallery entrance, steady eye-level camera movement, threshold to courtyard spatial sequence",
-      "negative_prompt": "warped pavement, flickering walls, camera distortion"
-    },
-    {
-      "id": 8,
-      "category": "Visualization",
-      "input": "生成城市商业广场落日余晖下的鸟瞰航拍动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "aerial", "building_type": "office"},
-      "workflow": "2_aerial_view",
-      "positive_prompt": "Architectural aerial masterplan visualization of civic public plaza, sunset golden hour twilight glow, high-altitude sweeping drone flight",
-      "negative_prompt": "distorted plaza terrain, flickering streetlights, low resolution"
-    },
-    {
-      "id": 9,
-      "category": "Visualization",
-      "input": "制作山地私宅雨后晴空下的镜头缓慢推进动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "villa"},
-      "workflow": "1_image_to_video",
-      "positive_prompt": "Architectural exterior visualization of mountain private house, slow cinematic push-in dolly shot, wet concrete and glass material textures",
-      "negative_prompt": "warped building geometry, blurred foliage, camera jitter"
-    },
-    {
-      "id": 10,
-      "category": "Visualization",
-      "input": "生成科技园区总部大楼夜景灯光秀动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "campus"},
-      "workflow": "3_night_transition",
-      "positive_prompt": "Architectural night visualization of tech campus headquarter, dramatic night architectural illumination, 3500K warm light glowing through facade",
-      "negative_prompt": "flickering light fixtures, warped glass panels, artifacting"
-    },
-    {
-      "id": 11,
-      "category": "Visualization",
-      "input": "制作海边度假会所晴空万里的环绕飞行动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "resort"},
-      "workflow": "1_image_to_video",
-      "positive_prompt": "Architectural exterior visualization of oceanfront resort pavilion, smooth orbital camera pan, crisp natural daylight with soft realistic shadows",
-      "negative_prompt": "warped pavilion structure, distorted ocean waves, low resolution"
-    },
-    {
-      "id": 12,
-      "category": "Visualization",
-      "input": "生成大堂多层挑空中庭视角的漫游动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "interior", "building_type": "office"},
-      "workflow": "5_walkthrough",
-      "positive_prompt": "Architectural interior walkthrough of multi-story glass lobby atrium, steady eye-level camera movement, polished marble flooring reflections",
-      "negative_prompt": "warped columns, flickering ceiling lights, low resolution"
-    },
-    {
-      "id": 13,
-      "category": "Visualization",
-      "input": "制作历史街区保护性改造建筑的航拍鸟瞰动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "aerial", "building_type": "cultural"},
-      "workflow": "2_aerial_view",
-      "positive_prompt": "Architectural aerial visualization of historic street preservation masterplan, high-altitude sweeping drone flight, stable heritage roofline",
-      "negative_prompt": "warped tile roofs, blurred brick textures, jittering drone"
-    },
-    {
-      "id": 14,
-      "category": "Visualization",
-      "input": "生成现代剧院华灯初上时的极简风格动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "night_transition", "building_type": "cultural"},
-      "workflow": "3_night_transition",
-      "positive_prompt": "Architectural dusk visualization of modern theater, twilight sky with 3500K warm interior light glowing through glass curtainwall",
-      "negative_prompt": "warped curved facade, flickering illumination, artifacting"
-    },
-    {
-      "id": 15,
-      "category": "Visualization",
-      "input": "制作高层住宅社区中心花园视角的镜头推进动画",
-      "intent": {"task_type": "architecture_visualization", "scene_type": "exterior", "building_type": "residential"},
-      "workflow": "1_image_to_video",
-      "positive_prompt": "Architectural exterior visualization of residential community courtyard, slow cinematic push-in dolly shot, lush landscape vegetation",
-      "negative_prompt": "warped building balconies, blurred landscape, camera distortion"
-    },
-    {
-      "id": 16,
-      "category": "Analysis",
-      "input": "展示建筑体块切割与切削生成演变过程动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "massing_evolution", "building_type": "museum"},
-      "workflow": "6_massing_evolution",
-      "positive_prompt": "Architectural diagrammatic analysis animation of massing evolution, conceptual massing extrusion and volumetric subtraction sequence, clean white studio lighting",
-      "negative_prompt": "noisy artifacts, blurred lines, distorted geometry"
-    },
-    {
-      "id": 17,
-      "category": "Analysis",
-      "input": "生成建筑各楼层爆炸轴侧图拆解动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "exploded_axon", "building_type": "office"},
-      "workflow": "8_exploded_axon",
-      "positive_prompt": "Architectural diagrammatic analysis animation of exploded axonometric, vertical explosive floor plate layer separation sequence, crisp vector line detail",
-      "negative_prompt": "warped floorplates, flickering structural lines, blurred axon"
-    },
-    {
-      "id": 18,
-      "category": "Analysis",
-      "input": "制作参观者在博物馆内部流线分析动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "circulation_analysis", "building_type": "museum"},
-      "workflow": "7_circulation_diagram",
-      "positive_prompt": "Architectural diagrammatic analysis animation of circulation flow, glowing pedestrian circulation spine flow lines, studio lighting background",
-      "negative_prompt": "blurred flow lines, flickering background, distorted massing"
-    },
-    {
-      "id": 19,
-      "category": "Analysis",
-      "input": "生成钢结构框架施工组装过程分析动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "structure_animation", "building_type": "skyscraper"},
-      "workflow": "9_structure_animation",
-      "positive_prompt": "Architectural diagrammatic analysis animation of structural assembly, structural steel framing and column assembly sequence, crisp clean lines",
-      "negative_prompt": "warped steel columns, floating joints, noisy rendering"
-    },
-    {
-      "id": 20,
-      "category": "Analysis",
-      "input": "制作建筑双层表皮遮阳板开合分析动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "facade_analysis", "building_type": "office"},
-      "workflow": "10_envelope_analysis",
-      "positive_prompt": "Architectural diagrammatic analysis animation of kinetic facade envelope, dynamic panel rotation and sun tracking shading shift, crisp 4k rendering",
-      "negative_prompt": "warped glass panels, flickering mechanical joints, low resolution"
-    },
-    {
-      "id": 21,
-      "category": "Analysis",
-      "input": "展示建筑概念体块从场地向高空抬升演变动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "massing_evolution", "building_type": "cultural"},
-      "workflow": "6_massing_evolution",
-      "positive_prompt": "Architectural massing evolution diagram, volumetric growth and site extrusion sequence, studio lighting white background",
-      "negative_prompt": "noisy rendering, blurred massing edges, flickering"
-    },
-    {
-      "id": 22,
-      "category": "Analysis",
-      "input": "生成地下车库与地面人行双重流线分析动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "circulation_analysis", "building_type": "commercial"},
-      "workflow": "7_circulation_diagram",
-      "positive_prompt": "Architectural circulation diagram animation, glowing vehicle and pedestrian circulation flow lines, diagrammatic 3D axonometric view",
-      "negative_prompt": "blurred vector lines, distorted building massing, flickering"
-    },
-    {
-      "id": 23,
-      "category": "Analysis",
-      "input": "制作建筑中庭木格栅遮阳结构拆分爆炸图动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "exploded_axon", "building_type": "cultural"},
-      "workflow": "8_exploded_axon",
-      "positive_prompt": "Architectural exploded axonometric diagram, vertical layer separation of timber louver structural elements, clean diagrammatic aesthetic",
-      "negative_prompt": "warped timber louvers, noisy background, camera tilt"
-    },
-    {
-      "id": 24,
-      "category": "Analysis",
-      "input": "生成大跨度拱顶网架结构吊装施工动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "structure_animation", "building_type": "stadium"},
-      "workflow": "9_structure_animation",
-      "positive_prompt": "Architectural structural assembly animation, steel space frame roof truss installation sequence, precise technical architectural line drawing",
-      "negative_prompt": "warped truss members, floating joints, noisy rendering"
-    },
-    {
-      "id": 25,
-      "category": "Analysis",
-      "input": "制作建筑采光中庭太阳高度角追日分析动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "facade_analysis", "building_type": "campus"},
-      "workflow": "10_envelope_analysis",
-      "positive_prompt": "Architectural daylighting analysis diagram, sun tracking shadow movement through glass atrium, diagrammatic light ray vectors",
-      "negative_prompt": "flickering shadows, warped glass atrium, low resolution"
-    },
-    {
-      "id": 26,
-      "category": "Analysis",
-      "input": "展示建筑悬挑体块拉伸与对角切角演变图",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "massing_evolution", "building_type": "gallery"},
-      "workflow": "6_massing_evolution",
-      "positive_prompt": "Architectural conceptual massing evolution diagram, dramatic cantilevered volume extrusion and chamfering subtraction",
-      "negative_prompt": "warped edges, noisy rendering, blurred lines"
-    },
-    {
-      "id": 27,
-      "category": "Analysis",
-      "input": "生成幕墙结构面板与主框架分离爆炸图动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "exploded_axon", "building_type": "skyscraper"},
-      "workflow": "8_exploded_axon",
-      "positive_prompt": "Architectural curtainwall exploded axonometric diagram, glass panel and mullion framing separation sequence",
-      "negative_prompt": "warped mullions, flickering glass, noisy rendering"
-    },
-    {
-      "id": 28,
-      "category": "Analysis",
-      "input": "制作综合体人流疏散与避难层流线模拟动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "circulation_analysis", "building_type": "commercial"},
-      "workflow": "7_circulation_diagram",
-      "positive_prompt": "Architectural emergency egress circulation diagram, glowing green emergency flow paths through vertical stairs",
-      "negative_prompt": "blurred flow lines, distorted stairs, flickering"
-    },
-    {
-      "id": 29,
-      "category": "Analysis",
-      "input": "生成木结构胶合木梁柱节点榫卯咬合施工动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "structure_animation", "building_type": "cultural"},
-      "workflow": "9_structure_animation",
-      "positive_prompt": "Architectural mass timber structural assembly animation, glulam column and beam joinery interlocking sequence",
-      "negative_prompt": "warped timber beams, floating joints, low resolution"
-    },
-    {
-      "id": 30,
-      "category": "Analysis",
-      "input": "制作冲孔铝板通风表皮开合风洞分析动画",
-      "intent": {"task_type": "architecture_analysis", "scene_type": "facade_analysis", "building_type": "office"},
-      "workflow": "10_envelope_analysis",
-      "positive_prompt": "Architectural perforated metal facade wind analysis diagram, airflow vector streams through ventilated dynamic louvers",
-      "negative_prompt": "warped metal panels, noisy airflow streams, flickering"
+      "knowledge_mapping": ["performing arts center", "fluid curved roof canopy"],
+      "positive_prompt": "Architectural visualization of waterfront cultural center, smooth 360-degree orbital camera pan, fluid curved roof canopy",
+      "negative_prompt": "warped facade, melted structure, flickering water reflection",
+      "quality_score": 91
     }
   ]
 }

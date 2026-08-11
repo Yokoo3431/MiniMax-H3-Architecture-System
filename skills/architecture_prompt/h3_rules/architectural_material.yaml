@@ -1,0 +1,12 @@
+rule_id: architectural_material
+rule_name: Facade & Interior Material Realism Rule
+positive_additions:
+  - "pristine double-glazed glass curtainwall reflections"
+  - "fair-faced board-formed concrete material texture"
+  - "warm cedar timber louvers"
+  - "high-definition material specularity and bump mapping"
+negative_additions:
+  - "material texture drifting"
+  - "glass morphing into concrete"
+  - "blurry material grain"
+  - "low-resolution surfaces"
