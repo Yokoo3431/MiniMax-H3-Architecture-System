@@ -1,0 +1,45 @@
+{
+  "version": "1.0.0",
+  "system_name": "MiniMax H3 Workflow Registry",
+  "workflows": {
+    "1_image_to_video": {
+      "id": "1_image_to_video",
+      "filename": "1_建筑效果图_ImageToVideo.json",
+      "name": "建筑效果图单图转动画",
+      "purpose": "Single architectural rendering to smooth video animation",
+      "input_type": "single_image",
+      "recommended_gpu": "H3_STANDARD",
+      "resolution": "hardware_dependent",
+      "default_resolution": [1280, 720],
+      "quality_level": "standard",
+      "prompt_template_key": "1_image_to_video",
+      "supported_tasks": ["rendering", "villa", "facade", "street_view", "animation", "pan"]
+    },
+    "2_aerial_view": {
+      "id": "2_aerial_view",
+      "filename": "2_建筑鸟瞰动画_AerialView.json",
+      "name": "建筑鸟瞰大场景动画",
+      "purpose": "High-altitude drone flight animation for architectural complexes and master plans",
+      "input_type": "single_image",
+      "recommended_gpu": "H3_STANDARD",
+      "resolution": "hardware_dependent",
+      "default_resolution": [1280, 720],
+      "quality_level": "high",
+      "prompt_template_key": "2_aerial_view",
+      "supported_tasks": ["aerial", "drone", "masterplan", "birdview", "high_altitude", "flythrough"]
+    },
+    "3_night_transition": {
+      "id": "3_night_transition",
+      "filename": "3_建筑夜景灯光变化_NightTransition.json",
+      "name": "建筑日景转夜景灯光变化",
+      "purpose": "Time-lapse day to twilight night lighting transition animation",
+      "input_type": "single_image",
+      "recommended_gpu": "H3_STANDARD",
+      "resolution": "hardware_dependent",
+      "default_resolution": [1280, 720],
+      "quality_level": "high",
+      "prompt_template_key": "3_night_transition",
+      "supported_tasks": ["night", "lighting", "transition", "sunset", "twilight", "dusk", "illumination"]
+    }
+  }
+}

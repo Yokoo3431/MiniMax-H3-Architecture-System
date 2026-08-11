@@ -1,5 +1,6 @@
-"""MiniMax H3 Agent API Layer
-Unified interface for AI Agents (Antigravity, Codex, Hermes) to trigger architectural video generation workflows via ComfyUI.
+"""MiniMax H3 Task Router & Agent API Layer (V0.2 Upgraded)
+Unified Task Router for AI Agents (Antigravity, Codex, Hermes, OpenClaw).
+Routes user natural language tasks -> Workflow Selection -> Prompt Composition -> Hardware Adaptation (HAL) -> ComfyUI API Execution.
 """
 
 import os
@@ -11,50 +12,62 @@ import urllib.request
 import urllib.parse
 from pathlib import Path
 
-class MiniMaxH3AgentAPI:
-    """Agent Integration API Layer for MiniMax H3 Architecture Video Generation."""
+SYSTEM_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(SYSTEM_ROOT))
 
-    def __init__(self, comfy_url: str = "http://127.0.0.1:8188", system_root: str = None):
+from hardware.detect_gpu import detect_hardware
+
+class MiniMaxH3TaskRouter:
+    """Production H3 Task Router for AI Agents."""
+
+    def __init__(self, comfy_url: str = "http://127.0.0.1:8188", profile_override: str = None):
         self.comfy_url = comfy_url.rstrip("/")
-        if system_root is None:
-            self.system_root = Path(__file__).resolve().parent.parent
-        else:
-            self.system_root = Path(system_root)
-
+        self.system_root = SYSTEM_ROOT
         self.workflows_dir = self.system_root / "workflows"
-        self.prompts_file = self.system_root / "prompts" / "architectural_animation_prompts.json"
-        self.prompt_library = self._load_prompt_library()
+        self.configs_dir = self.system_root / "configs"
+        
+        # Load registry & prompts
+        self.registry = self._load_json(self.configs_dir / "workflow_registry.json").get("workflows", {})
+        self.prompt_library = self._load_json(self.system_root / "prompts" / "architectural_animation_prompts.json").get("prompt_templates", {})
 
-    def _load_prompt_library(self) -> dict:
-        if self.prompts_file.is_file():
+        # Hardware Abstraction Layer (HAL)
+        self.hw_info = detect_hardware()
+        if profile_override and profile_override in ["H3_LOW", "H3_STANDARD", "H3_PRO"]:
+            with open(self.system_root / "hardware" / "hardware_profiles.json", "r", encoding="utf-8") as f:
+                all_profiles = json.load(f).get("profiles", {})
+                self.hw_info["matched_profile_key"] = profile_override
+                self.hw_info["profile"] = all_profiles.get(profile_override, self.hw_info["profile"])
+
+        self.profile = self.hw_info["profile"]
+        self.profile_key = self.hw_info["matched_profile_key"]
+
+    def _load_json(self, path: Path) -> dict:
+        if path.is_file():
             try:
-                with open(self.prompts_file, "r", encoding="utf-8") as f:
+                with open(path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 pass
         return {}
 
-    def select_workflow(self, task_description: str) -> str:
-        """Automatically match the best workflow JSON based on natural language task description."""
+    def parse_task_and_select_workflow(self, task_description: str) -> tuple[dict, str]:
+        """Task Understanding & Workflow Selection Router."""
         desc = task_description.lower()
-        if "鸟瞰" in desc or "aerial" in desc or "drone" in desc or "masterplan" in desc:
-            return "2_建筑鸟瞰动画_AerialView.json"
-        elif "夜景" in desc or "灯光" in desc or "night" in desc or "dusk" in desc or "transition" in desc:
-            return "3_建筑夜景灯光变化_NightTransition.json"
-        else:
-            return "1_建筑效果图_ImageToVideo.json"
+        matched_wf_id = "1_image_to_video"
 
-    def expand_prompt(self, task_description: str, workflow_name: str) -> tuple[str, str]:
-        """Expand natural language task description with architectural negative/positive presets."""
-        templates = self.prompt_library.get("prompt_templates", {})
-        
-        if "Aerial" in workflow_name or "鸟瞰" in workflow_name:
-            preset = templates.get("2_aerial_view", {})
-        elif "Night" in workflow_name or "夜景" in workflow_name:
-            preset = templates.get("3_night_transition", {})
-        else:
-            preset = templates.get("1_image_to_video", {})
+        for wf_id, wf_meta in self.registry.items():
+            for kw in wf_meta.get("supported_tasks", []):
+                if kw in desc:
+                    matched_wf_id = wf_id
+                    break
 
+        wf_spec = self.registry.get(matched_wf_id, self.registry.get("1_image_to_video", {}))
+        filename = wf_spec.get("filename", "1_建筑效果图_ImageToVideo.json")
+        return wf_spec, filename
+
+    def compose_prompt(self, task_description: str, prompt_template_key: str) -> tuple[str, str]:
+        """Prompt Composition Layer."""
+        preset = self.prompt_library.get(prompt_template_key, {})
         default_pos = preset.get("default_positive", "cinematic architectural animation of modern building, pristine facade, 4k ultra detailed")
         default_neg = preset.get("default_negative", "warped architecture, flickering, low resolution, artifacting")
 
@@ -62,7 +75,6 @@ class MiniMaxH3AgentAPI:
         return positive, default_neg
 
     def is_comfyui_active(self) -> bool:
-        """Check if ComfyUI Server is responding on HTTP endpoint."""
         try:
             req = urllib.request.Request(f"{self.comfy_url}/system_stats")
             with urllib.request.urlopen(req, timeout=2) as resp:
@@ -70,45 +82,55 @@ class MiniMaxH3AgentAPI:
         except Exception:
             return False
 
-    def generate_video(
+    def route_and_execute(
         self,
         image_path: str,
-        task_description: str = "cinematic architectural animation of modern building",
-        workflow_name: str = None,
-        duration_seconds: float = 4.0,
+        task_description: str = "Modern villa rendering animation",
+        workflow_override: str = None,
+        duration_seconds: float = None,
         seed: int = 123456
     ) -> dict:
-        """Main Agent Entry Point. Accepts image, task description, workflow name; returns generated MP4 path."""
+        """Full Task Router Pipeline Execution."""
 
         if not os.path.exists(image_path):
-            raise FileNotFoundError(f"Input rendering image not found: {image_path}")
+            raise FileNotFoundError(f"Input image not found: {image_path}")
+
+        # 1. Task Understanding & Workflow Selection
+        wf_spec, wf_filename = self.parse_task_and_select_workflow(task_description)
+        if workflow_override:
+            wf_filename = workflow_override
+
+        # 2. Prompt Composition
+        prompt_key = wf_spec.get("prompt_template_key", "1_image_to_video")
+        pos_prompt, neg_prompt = self.compose_prompt(task_description, prompt_key)
+
+        # 3. Hardware Adapter (HAL Parameters)
+        res_w, res_h = self.profile["resolution"]
+        steps = self.profile["steps"]
+        fps = self.profile["fps"]
+        duration = duration_seconds or self.profile["duration_seconds"]
+
+        print(f"[H3 Router] Route Task : '{task_description}'", flush=True)
+        print(f"[H3 Router] Selected WF : {wf_filename}", flush=True)
+        print(f"[H3 Router] HAL Profile : {self.profile_key} ({res_w}x{res_h} @ {steps} steps)", flush=True)
 
         if not self.is_comfyui_active():
-            raise RuntimeError(f"ComfyUI Server is not responding at {self.comfy_url}! Please launch setup_environment.bat or server.")
+            print(f"[H3 Router] WARNING: ComfyUI Server at {self.comfy_url} is offline. Returning Dry-Run Payload.", flush=True)
+            return {
+                "status": "DRY_RUN",
+                "task_description": task_description,
+                "workflow_selected": wf_filename,
+                "hardware_profile": self.profile_key,
+                "resolution": [res_w, res_h],
+                "steps": steps,
+                "positive_prompt": pos_prompt,
+                "video_path": "output/simulated_output.mp4"
+            }
 
-        # 1. Auto select workflow if not specified
-        if not workflow_name:
-            workflow_name = self.select_workflow(task_description)
-
-        workflow_path = self.workflows_dir / workflow_name
-        if not workflow_path.is_file():
-            # Fallback to default
-            workflow_path = self.workflows_dir / "1_建筑效果图_ImageToVideo.json"
-
-        # 2. Expand prompt
-        positive_prompt, negative_prompt = self.expand_prompt(task_description, workflow_name)
-
-        # 3. Read workflow JSON
-        with open(workflow_path, "r", encoding="utf-8") as f:
-            workflow_data = json.load(f)
-
-        # 4. Construct API Prompt payload
+        # 4. Construct Payload
         input_filename = os.path.basename(image_path)
         prompt_payload = {
-            "1": {
-                "class_type": "LoadImage",
-                "inputs": {"image": input_filename}
-            },
+            "1": {"class_type": "LoadImage", "inputs": {"image": input_filename}},
             "2": {
                 "class_type": "RHMiniMaxH3DirectModelLoader",
                 "inputs": {
@@ -133,26 +155,23 @@ class MiniMaxH3AgentAPI:
                     "audio_vae_path": "audio_vae"
                 }
             },
-            "5": {
-                "class_type": "RHMiniMaxH3FL2VAFirstFrameCondition",
-                "inputs": {"first_frame": ["1", 0]}
-            },
+            "5": {"class_type": "RHMiniMaxH3FL2VAFirstFrameCondition", "inputs": {"first_frame": ["1", 0]}},
             "12": {
                 "class_type": "RHMiniMaxH3FL2VATarget",
                 "inputs": {
                     "keyframes": ["5", 0],
-                    "aspect_ratio": "1:1",
-                    "duration_seconds": float(duration_seconds),
-                    "width": 512,
-                    "height": 512
+                    "aspect_ratio": "16:9" if res_w > res_h else "1:1",
+                    "duration_seconds": float(duration),
+                    "width": res_w,
+                    "height": res_h
                 }
             },
             "6": {
                 "class_type": "RHMiniMaxH3T2VATextEncode",
                 "inputs": {
                     "text_encoder": ["3", 0],
-                    "prompt": positive_prompt,
-                    "negative_prompt": negative_prompt
+                    "prompt": pos_prompt,
+                    "negative_prompt": neg_prompt
                 }
             },
             "7": {
@@ -163,13 +182,10 @@ class MiniMaxH3AgentAPI:
                     "h3_vae_bundle": ["4", 0],
                     "h3_text_encoder": ["3", 0],
                     "target": ["12", 0],
-                    "prompt": positive_prompt
+                    "prompt": pos_prompt
                 }
             },
-            "8": {
-                "class_type": "RHMiniMaxH3EmptyAVLatent",
-                "inputs": {"target": ["12", 0]}
-            },
+            "8": {"class_type": "RHMiniMaxH3EmptyAVLatent", "inputs": {"target": ["12", 0]}},
             "9": {
                 "class_type": "RHMiniMaxH3DualSigmaSampler",
                 "inputs": {
@@ -177,7 +193,7 @@ class MiniMaxH3AgentAPI:
                     "conditioning": ["7", 0],
                     "av_latent": ["8", 0],
                     "seed": int(seed),
-                    "sigma_points": 21,
+                    "sigma_points": steps,
                     "video_shift": 12.0,
                     "audio_shift": 3.0,
                     "accel": "off",
@@ -186,18 +202,15 @@ class MiniMaxH3AgentAPI:
             },
             "10": {
                 "class_type": "RHMiniMaxH3DecodeAV",
-                "inputs": {
-                    "h3_vae_bundle": ["4", 0],
-                    "sampled_av_latent": ["9", 0]
-                }
+                "inputs": {"h3_vae_bundle": ["4", 0], "sampled_av_latent": ["9", 0]}
             },
             "11": {
                 "class_type": "VHS_VideoCombine",
                 "inputs": {
                     "images": ["10", 0],
-                    "frame_rate": 24,
+                    "frame_rate": fps,
                     "loop_count": 0,
-                    "filename_prefix": "Agent_H3_Architectural_Video",
+                    "filename_prefix": f"H3_{self.profile_key}_Arch_Video",
                     "format": "video/h264-mp4",
                     "pingpong": False,
                     "save_output": True
@@ -205,7 +218,7 @@ class MiniMaxH3AgentAPI:
             }
         }
 
-        # 5. POST to ComfyUI /prompt endpoint
+        # 5. POST to ComfyUI
         data = json.dumps({"prompt": prompt_payload}).encode("utf-8")
         req = urllib.request.Request(f"{self.comfy_url}/prompt", data=data, headers={"Content-Type": "application/json"})
         
@@ -214,7 +227,7 @@ class MiniMaxH3AgentAPI:
             res_json = json.loads(resp.read().decode("utf-8"))
             prompt_id = res_json.get("prompt_id")
 
-        # 6. Poll execution until complete
+        # 6. Poll Execution
         completed = False
         for poll in range(120):
             time.sleep(2)
@@ -231,9 +244,7 @@ class MiniMaxH3AgentAPI:
                 pass
 
         t_end = time.time()
-        output_dir = self.system_root.parent / "ComfyUI" / "output" if (self.system_root.parent / "ComfyUI").exists() else Path("output")
-        
-        # Search output for recent MP4
+        output_dir = self.system_root.parent / "ComfyUI" / "output"
         mp4_path = None
         if output_dir.exists():
             mp4_files = sorted(output_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -243,21 +254,22 @@ class MiniMaxH3AgentAPI:
         return {
             "status": "PASS" if (completed or mp4_path) else "FAIL",
             "prompt_id": prompt_id,
-            "workflow_used": workflow_name,
+            "task_description": task_description,
+            "workflow_selected": wf_filename,
+            "hardware_profile": self.profile_key,
+            "resolution": [res_w, res_h],
             "execution_time_seconds": round(t_end - t_start, 2),
             "video_path": mp4_path or "output/real_minimax_h3_arch_512.mp4"
         }
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Agent API CLI")
-    parser.add_argument("--image", required=True, help="Path to input architectural rendering image")
-    parser.add_argument("--task", default="Modern villa rendering animation", help="Natural language task description")
-    parser.add_argument("--workflow", default=None, help="Specific workflow JSON filename")
-    parser.add_argument("--duration", type=float, default=4.0, help="Video duration in seconds")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Agent Task Router CLI")
+    parser.add_argument("--image", required=True, help="Input rendering image path")
+    parser.add_argument("--task", default="Villa evening animation", help="Task description")
+    parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
 
     args = parser.parse_args()
-    api = MiniMaxH3AgentAPI()
-    print(f"[Agent API] Triggering MiniMax H3 Video Generation for task: {args.task}...")
-    res = api.generate_video(image_path=args.image, task_description=args.task, workflow_name=args.workflow, duration_seconds=args.duration)
-    print("\n[Agent API Result]:")
+    router = MiniMaxH3TaskRouter(profile_override=args.profile)
+    res = router.route_and_execute(image_path=args.image, task_description=args.task)
+    print("\n[H3 Task Router Execution Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))

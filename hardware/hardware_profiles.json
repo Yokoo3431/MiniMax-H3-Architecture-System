@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "system_name": "MiniMax H3 Hardware Profiles",
+  "profiles": {
+    "H3_LOW": {
+      "name": "H3_LOW (Entry Tier)",
+      "target_hardware": "RTX 2060 Super 8GB / RTX 3060 12GB / GTX 1080 Ti",
+      "min_vram_gb": 6.0,
+      "max_vram_gb": 10.0,
+      "resolution": [768, 432],
+      "width": 768,
+      "height": 432,
+      "aspect_ratio": "16:9",
+      "steps": 18,
+      "cfg": 5.5,
+      "fps": 20,
+      "duration_seconds": 4.0,
+      "vram_allocation_mode": "--lowvram",
+      "cpu_offload": true,
+      "attention_optimization": "--use-split-cross-attention",
+      "description": "Optimized for 8GB VRAM cards using aggressive offloading and reduced resolution."
+    },
+    "H3_STANDARD": {
+      "name": "H3_STANDARD (Standard Tier)",
+      "target_hardware": "RTX 5070 12GB / RTX 4070 12GB / RTX 3080 10GB-12GB",
+      "min_vram_gb": 10.0,
+      "max_vram_gb": 16.0,
+      "resolution": [1280, 720],
+      "width": 1280,
+      "height": 720,
+      "aspect_ratio": "16:9",
+      "steps": 25,
+      "cfg": 6.0,
+      "fps": 24,
+      "duration_seconds": 4.0,
+      "vram_allocation_mode": "--lowvram",
+      "cpu_offload": true,
+      "attention_optimization": "--use-split-cross-attention",
+      "description": "Balanced high-definition 720p production standard for 12GB VRAM GPUs."
+    },
+    "H3_PRO": {
+      "name": "H3_PRO (Professional Tier)",
+      "target_hardware": "RTX 5090 32GB / RTX 4090 24GB / RTX 3090 24GB / A100 / H100",
+      "min_vram_gb": 16.0,
+      "max_vram_gb": 96.0,
+      "resolution": [1920, 1080],
+      "width": 1920,
+      "height": 1080,
+      "aspect_ratio": "16:9",
+      "steps": 35,
+      "cfg": 6.5,
+      "fps": 24,
+      "duration_seconds": 5.0,
+      "vram_allocation_mode": "--normalvram",
+      "cpu_offload": false,
+      "attention_optimization": "--use-pytorch-cross-attention",
+      "description": "Maximum quality 1080p/2K production profile utilizing high VRAM bandwidth."
+    }
+  }
+}

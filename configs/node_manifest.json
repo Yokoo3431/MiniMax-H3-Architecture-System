@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "system_name": "MiniMax H3 Custom Node Manifest",
+  "nodes": {
+    "ComfyUI_RH_MinMaxH3": {
+      "name": "ComfyUI_RH_MinMaxH3",
+      "repository": "https://github.com/RH-CustomNodes/ComfyUI_RH_MinMaxH3.git",
+      "target_dir": "custom_nodes/ComfyUI_RH_MinMaxH3",
+      "required": true,
+      "recommended_commit": "latest",
+      "key_components": [
+        "minimax_h3_nodes/api/loaders.py",
+        "minimax_h3_nodes/api/targets.py",
+        "minimax_h3_nodes/runtime/model_loader"
+      ]
+    },
+    "ComfyUI-VideoHelperSuite": {
+      "name": "ComfyUI-VideoHelperSuite",
+      "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+      "target_dir": "custom_nodes/ComfyUI-VideoHelperSuite",
+      "required": true,
+      "recommended_commit": "latest",
+      "key_components": [
+        "videohelpersuite/nodes.py"
+      ]
+    },
+    "ComfyUI-Manager": {
+      "name": "ComfyUI-Manager",
+      "repository": "https://github.com/ltdrdata/ComfyUI-Manager.git",
+      "target_dir": "custom_nodes/ComfyUI-Manager",
+      "required": false,
+      "recommended_commit": "latest",
+      "key_components": [
+        "cm_cli.py"
+      ]
+    }
+  }
+}

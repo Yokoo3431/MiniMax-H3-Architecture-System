@@ -1,0 +1,32 @@
+{
+  "system_name": "MiniMax H3 Machine Profile",
+  "gpu_info": {
+    "gpu_name": "NVIDIA GeForce RTX 5070",
+    "vram_mb": 12226.56,
+    "vram_gb": 11.94,
+    "driver": "CUDA 13.0",
+    "detected_via": "pytorch"
+  },
+  "matched_profile_key": "H3_STANDARD",
+  "profile": {
+    "name": "H3_STANDARD (Standard Tier)",
+    "target_hardware": "RTX 5070 12GB / RTX 4070 12GB / RTX 3080 10GB-12GB",
+    "min_vram_gb": 10.0,
+    "max_vram_gb": 16.0,
+    "resolution": [
+      1280,
+      720
+    ],
+    "width": 1280,
+    "height": 720,
+    "aspect_ratio": "16:9",
+    "steps": 25,
+    "cfg": 6.0,
+    "fps": 24,
+    "duration_seconds": 4.0,
+    "vram_allocation_mode": "--lowvram",
+    "cpu_offload": true,
+    "attention_optimization": "--use-split-cross-attention",
+    "description": "Balanced high-definition 720p production standard for 12GB VRAM GPUs."
+  }
+}
