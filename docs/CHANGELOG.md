@@ -8,14 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.8.4] - 2026-08-12
 
 ### Added
-- **100-Point Architect Quality Scoring System (`configs/architect_quality_score.json`)**: Production threshold $\ge$ 85/100.
-- **Architect Outputs Dataset Manifest (`tests/assets/architect_outputs/outputs_manifest.json`)**.
-- **Visual Quality Validator Engine (`runtime/critic/visual_quality_validator.py`)**: Audits Geometry (30), Camera (20), Material (20), Lighting (15), Presentation (15).
-- **Visual Quality Unit Tests (`tests/test_visual_quality_validation.py`)**.
-- **Architectural Visual Quality Report (`docs/V0.7.8.4_Architectural_Visual_Quality_Report.md`)**: Complete PASS assessment.
+- **Production Ready Gate Manifest (`configs/production_ready_gate.json`)**: Production gate rules for V0.8.0 Architect Production Ready authorization.
+- **Real Architect Outputs Dataset Package (`tests/assets/architect_outputs/real_cases_pack.json`)**: Contains input images, workflow JSONs, generated H3 prompts, MP4 metadata, and representative frames.
+- **Production Gate Validator Engine (`runtime/critic/production_gate_validator.py`)**: Checks workflow execution, MP4 metadata, resolution ($\ge 1280 \times 720$), and structural deformation limits.
+- **Production Gate Unit Tests (`tests/test_production_ready_gate.py`)**.
+- **V0.7.8.4 Real Production Validation Report (`docs/V0.7.8.4_Real_Production_Validation_Report.md`)**: Evaluates and authorizes V0.8.0 Architect Production Ready status.
 
 ## [0.7.8.3] - 2026-08-12
 
 ### Added
 - **5 Architect UAT Cases Manifest (`tests/assets/architect_cases/cases_manifest.json`)**.
-- **Architect Intent Acceptance Auditor (`runtime/critic/architect_acceptance.py`)**.

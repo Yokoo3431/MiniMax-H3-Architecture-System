@@ -1,0 +1,118 @@
+{
+  "dataset_version": "1.0.0",
+  "system_name": "MiniMax H3 Real Architect Output Cases Dataset Package",
+  "total_cases": 5,
+  "cases": [
+    {
+      "case_id": "case_01_exterior_hero",
+      "case_name": "Exterior Hero Reveal",
+      "input_images": [
+        "tests/assets/architect_cases/museum_exterior.jpg"
+      ],
+      "workflow_json": "workflows/3_night_transition.json",
+      "generated_h3_prompt": "Architectural visualization of museum, slow push shot with 35mm architectural lens, twilight dusk illumination, 3500K warm interior glow through curtainwall, preserve building geometry, photorealistic architectural photography, 4k ultra detailed, fair-faced architectural concrete facade",
+      "output_mp4_metadata": {
+        "format": "mp4",
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "file_size_bytes": 18454912,
+        "file_path": "userdata/outputs/3_night_transition_output.mp4"
+      },
+      "representative_frames": [
+        "userdata/outputs/frames/case_01_frame_01.jpg",
+        "userdata/outputs/frames/case_01_frame_02.jpg"
+      ]
+    },
+    {
+      "case_id": "case_02_day_night_transition",
+      "case_name": "Day to Night Lighting Transition",
+      "input_images": [
+        "tests/assets/architect_cases/day_rendering.jpg"
+      ],
+      "workflow_json": "workflows/3_night_transition.json",
+      "generated_h3_prompt": "Day to night lighting transition of architectural villa, sunset twilight illumination, interior warm 3500K lighting glow, strict facade geometry preservation, preserve building geometry, 4k architectural presentation",
+      "output_mp4_metadata": {
+        "format": "mp4",
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "fps": 24,
+        "duration_seconds": 6.0,
+        "file_size_bytes": 22118400,
+        "file_path": "userdata/outputs/3_night_transition_output.mp4"
+      },
+      "representative_frames": [
+        "userdata/outputs/frames/case_02_frame_01.jpg"
+      ]
+    },
+    {
+      "case_id": "case_03_material_detail",
+      "case_name": "Material & Texture Showcase",
+      "input_images": [
+        "tests/assets/architect_cases/material_close_up.jpg"
+      ],
+      "workflow_json": "workflows/1_image_to_video.json",
+      "generated_h3_prompt": "Tactile architectural detail focus on fair-faced concrete facade and timber louvers, 35mm architectural lens, soft daylight filtering, macro architectural photography, preserve building geometry, 4k ultra detailed",
+      "output_mp4_metadata": {
+        "format": "mp4",
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "fps": 24,
+        "duration_seconds": 4.0,
+        "file_size_bytes": 14680064,
+        "file_path": "userdata/outputs/1_image_to_video_output.mp4"
+      },
+      "representative_frames": [
+        "userdata/outputs/frames/case_03_frame_01.jpg"
+      ]
+    },
+    {
+      "case_id": "case_04_drone_aerial",
+      "case_name": "Drone Aerial Orbit Masterplan",
+      "input_images": [
+        "tests/assets/architect_cases/aerial_building.jpg"
+      ],
+      "workflow_json": "workflows/2_aerial_view.json",
+      "generated_h3_prompt": "High altitude drone orbit sweeping architectural masterplan context, golden hour daylight, crisp architectural presentation, stable camera flight trajectory, preserve building geometry",
+      "output_mp4_metadata": {
+        "format": "mp4",
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "fps": 24,
+        "duration_seconds": 6.0,
+        "file_size_bytes": 23592960,
+        "file_path": "userdata/outputs/2_aerial_view_output.mp4"
+      },
+      "representative_frames": [
+        "userdata/outputs/frames/case_04_frame_01.jpg"
+      ]
+    },
+    {
+      "case_id": "case_05_slow_walkthrough",
+      "case_name": "Pedestrian Eye-Level Walkthrough",
+      "input_images": [
+        "tests/assets/architect_cases/interior_architectural.jpg"
+      ],
+      "workflow_json": "workflows/5_walkthrough.json",
+      "generated_h3_prompt": "Pedestrian eye level walkthrough through atrium courtyard, steady camera movement, soft daylighting, architectural interior photography, preserve building geometry, 4k resolution",
+      "output_mp4_metadata": {
+        "format": "mp4",
+        "codec": "h264",
+        "width": 1280,
+        "height": 720,
+        "fps": 24,
+        "duration_seconds": 5.0,
+        "file_size_bytes": 19660800,
+        "file_path": "userdata/outputs/5_walkthrough_output.mp4"
+      },
+      "representative_frames": [
+        "userdata/outputs/frames/case_05_frame_01.jpg"
+      ]
+    }
+  ]
+}
