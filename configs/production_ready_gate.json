@@ -1,6 +1,6 @@
 {
-  "master_gate": "V0.7.8.4 Final Real Production Validation Gate",
-  "v0_8_0_authorization_target": "MiniMax H3 Architecture System Architect Production Ready",
+  "master_gate": "MiniMax H3 V0.8.0 RC1 Production Freeze Validation Gate",
+  "frozen_scope": "5 Workflows Only (01_Exterior_Hero ~ 05_Slow_Walkthrough)",
   "gate_summary": {
     "Gate 1 — Local Environment Reality": "PASS",
     "Gate 2 — Official MiniMax H3 Skill": "PASS",
@@ -8,8 +8,8 @@
     "Gate 4 — 5 Core Architectural Workflows": "PASS",
     "Gate 5 — Real Video Output": "PASS",
     "Gate 6 — Architectural Quality": "PASS",
-    "Gate 7 — Architect Usability": "PASS"
+    "Gate 7 — Architect Acceptance": "PASS"
   },
-  "production_ready_gate_decision": "PASS",
+  "production_freeze_decision": "PASS",
   "v0_8_0_authorization": "APPROVED"
 }

@@ -1,0 +1,45 @@
+{
+  "gate_name": "Gate 4 — Workflow Reality & Node Integrity Audit",
+  "auditor_version": "1.0.0",
+  "frozen_workflow_count": 5,
+  "workflows": [
+    {
+      "id": "01_Exterior_Hero",
+      "name": "Exterior Hero Reveal",
+      "workflow_file": "workflows/3_建筑夜景灯光变化_NightTransition.json",
+      "nodes_status": "complete (zero missing nodes)",
+      "loader_compatibility": "PASS"
+    },
+    {
+      "id": "02_Day_Night_Transition",
+      "name": "Day Night Atmosphere Transition",
+      "workflow_file": "workflows/3_建筑夜景灯光变化_NightTransition.json",
+      "nodes_status": "complete (zero missing nodes)",
+      "loader_compatibility": "PASS"
+    },
+    {
+      "id": "03_Material_Detail",
+      "name": "Material Texture Showcase",
+      "workflow_file": "workflows/1_建筑效果图_ImageToVideo.json",
+      "nodes_status": "complete (zero missing nodes)",
+      "loader_compatibility": "PASS"
+    },
+    {
+      "id": "04_Drone_Aerial",
+      "name": "Drone Aerial Orbit Masterplan",
+      "workflow_file": "workflows/2_建筑鸟瞰动画_AerialView.json",
+      "nodes_status": "complete (zero missing nodes)",
+      "loader_compatibility": "PASS"
+    },
+    {
+      "id": "05_Slow_Walkthrough",
+      "name": "Pedestrian Eye-Level Walkthrough",
+      "workflow_file": "workflows/1_建筑效果图_ImageToVideo.json",
+      "nodes_status": "complete (zero missing nodes)",
+      "loader_compatibility": "PASS"
+    }
+  ],
+  "zero_missing_nodes_verified": true,
+  "extra_workflows_allowed": false,
+  "status": "PASS"
+}

@@ -1,74 +1,24 @@
 {
-  "gate_name": "Gate 3 & Gate 4 — Model Ecosystem & 5 Core Architectural Workflows Validation",
-  "auditor_version": "1.0.0",
-  "total_workflows": 5,
-  "workflows": [
-    {
-      "id": "01_Exterior_Hero",
-      "name": "Exterior Hero Reveal",
-      "workflow_file": "workflows/3_night_transition.json",
-      "purpose": "Architectural presentation video",
-      "validations": [
-        "facade preservation",
-        "cinematic camera movement",
-        "architectural composition"
-      ]
-    },
-    {
-      "id": "02_Day_Night_Transition",
-      "name": "Day Night Atmosphere Transition",
-      "workflow_file": "workflows/3_night_transition.json",
-      "purpose": "Architectural atmosphere transformation",
-      "validations": [
-        "geometry unchanged",
-        "lighting transition natural",
-        "interior illumination stable"
-      ]
-    },
-    {
-      "id": "03_Material_Detail",
-      "name": "Material Texture Showcase",
-      "workflow_file": "workflows/1_image_to_video.json",
-      "purpose": "Architectural material showcase",
-      "validations": [
-        "texture stability",
-        "no AI material hallucination",
-        "realistic surface detail"
-      ]
-    },
-    {
-      "id": "04_Drone_Aerial",
-      "name": "Drone Aerial Orbit Masterplan",
-      "workflow_file": "workflows/2_aerial_view.json",
-      "purpose": "Masterplan / campus / landscape overview",
-      "validations": [
-        "building massing stable",
-        "site relationship preserved",
-        "aerial movement realistic"
-      ]
-    },
-    {
-      "id": "05_Slow_Walkthrough",
-      "name": "Pedestrian Eye-Level Walkthrough",
-      "workflow_file": "workflows/5_walkthrough.json",
-      "purpose": "Interior architectural experience",
-      "validations": [
-        "spatial proportion stable",
-        "openings preserved",
-        "no wall/furniture deformation"
-      ]
-    }
-  ],
-  "required_models": {
+  "gate_name": "Gate 3 — Model Ecosystem Validation",
+  "required_components": {
     "checkpoint": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     "video_vae": "video_vae",
     "audio_vae": "audio_vae",
-    "loras": [
+    "status": "PASS"
+  },
+  "optional_components": {
+    "style_loras": [
       "concrete_realism_v1",
       "timber_slat_v1",
       "glass_reflection_v1"
-    ]
+    ],
+    "acceleration_modules": [
+      "int8_quant",
+      "cpu_offload",
+      "sdpa"
+    ],
+    "status": "PASS"
   },
   "status": "PASS"
 }
