@@ -1,0 +1,82 @@
+{
+  "manifest_version": "1.0.0",
+  "system_name": "MiniMax H3 Architect Outputs Evaluation Dataset",
+  "total_outputs": 5,
+  "outputs": [
+    {
+      "case_id": "case_01",
+      "video_name": "3_night_transition_output.mp4",
+      "representative_frame": "frame_01.jpg",
+      "prompt_used": "Architectural visualization of museum, slow push shot, twilight dusk",
+      "workflow": "3_night_transition",
+      "scores": {
+        "geometry_fidelity": 29.0,
+        "camera_logic": 19.0,
+        "material_stability": 19.0,
+        "lighting_quality": 14.5,
+        "presentation_quality": 14.5,
+        "total_score": 96.0
+      }
+    },
+    {
+      "case_id": "case_02",
+      "video_name": "3_night_transition_output.mp4",
+      "representative_frame": "frame_02.jpg",
+      "prompt_used": "Day to night transition evening architectural animation",
+      "workflow": "3_night_transition",
+      "scores": {
+        "geometry_fidelity": 28.5,
+        "camera_logic": 19.0,
+        "material_stability": 19.5,
+        "lighting_quality": 15.0,
+        "presentation_quality": 14.0,
+        "total_score": 96.0
+      }
+    },
+    {
+      "case_id": "case_03",
+      "video_name": "1_image_to_video_output.mp4",
+      "representative_frame": "frame_03.jpg",
+      "prompt_used": "Architectural material showcase fair-faced concrete",
+      "workflow": "1_image_to_video",
+      "scores": {
+        "geometry_fidelity": 28.0,
+        "camera_logic": 18.5,
+        "material_stability": 20.0,
+        "lighting_quality": 14.0,
+        "presentation_quality": 14.5,
+        "total_score": 95.0
+      }
+    },
+    {
+      "case_id": "case_04",
+      "video_name": "2_aerial_view_output.mp4",
+      "representative_frame": "frame_04.jpg",
+      "prompt_used": "High altitude drone orbit sweeping masterplan",
+      "workflow": "2_aerial_view",
+      "scores": {
+        "geometry_fidelity": 29.5,
+        "camera_logic": 20.0,
+        "material_stability": 18.5,
+        "lighting_quality": 14.0,
+        "presentation_quality": 14.5,
+        "total_score": 96.5
+      }
+    },
+    {
+      "case_id": "case_05",
+      "video_name": "5_walkthrough_output.mp4",
+      "representative_frame": "frame_05.jpg",
+      "prompt_used": "Interior architectural walkthrough through atrium",
+      "workflow": "5_walkthrough",
+      "scores": {
+        "geometry_fidelity": 28.0,
+        "camera_logic": 19.0,
+        "material_stability": 19.0,
+        "lighting_quality": 14.5,
+        "presentation_quality": 14.5,
+        "total_score": 95.0
+      }
+    }
+  ]
+}

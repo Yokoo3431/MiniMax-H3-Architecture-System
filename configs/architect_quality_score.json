@@ -1,0 +1,34 @@
+{
+  "scoring_version": "1.0.0",
+  "system_name": "100-Point Architect Quality Scoring System",
+  "production_threshold": 85.0,
+  "weights": {
+    "geometry_fidelity": 30.0,
+    "camera_logic": 20.0,
+    "material_stability": 20.0,
+    "lighting_quality": 15.0,
+    "presentation_quality": 15.0
+  },
+  "dimensions": {
+    "geometry_fidelity": {
+      "max_points": 30,
+      "sub_items": ["building_silhouette", "roof_lines", "openings_windows", "massing_volume"]
+    },
+    "camera_logic": {
+      "max_points": 20,
+      "sub_items": ["architectural_camera_movement", "no_impossible_motion", "lens_distortion_control"]
+    },
+    "material_stability": {
+      "max_points": 20,
+      "sub_items": ["facade_material_consistency", "raw_texture_preservation"]
+    },
+    "lighting_quality": {
+      "max_points": 15,
+      "sub_items": ["natural_lighting_atmosphere", "shadow_realism", "glow_temperature"]
+    },
+    "presentation_quality": {
+      "max_points": 15,
+      "sub_items": ["photorealistic_finish", "4k_ultra_detail", "monumental_atmosphere"]
+    }
+  }
+}
