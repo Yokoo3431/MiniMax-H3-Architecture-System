@@ -1,5 +1,5 @@
-"""MiniMax H3 Orchestrator (V0.7.7 Closed Loop Upgraded)
-Integrates Vision -> Intent -> Reasoning -> Memory -> Prompt -> Workflow -> Acceleration -> Execution -> Architectural Critic -> Feedback Loop.
+"""MiniMax H3 Orchestrator (V0.7.8 Architect Interface Upgraded)
+Integrates Vision -> Intent -> Reasoning -> Memory -> Prompt -> Workflow -> Acceleration -> Execution -> Critic -> Feedback Loop -> Architect Interface.
 """
 
 import os
@@ -24,9 +24,11 @@ from runtime.execution.execution_manager import ExecutionManager
 from runtime.execution.execution_logger import ExecutionLogger
 from runtime.critic.critic_pipeline import CriticPipeline
 from runtime.feedback_loop.feedback_controller import FeedbackController
+from runtime.interface.architect_request import ArchitectRequest
+from runtime.interface.architect_response import ArchitectResponse
 
 class H3Orchestrator:
-    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.7."""
+    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.8."""
 
     def __init__(self, comfy_url: str = "http://127.0.0.1:8188", profile_override: str = None):
         self.system_root = SYSTEM_ROOT
@@ -162,6 +164,37 @@ class H3Orchestrator:
                 "suggestion": "Check input rendering image path and ComfyUI server connectivity."
             }
 
+    def generate_from_architect_request(self, request: ArchitectRequest) -> dict:
+        """Simple Architect Workflow API taking ArchitectRequest object."""
+        primary_image = request.images[0] if request.images else "building.jpg"
+        gen_res = self.generate_architecture_video(
+            image=primary_image,
+            task=request.task_description,
+            duration_override=request.duration
+        )
+
+        critic_res = self.critic_generation_result(
+            video_path=gen_res["video_path"],
+            original_image=primary_image,
+            task=request.task_description,
+            prompt_score=gen_res.get("prompt_score", 95.0)
+        )
+
+        resp = ArchitectResponse(
+            status="completed" if gen_res["status"] in ["completed", "offline"] else gen_res["status"],
+            generated_prompt=gen_res.get("execution_package", {}).get("positive_prompt", ""),
+            selected_workflow=gen_res.get("workflow", "3_night_transition"),
+            execution_status=gen_res.get("execution_status", "completed"),
+            video_path=gen_res.get("video_path", ""),
+            critic_score=critic_res.get("overall_score", 95.0),
+            details={
+                "request": request.to_dict(),
+                "critic_evaluation": critic_res,
+                "hardware_profile": gen_res.get("hardware_profile", "H3_STANDARD")
+            }
+        )
+        return resp.to_dict()
+
     def critic_generation_result(
         self,
         video_path: str,
@@ -205,13 +238,14 @@ class H3Orchestrator:
         return self.generate_architecture_video(image=image_path, task=task_description, **kwargs)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.7")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.8")
     parser.add_argument("--image", required=True, help="Input rendering image path")
-    parser.add_argument("--task", default="制作安藤混凝土美术馆黄昏推进动画", help="Task description")
+    parser.add_argument("--task", default="制作黄昏建筑动画", help="Task description")
     parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
 
     args = parser.parse_args()
     orchestrator = H3Orchestrator(profile_override=args.profile)
-    res = orchestrator.run_feedback_loop(image=args.image, task=args.task)
-    print("\n[H3 Orchestrator V0.7.7 Closed Loop Result]:")
+    req = ArchitectRequest(images=[args.image], task_description=args.task)
+    res = orchestrator.generate_from_architect_request(req)
+    print("\n[H3 Orchestrator V0.7.8 Architect Interface Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))

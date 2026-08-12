@@ -1,11 +1,11 @@
 {
-  "system": "0.7.7",
-  "system_name": "MiniMax H3 Architecture System Closed Loop Learning Validation Layer",
+  "system": "0.7.8",
+  "system_name": "MiniMax H3 Architecture System Architect User Interface Layer",
   "comfyui": "0.27.0",
-  "workflow_version": "1.7.70",
-  "skill_version": "1.7.70",
+  "workflow_version": "1.7.80",
+  "skill_version": "1.7.80",
   "node_version": "1.0.0",
-  "release_tag": "v0.7.7",
-  "release_name": "MiniMax H3 Architecture System V0.7.7 Closed Loop Learning Validation Layer Release",
+  "release_tag": "v0.7.8",
+  "release_name": "MiniMax H3 Architecture System V0.7.8 Architect User Interface Layer Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

@@ -1,0 +1,56 @@
+{
+  "preset_version": "1.0.0",
+  "system_name": "MiniMax H3 Architect Video Presets",
+  "presets": {
+    "exterior_hero": {
+      "preset_name": "Exterior Hero Reveal",
+      "description": "Slow architectural reveal of main building facade during twilight dusk",
+      "camera": "slow_push",
+      "motion": "architectural_reveal",
+      "lighting": "twilight_dusk",
+      "workflow_id": "3_night_transition",
+      "duration_seconds": 5.0,
+      "aspect_ratio": "16:9"
+    },
+    "slow_walkthrough": {
+      "preset_name": "Slow Pedestrian Walkthrough",
+      "description": "Pedestrian eye-level walkthrough through plaza and architectural courtyard",
+      "camera": "eye_level_walkthrough",
+      "motion": "steady_walkthrough",
+      "lighting": "golden_hour",
+      "workflow_id": "5_walkthrough",
+      "duration_seconds": 5.0,
+      "aspect_ratio": "16:9"
+    },
+    "drone_aerial": {
+      "preset_name": "Drone Aerial Orbit",
+      "description": "High-altitude sweeping drone flight orbiting masterplan context",
+      "camera": "high_altitude_orbit",
+      "motion": "sweeping_orbit",
+      "lighting": "golden_hour",
+      "workflow_id": "2_aerial_view",
+      "duration_seconds": 6.0,
+      "aspect_ratio": "16:9"
+    },
+    "day_night_transition": {
+      "preset_name": "Day to Night Lighting Transition",
+      "description": "Dramatic sunset twilight lighting transition with 3500K interior glow",
+      "camera": "slow_push",
+      "motion": "lighting_transition",
+      "lighting": "twilight_dusk",
+      "workflow_id": "3_night_transition",
+      "duration_seconds": 6.0,
+      "aspect_ratio": "16:9"
+    },
+    "material_detail": {
+      "preset_name": "Material & Texture Focus",
+      "description": "Tactile focus on architectural materials, fair-faced concrete, or timber louvers",
+      "camera": "slow_push",
+      "motion": "detail_pan",
+      "lighting": "golden_hour",
+      "workflow_id": "1_image_to_video",
+      "duration_seconds": 4.0,
+      "aspect_ratio": "16:9"
+    }
+  }
+}
