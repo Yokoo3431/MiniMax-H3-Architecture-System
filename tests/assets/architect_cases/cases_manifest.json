@@ -1,0 +1,47 @@
+{
+  "manifest_version": "1.0.0",
+  "system_name": "MiniMax H3 Architect Acceptance Test Cases Manifest",
+  "total_cases": 5,
+  "cases": [
+    {
+      "case_id": "case_01",
+      "name": "Exterior Hero",
+      "input_image": "museum_exterior.jpg",
+      "task": "Create architectural promotional walkthrough video",
+      "expected_preset": "exterior_hero",
+      "expected_workflow": "3_night_transition"
+    },
+    {
+      "case_id": "case_02",
+      "name": "Day Night Transition",
+      "input_image": "day_rendering.jpg",
+      "task": "Convert into evening architectural animation",
+      "expected_preset": "day_night_transition",
+      "expected_workflow": "3_night_transition"
+    },
+    {
+      "case_id": "case_03",
+      "name": "Material Detail",
+      "input_image": "material_close_up.jpg",
+      "task": "Generate architectural material showcase",
+      "expected_preset": "material_detail",
+      "expected_workflow": "1_image_to_video"
+    },
+    {
+      "case_id": "case_04",
+      "name": "Drone Aerial",
+      "input_image": "aerial_building.jpg",
+      "task": "High altitude drone orbit sweeping masterplan",
+      "expected_preset": "drone_aerial",
+      "expected_workflow": "2_aerial_view"
+    },
+    {
+      "case_id": "case_05",
+      "name": "Slow Walkthrough",
+      "input_image": "interior_architectural.jpg",
+      "task": "Interior architectural walkthrough through atrium",
+      "expected_preset": "slow_walkthrough",
+      "expected_workflow": "5_walkthrough"
+    }
+  ]
+}
