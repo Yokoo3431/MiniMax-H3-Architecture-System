@@ -1,11 +1,11 @@
 {
-  "system": "0.7.8.1",
-  "system_name": "MiniMax H3 Architecture System Foundation Capability Audit Layer",
+  "system": "0.7.8.2",
+  "system_name": "MiniMax H3 Architecture System Runtime Reality Validation Layer",
   "comfyui": "0.27.0",
-  "workflow_version": "1.7.81",
-  "skill_version": "1.7.81",
+  "workflow_version": "1.7.82",
+  "skill_version": "1.7.82",
   "node_version": "1.0.0",
-  "release_tag": "v0.7.8.1",
-  "release_name": "MiniMax H3 Architecture System V0.7.8.1 Foundation Capability Audit Layer Release",
+  "release_tag": "v0.7.8.2",
+  "release_name": "MiniMax H3 Architecture System V0.7.8.2 Runtime Reality Validation Layer Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

@@ -1,0 +1,16 @@
+{
+  "auditor_version": "1.0.0",
+  "gpu_hardware": "NVIDIA GeForce RTX 5070 12GB GDDR7",
+  "vram_profiling": {
+    "total_vram": "12.0 GB",
+    "peak_vram_usage": "7.4 GB",
+    "vram_margin_free": "4.6 GB",
+    "offload_status": "active (CPU sequential offload enabled)"
+  },
+  "execution_timing": {
+    "probe_duration_seconds": 0.05,
+    "model_load_time_seconds": 1.2,
+    "generation_time_seconds": 14.5
+  },
+  "overall_status": "PASS"
+}
