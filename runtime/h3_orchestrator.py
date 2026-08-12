@@ -1,5 +1,5 @@
-"""MiniMax H3 Orchestrator (V0.7.6 Critic Intelligence Upgraded)
-Integrates Vision -> Intent -> Reasoning -> Memory -> Prompt -> Workflow -> Acceleration -> Execution -> Architectural Critic.
+"""MiniMax H3 Orchestrator (V0.7.7 Closed Loop Upgraded)
+Integrates Vision -> Intent -> Reasoning -> Memory -> Prompt -> Workflow -> Acceleration -> Execution -> Architectural Critic -> Feedback Loop.
 """
 
 import os
@@ -23,9 +23,10 @@ from runtime.comfy_workflow_adapter import ComfyWorkflowAdapter
 from runtime.execution.execution_manager import ExecutionManager
 from runtime.execution.execution_logger import ExecutionLogger
 from runtime.critic.critic_pipeline import CriticPipeline
+from runtime.feedback_loop.feedback_controller import FeedbackController
 
 class H3Orchestrator:
-    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.6."""
+    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.7."""
 
     def __init__(self, comfy_url: str = "http://127.0.0.1:8188", profile_override: str = None):
         self.system_root = SYSTEM_ROOT
@@ -39,6 +40,7 @@ class H3Orchestrator:
         self.execution_manager = ExecutionManager(comfy_url=comfy_url)
         self.logger = ExecutionLogger()
         self.critic_pipeline = CriticPipeline()
+        self.feedback_controller = FeedbackController()
         self.output_dir = self.system_root / "userdata" / "outputs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -185,21 +187,31 @@ class H3Orchestrator:
             "memory_feedback": critic_out["memory_feedback"]
         }
 
+    def run_feedback_loop(
+        self,
+        image: str,
+        task: str = "安藤混凝土美术馆黄昏推进动画",
+        max_iterations: int = 2
+    ) -> dict:
+        """Closed-loop self-improvement generation API with max_iterations=2 safety bound."""
+        return self.feedback_controller.run_closed_loop(
+            orchestrator=self,
+            image=image,
+            task=task,
+            max_iterations=max_iterations
+        )
+
     def process_agent_request(self, image_path: str, task_description: str = "制作安藤混凝土美术馆黄昏推进动画", **kwargs) -> dict:
         return self.generate_architecture_video(image=image_path, task=task_description, **kwargs)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.6")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.7")
     parser.add_argument("--image", required=True, help="Input rendering image path")
     parser.add_argument("--task", default="制作安藤混凝土美术馆黄昏推进动画", help="Task description")
     parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
 
     args = parser.parse_args()
     orchestrator = H3Orchestrator(profile_override=args.profile)
-    res = orchestrator.generate_architecture_video(image=args.image, task=args.task)
-    print("\n[H3 Orchestrator V0.7.6 Generation Result]:")
+    res = orchestrator.run_feedback_loop(image=args.image, task=args.task)
+    print("\n[H3 Orchestrator V0.7.7 Closed Loop Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))
-
-    critic_res = orchestrator.critic_generation_result(res["video_path"], args.image, args.task)
-    print("\n[H3 Orchestrator V0.7.6 Critic Evaluation Result]:")
-    print(json.dumps(critic_res, indent=2, ensure_ascii=False))

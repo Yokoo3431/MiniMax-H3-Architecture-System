@@ -1,11 +1,11 @@
 {
-  "system": "0.7.6",
-  "system_name": "MiniMax H3 Architecture System Architectural Critic Intelligence Layer",
+  "system": "0.7.7",
+  "system_name": "MiniMax H3 Architecture System Closed Loop Learning Validation Layer",
   "comfyui": "0.27.0",
-  "workflow_version": "1.7.60",
-  "skill_version": "1.7.60",
+  "workflow_version": "1.7.70",
+  "skill_version": "1.7.70",
   "node_version": "1.0.0",
-  "release_tag": "v0.7.6",
-  "release_name": "MiniMax H3 Architecture System V0.7.6 Architectural Critic Intelligence Layer Release",
+  "release_tag": "v0.7.7",
+  "release_name": "MiniMax H3 Architecture System V0.7.7 Closed Loop Learning Validation Layer Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

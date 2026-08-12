@@ -1,0 +1,42 @@
+{
+  "dataset_version": "1.0.0",
+  "system_name": "MiniMax H3 Closed Loop Improvement Dataset",
+  "total_examples": 30,
+  "categories": ["geometry", "material", "camera", "lighting", "intent"],
+  "examples": [
+    {"id": "fb_01", "category": "geometry", "initial_score": 82, "final_score": 90, "improvement": 8, "problem": "facade grid distortion", "solution": "increase geometry_lock", "successful_strategy": ["increase_geometry_lock", "reduce_camera_motion"]},
+    {"id": "fb_02", "category": "geometry", "initial_score": 78, "final_score": 88, "improvement": 10, "problem": "cantilever beam sagging", "solution": "enforce structural beam alignment", "successful_strategy": ["structural_alignment_lock"]},
+    {"id": "fb_03", "category": "geometry", "initial_score": 80, "final_score": 89, "improvement": 9, "problem": "roofline bending", "solution": "inject horizontal roofline geometry lock", "successful_strategy": ["roofline_lock"]},
+    {"id": "fb_04", "category": "geometry", "initial_score": 81, "final_score": 91, "improvement": 10, "problem": "window frame warping", "solution": "increase window frame preservation weight", "successful_strategy": ["window_frame_lock"]},
+    {"id": "fb_05", "category": "geometry", "initial_score": 75, "final_score": 87, "improvement": 12, "problem": "column displacement", "solution": "lock structural column grid", "successful_strategy": ["column_grid_lock"]},
+    {"id": "fb_06", "category": "geometry", "initial_score": 83, "final_score": 92, "improvement": 9, "problem": "staircase steps melting", "solution": "add step geometry preservation rule", "successful_strategy": ["stair_preservation"]},
+
+    {"id": "fb_07", "category": "material", "initial_score": 84, "final_score": 93, "improvement": 9, "problem": "fair-faced concrete blur", "solution": "bump concrete_realism_v1 LoRA weight to 0.85", "successful_strategy": ["concrete_lora_bump"]},
+    {"id": "fb_08", "category": "material", "initial_score": 82, "final_score": 90, "improvement": 8, "problem": "timber louver texture loss", "solution": "apply timber_slat_v1 LoRA weight 0.8", "successful_strategy": ["timber_lora_bump"]},
+    {"id": "fb_09", "category": "material", "initial_score": 85, "final_score": 94, "improvement": 9, "problem": "glass reflection wobble", "solution": "apply glass_reflection_v1 LoRA weight 0.8", "successful_strategy": ["glass_lora_bump"]},
+    {"id": "fb_10", "category": "material", "initial_score": 79, "final_score": 88, "improvement": 9, "problem": "brick facade texture flat", "solution": "add detailed brick texture prompt", "successful_strategy": ["brick_detail_prompt"]},
+    {"id": "fb_11", "category": "material", "initial_score": 81, "final_score": 90, "improvement": 9, "problem": "marble tile reflection noise", "solution": "increase denoise filtering for interior floor", "successful_strategy": ["denoise_filtering"]},
+    {"id": "fb_12", "category": "material", "initial_score": 83, "final_score": 91, "improvement": 8, "problem": "metal panel facade loss of gloss", "solution": "add metallic specularity prompt", "successful_strategy": ["metallic_specularity"]},
+
+    {"id": "fb_13", "category": "camera", "initial_score": 80, "final_score": 89, "improvement": 9, "problem": "camera motion jitter", "solution": "reduce camera speed to 0.35", "successful_strategy": ["reduce_camera_speed"]},
+    {"id": "fb_14", "category": "camera", "initial_score": 77, "final_score": 88, "improvement": 11, "problem": "perspective distortion", "solution": "inject 35mm architectural tilt-shift lens", "successful_strategy": ["tilt_shift_lens"]},
+    {"id": "fb_15", "category": "camera", "initial_score": 82, "final_score": 91, "improvement": 9, "problem": "drone flight unstable", "solution": "use high_altitude_orbit camera model", "successful_strategy": ["orbit_camera_model"]},
+    {"id": "fb_16", "category": "camera", "initial_score": 81, "final_score": 90, "improvement": 9, "problem": "walkthrough camera clipping", "solution": "set pedestrian eye-level path constraint", "successful_strategy": ["eye_level_constraint"]},
+    {"id": "fb_17", "category": "camera", "initial_score": 79, "final_score": 88, "improvement": 9, "problem": "zoom speed too aggressive", "solution": "reduce zoom focal speed", "successful_strategy": ["slow_focal_speed"]},
+    {"id": "fb_18", "category": "camera", "initial_score": 84, "final_score": 92, "improvement": 8, "problem": "framing crops building roof", "solution": "adjust framing margin in prompt", "successful_strategy": ["adjust_framing_margin"]},
+
+    {"id": "fb_19", "category": "lighting", "initial_score": 83, "final_score": 92, "improvement": 9, "problem": "dusk sky color washed out", "solution": "enforce twilight_dusk lighting model", "successful_strategy": ["twilight_dusk_model"]},
+    {"id": "fb_20", "category": "lighting", "initial_score": 81, "final_score": 90, "improvement": 9, "problem": "interior light glow missing", "solution": "add 3500K warm interior light prompt", "successful_strategy": ["3500k_warm_glow"]},
+    {"id": "fb_21", "category": "lighting", "initial_score": 85, "final_score": 93, "improvement": 8, "problem": "golden hour shadows too dark", "solution": "soften daylight shadow diffusion", "successful_strategy": ["soft_shadow_diffusion"]},
+    {"id": "fb_22", "category": "lighting", "initial_score": 80, "final_score": 89, "improvement": 9, "problem": "artificial light glare", "solution": "reduce lighting glare intensity", "successful_strategy": ["reduce_glare"]},
+    {"id": "fb_23", "category": "lighting", "initial_score": 82, "final_score": 91, "improvement": 9, "problem": "sky lighting inconsistent", "solution": "lock sky time to golden hour sunrise", "successful_strategy": ["sunrise_lock"]},
+    {"id": "fb_24", "category": "lighting", "initial_score": 78, "final_score": 88, "improvement": 10, "problem": "facade shadows flickering", "solution": "stabilize sun position in workflow parameters", "successful_strategy": ["sun_position_lock"]},
+
+    {"id": "fb_25", "category": "intent", "initial_score": 79, "final_score": 89, "improvement": 10, "problem": "minimal building becomes dramatic", "solution": "reinforce quiet monumental atmosphere", "successful_strategy": ["reinforce_quiet_atmosphere"]},
+    {"id": "fb_26", "category": "intent", "initial_score": 81, "final_score": 90, "improvement": 9, "problem": "peaceful courtyard becomes noisy", "solution": "inject tranquil courtyard character constraint", "successful_strategy": ["tranquil_courtyard_constraint"]},
+    {"id": "fb_27", "category": "intent", "initial_score": 82, "final_score": 91, "improvement": 9, "problem": "academic campus looks commercial", "solution": "reinforce Scandinavian academic design language", "successful_strategy": ["academic_design_language"]},
+    {"id": "fb_28", "category": "intent", "initial_score": 80, "final_score": 89, "improvement": 9, "problem": "residential villa looks institutional", "solution": "reinforce intimate residential spatial character", "successful_strategy": ["intimate_residential_character"]},
+    {"id": "fb_29", "category": "intent", "initial_score": 83, "final_score": 92, "improvement": 9, "problem": "high-tech tower loses crispness", "solution": "reinforce high-tech glass transparency intent", "successful_strategy": ["high_tech_transparency_intent"]},
+    {"id": "fb_30", "category": "intent", "initial_score": 76, "final_score": 87, "improvement": 11, "problem": "spatial scale perception lost", "solution": "retrieve high-score memory case mem_001", "successful_strategy": ["retrieve_memory_case"]}
+  ]
+}

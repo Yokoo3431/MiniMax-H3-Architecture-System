@@ -12,6 +12,26 @@
     "landscape_architecture",
     "interior_walkthrough"
   ],
+  "experiences": [
+    {
+      "experience_id": "exp_01",
+      "problem": "geometry deformation",
+      "solution": "increase geometry_lock",
+      "result": "score improved +8"
+    },
+    {
+      "experience_id": "exp_02",
+      "problem": "camera motion jitter",
+      "solution": "reduce camera speed to 0.35",
+      "result": "score improved +6"
+    },
+    {
+      "experience_id": "exp_03",
+      "problem": "concrete texture blur",
+      "solution": "apply concrete_realism_v1 LoRA weight 0.85",
+      "result": "score improved +9"
+    }
+  ],
   "cases": [
     {
       "project_info": {
