@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ArchitectureVisualSchema",
+  "type": "object",
+  "required": [
+    "building_type",
+    "architectural_style",
+    "materials",
+    "spatial_character",
+    "camera_character",
+    "lighting_condition",
+    "emotional_target",
+    "recommended_workflows"
+  ],
+  "properties": {
+    "building_type": {"type": "string", "default": "museum"},
+    "architectural_style": {"type": "string", "default": "minimal_concrete_architecture"},
+    "materials": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": ["fair-faced_concrete", "double-glazed_glass"]
+    },
+    "spatial_character": {"type": "string", "default": "courtyard"},
+    "camera_character": {"type": "string", "default": "architectural_photography_tilt_shift"},
+    "lighting_condition": {"type": "string", "default": "golden_hour_twilight"},
+    "emotional_target": {"type": "string", "default": "quiet_monumental"},
+    "recommended_workflows": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": ["3_night_transition", "1_image_to_video"]
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "dataset_version": "1.0.0",
+  "total_examples": 50,
+  "categories": [
+    "museum",
+    "gallery",
+    "campus",
+    "residence",
+    "courtyard",
+    "landscape_architecture",
+    "urban_complex",
+    "interior_space"
+  ],
+  "examples": [
+    {
+      "id": 1,
+      "category": "museum",
+      "input_features": {
+        "image_file": "modern_concrete_museum.png",
+        "style": "minimal_concrete",
+        "material": ["fair-faced_concrete", "glass"]
+      },
+      "intent_output": {
+        "building_type": "museum",
+        "scene_type": "night_transition"
+      },
+      "recommended_workflow": "3_night_transition",
+      "prompt_strategy": "slow_twilight_reveal"
+    },
+    {
+      "id": 2,
+      "category": "residence",
+      "input_features": {
+        "image_file": "timber_courtyard_villa.jpg",
+        "style": "nordic_timber",
+        "material": ["cedar_timber", "stone"]
+      },
+      "intent_output": {
+        "building_type": "villa",
+        "scene_type": "exterior"
+      },
+      "recommended_workflow": "1_image_to_video",
+      "prompt_strategy": "eye_level_pedestrian_pan"
+    },
+    {
+      "id": 3,
+      "category": "urban_complex",
+      "input_features": {
+        "image_file": "commercial_glass_tower.png",
+        "style": "high_tech_modernism",
+        "material": ["double-glazed_glass", "steel"]
+      },
+      "intent_output": {
+        "building_type": "skyscraper",
+        "scene_type": "aerial"
+      },
+      "recommended_workflow": "2_aerial_view",
+      "prompt_strategy": "high_altitude_drone_orbit"
+    },
+    {
+      "id": 4,
+      "category": "interior_space",
+      "input_features": {
+        "image_file": "library_atrium.jpg",
+        "style": "contemporary_atrium",
+        "material": ["timber", "marble"]
+      },
+      "intent_output": {
+        "building_type": "campus",
+        "scene_type": "interior"
+      },
+      "recommended_workflow": "5_walkthrough",
+      "prompt_strategy": "pedestrian_walkthrough"
+    },
+    {
+      "id": 5,
+      "category": "courtyard",
+      "input_features": {
+        "image_file": "zen_courtyard_gallery.png",
+        "style": "japanese_architecture",
+        "material": ["fair-faced_concrete", "gravel"]
+      },
+      "intent_output": {
+        "building_type": "gallery",
+        "scene_type": "night_transition"
+      },
+      "recommended_workflow": "3_night_transition",
+      "prompt_strategy": "quiet_poetic_reveal"
+    }
+  ]
+}
