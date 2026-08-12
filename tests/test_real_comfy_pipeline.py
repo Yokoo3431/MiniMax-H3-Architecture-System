@@ -1,4 +1,4 @@
-"""Real ComfyUI Production Integration Test Suite (V0.7.4.1).
+"""Real ComfyUI Production Integration Test Suite (V0.7.5 Upgraded).
 Validates production execution chain, connection, payload submission, history polling, and failure handling.
 """
 
@@ -56,11 +56,10 @@ class TestRealComfyPipeline(unittest.TestCase):
     def test_case_5_orchestrator_failure_recovery(self):
         res = self.orchestrator.generate_architecture_video(image="museum.png", task="制作黄昏慢推进建筑宣传动画")
         self.assertIn("status", res)
-        self.assertIn("vision", res)
-        self.assertIn("intent", res)
+        self.assertIn("vision_analysis", res)
+        self.assertIn("architectural_intent", res)
         self.assertIn("workflow", res)
-        self.assertIn("execution", res)
-        self.assertIn("output", res)
+        self.assertIn("acceleration_profile", res)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
-"""Workflow Execution Package Dataclass (V0.7.4.1 Upgraded).
-Enhanced bridge between AI intelligence layers and ComfyUI backend execution.
+"""Workflow Execution Package Dataclass (V0.7.5 Upgraded).
+Enhanced bridge containing acceleration profiles, model packages, and optimization strategies.
 """
 
 from dataclasses import dataclass, field
@@ -27,6 +27,18 @@ class WorkflowExecutionPackage:
         "geometry_lock": True,
         "aspect_ratio": "16:9"
     })
+    acceleration_profile: Dict[str, Any] = field(default_factory=lambda: {
+        "profile": "H3_STANDARD",
+        "resolution": "1280x720",
+        "steps": 25,
+        "offload": True
+    })
+    model_package: Dict[str, Any] = field(default_factory=lambda: {
+        "style_key": "minimal_concrete",
+        "camera_key": "slow_push",
+        "lighting_key": "twilight_dusk"
+    })
+    optimization_strategy: str = "H3_STANDARD_visualization_optimized"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -42,5 +54,8 @@ class WorkflowExecutionPackage:
             "camera_intent": self.camera_intent,
             "motion_intent": self.motion_intent,
             "quality_profile": self.quality_profile,
-            "execution_constraints": self.execution_constraints
+            "execution_constraints": self.execution_constraints,
+            "acceleration_profile": self.acceleration_profile,
+            "model_package": self.model_package,
+            "optimization_strategy": self.optimization_strategy
         }

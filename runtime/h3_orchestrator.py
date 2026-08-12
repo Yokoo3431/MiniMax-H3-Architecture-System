@@ -1,5 +1,5 @@
-"""MiniMax H3 Orchestrator (V0.7.4.1 Production Hardening Upgrade)
-Integrates Vision Intelligence -> Intent Parser -> Architecture Reasoning -> Memory Retriever -> Prompt Engine -> Workflow Selector -> Execution Logger -> ComfyUI Execution Payload.
+"""MiniMax H3 Orchestrator (V0.7.5 Acceleration Engine Upgraded)
+Integrates Vision Intelligence -> Intent Parser -> Architecture Reasoning -> Memory Retriever -> Prompt Engine -> Workflow Selector -> Generation Strategy Selector -> Execution Logger -> ComfyUI Execution Payload.
 """
 
 import os
@@ -17,13 +17,14 @@ from skills.architecture_vision.vision_intent_bridge import VisionIntentBridge
 from skills.architecture_prompt.prompt_engine import ArchitecturePromptEngine
 from runtime.workflow_intelligence.workflow_selector import WorkflowIntelligenceSelector
 from runtime.workflow_intelligence.workflow_execution_package import WorkflowExecutionPackage
+from runtime.acceleration.generation_profile_selector import GenerationProfileSelector
 from runtime.hardware_adapter import HardwareAdapter
 from runtime.comfy_workflow_adapter import ComfyWorkflowAdapter
 from runtime.execution.execution_manager import ExecutionManager
 from runtime.execution.execution_logger import ExecutionLogger
 
 class H3Orchestrator:
-    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.4.1."""
+    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.5."""
 
     def __init__(self, comfy_url: str = "http://127.0.0.1:8188", profile_override: str = None):
         self.system_root = SYSTEM_ROOT
@@ -31,6 +32,7 @@ class H3Orchestrator:
         self.bridge = VisionIntentBridge()
         self.prompt_engine = ArchitecturePromptEngine()
         self.workflow_selector = WorkflowIntelligenceSelector()
+        self.strategy_selector = GenerationProfileSelector()
         self.adapter = HardwareAdapter(profile_override=profile_override)
         self.comfy_adapter = ComfyWorkflowAdapter()
         self.execution_manager = ExecutionManager(comfy_url=comfy_url)
@@ -41,12 +43,12 @@ class H3Orchestrator:
     def generate_architecture_video(
         self,
         image: str,
-        task: str = "制作黄昏慢推进建筑动画",
+        task: str = "制作安藤混凝土美术馆黄昏推进动画",
         workflow_override: str = None,
         duration_override: float = None,
         seed: int = 123456
     ) -> dict:
-        """High-level Agent API for 1-call end-to-end video generation."""
+        """High-level Agent API for 1-call end-to-end video generation with acceleration strategy."""
         start_time = time.time()
 
         try:
@@ -63,8 +65,15 @@ class H3Orchestrator:
             # 3. Workflow Intelligence Selection
             wf_pkg = self.workflow_selector.select_intelligence_workflow(intent_schema["scene_type"], task)
 
-            # 4. HAL Hardware Adaptation
+            # 4. HAL Hardware Adaptation & Acceleration Strategy Selection
             hw_params = self.adapter.adapt_parameters(duration_override=duration_override)
+            strategy_res = self.strategy_selector.select_strategy(
+                profile_key=hw_params["profile_key"],
+                task_text=task
+            )
+            acc_profile = strategy_res["acceleration_profile"]
+            model_pkg = strategy_res["model_package"]
+            opt_strategy = strategy_res["optimization_strategy"]
 
             # 5. Build Enhanced Workflow Execution Package
             exec_pkg = WorkflowExecutionPackage(
@@ -78,7 +87,10 @@ class H3Orchestrator:
                 output_path=str(self.output_dir / f"{wf_pkg.workflow_id}_output.mp4"),
                 camera_intent=intent_schema.get("camera", {}).get("movement", "slow_push"),
                 motion_intent=intent_schema.get("scene_type", "exterior"),
-                quality_profile=hw_params["profile_key"]
+                quality_profile=hw_params["profile_key"],
+                acceleration_profile=acc_profile,
+                model_package=model_pkg,
+                optimization_strategy=opt_strategy
             )
 
             # 6. Adapt ComfyUI Payload
@@ -112,21 +124,16 @@ class H3Orchestrator:
 
             return {
                 "status": status_val,
-                "vision": v_analysis,
-                "intent": intent_schema,
-                "workflow": wf_pkg.to_dict(),
-                "execution": {
-                    "prompt_id": exec_res.prompt_id,
-                    "prompt_score": prompt_score,
-                    "execution_time_seconds": round(elapsed, 3),
-                    "execution_package": exec_pkg.to_dict()
-                },
-                "output": {
-                    "video_path": final_video_path,
-                    "output_dir": str(self.output_dir)
-                },
+                "execution_status": status_val,
+                "workflow": wf_pkg.workflow_id,
+                "acceleration_profile": acc_profile,
+                "model_package": model_pkg,
+                "optimization_strategy": opt_strategy,
                 "video_path": final_video_path,
                 "prompt_score": prompt_score,
+                "execution_package": exec_pkg.to_dict(),
+                "vision_analysis": v_analysis,
+                "architectural_intent": intent_schema,
                 "hardware_profile": hw_params["profile_key"]
             }
 
@@ -145,22 +152,23 @@ class H3Orchestrator:
             )
             return {
                 "status": "failed",
+                "execution_status": "failed",
                 "error_type": type(e).__name__,
                 "message": err_msg,
                 "suggestion": "Check input rendering image path and ComfyUI server connectivity."
             }
 
-    def process_agent_request(self, image_path: str, task_description: str = "制作黄昏慢推进建筑动画", **kwargs) -> dict:
+    def process_agent_request(self, image_path: str, task_description: str = "制作安藤混凝土美术馆黄昏推进动画", **kwargs) -> dict:
         return self.generate_architecture_video(image=image_path, task=task_description, **kwargs)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.4.1")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.5")
     parser.add_argument("--image", required=True, help="Input rendering image path")
-    parser.add_argument("--task", default="把这个安藤风格混凝土美术馆效果图制作成黄昏推进动画", help="Task description")
+    parser.add_argument("--task", default="制作安藤混凝土美术馆黄昏推进动画", help="Task description")
     parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
 
     args = parser.parse_args()
     orchestrator = H3Orchestrator(profile_override=args.profile)
     res = orchestrator.generate_architecture_video(image=args.image, task=args.task)
-    print("\n[H3 Orchestrator V0.7.4.1 Result]:")
+    print("\n[H3 Orchestrator V0.7.5 Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))

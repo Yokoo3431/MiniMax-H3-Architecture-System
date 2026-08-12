@@ -1,72 +1,65 @@
 {
   "registry_version": "1.0.0",
   "system_name": "MiniMax H3 Model Ecosystem Registry",
-  "official_huggingface_repo": "https://huggingface.co/MiniMaxAI/MiniMax-H3",
-  "core_models": [
-    {
-      "id": "h3_dit_int8",
-      "name": "MiniMax H3 DiT Model (INT8 ConvRot)",
+  "models": {
+    "minimax_h3_core": {
+      "type": "checkpoint",
       "filename": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-      "purpose": "Core video diffusion backbone model",
-      "vram_gb": 19.53,
-      "download_priority": 1,
-      "architecture_usage": "Required for all architectural video generation workflows"
+      "model_type": "transformer",
+      "required": true
     },
-    {
-      "id": "qwen3_vl_nvfp4",
-      "name": "Qwen3-VL 32B Text Encoder (NVFP4 AWQ)",
+    "qwen3vl_text_encoder": {
+      "type": "text_encoder",
       "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-      "purpose": "Vision-language prompt text encoder",
-      "vram_gb": 14.61,
-      "download_priority": 1,
-      "architecture_usage": "Required for prompt understanding and frame condition encoding"
-    },
-    {
-      "id": "video_vae_fp16",
-      "name": "MiniMax H3 24-Channel Video VAE (FP16)",
-      "filename": "minimax_h3_video_vae_fp16.safetensors",
-      "purpose": "High-channel video latent encoder/decoder",
-      "vram_gb": 4.85,
-      "download_priority": 1,
-      "architecture_usage": "Required for video latent decoding"
-    },
-    {
-      "id": "audio_vae_fp32",
-      "name": "MiniMax H3 Audio VAE (FP32)",
-      "filename": "minimax_h3_audio_vae_fp32.safetensors",
-      "purpose": "Synchronized audio latent decoder",
-      "vram_gb": 0.56,
-      "download_priority": 2,
-      "architecture_usage": "Optional ambient audio generation"
+      "required": true
     }
-  ],
-  "optional_models": [
-    {
-      "id": "arch_facade_lora",
-      "name": "Architectural Facade LoRA Pack",
-      "filename": "minimax_h3_arch_facade_v1.safetensors",
-      "purpose": "Enhances glass curtainwall, concrete, and timber material realism",
-      "vram_gb": 0.8,
-      "download_priority": 3,
-      "architecture_usage": "Recommended for high-detail exterior rendering"
+  },
+  "architecture_styles": {
+    "minimal_concrete": {
+      "style_name": "Minimal Fair-Faced Concrete Architecture",
+      "lora_name": "concrete_realism_v1.safetensors",
+      "weight": 0.8,
+      "prompt_trigger": "fair-faced architectural concrete texture, quiet monumental atmosphere"
     },
-    {
-      "id": "camera_motion_control",
-      "name": "Camera Motion Trajectory Control Pack",
-      "filename": "minimax_h3_camera_orbit_control.safetensors",
-      "purpose": "Enforces smooth 360-degree orbital camera rotation",
-      "vram_gb": 0.6,
-      "download_priority": 3,
-      "architecture_usage": "Recommended for exterior camera orbit workflows"
+    "nordic_timber": {
+      "style_name": "Scandinavian Cedar Timber Architecture",
+      "lora_name": "timber_slat_v1.safetensors",
+      "weight": 0.75,
+      "prompt_trigger": "warm cedar timber louvers, horizontal wood slat rhythm"
     },
-    {
-      "id": "twilight_lighting_adapter",
-      "name": "Twilight & Golden Hour Lighting Adapter",
-      "filename": "minimax_h3_twilight_lighting.safetensors",
-      "purpose": "Enhances golden hour and dusk interior warm lighting glow",
-      "vram_gb": 0.5,
-      "download_priority": 3,
-      "architecture_usage": "Recommended for day-to-night transition workflows"
+    "hightech_glass": {
+      "style_name": "High-Tech Glass Curtainwall Tower",
+      "lora_name": "glass_reflection_v1.safetensors",
+      "weight": 0.8,
+      "prompt_trigger": "double-glazed glass curtainwall, crisp sky reflections"
     }
-  ]
+  },
+  "camera_models": {
+    "slow_push": {
+      "motion": "slow push in dolly shot",
+      "prompt_trigger": "35mm architectural tilt-shift lens perspective, steady tripod camera motion"
+    },
+    "high_altitude_orbit": {
+      "motion": "high altitude drone orbit",
+      "prompt_trigger": "high-altitude sweeping drone flight, stable masterplan context"
+    },
+    "eye_level_walkthrough": {
+      "motion": "pedestrian eye level walkthrough",
+      "prompt_trigger": "eye-level pedestrian perspective, steady human height movement"
+    }
+  },
+  "lighting_models": {
+    "twilight_dusk": {
+      "time": "dusk twilight",
+      "prompt_trigger": "twilight dusk sky with golden hour glow, warm 3500K interior lighting glowing through glass facade"
+    },
+    "golden_hour": {
+      "time": "golden hour",
+      "prompt_trigger": "morning golden hour sunrise, crisp natural daylight with soft realistic shadows"
+    },
+    "studio_white": {
+      "time": "studio white",
+      "prompt_trigger": "white background studio lighting, clean diagrammatic aesthetic"
+    }
+  }
 }
