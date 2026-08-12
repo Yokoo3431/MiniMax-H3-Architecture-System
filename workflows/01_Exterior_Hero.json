@@ -29,7 +29,7 @@
         {"name": "MINIMAX_H3_MODEL", "type": "MINIMAX_H3_MODEL", "links": [2], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "RHMiniMaxH3ModelLoader"},
-      "widgets_values": ["minimax_h3_fl2va_int8_convrot.safetensors"]
+      "widgets_values": ["diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors"]
     },
     {
       "id": 3,
@@ -43,7 +43,7 @@
         {"name": "MINIMAX_H3_TEXT_ENCODER", "type": "MINIMAX_H3_TEXT_ENCODER", "links": [3], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "RHMiniMaxH3TextEncoderLoader"},
-      "widgets_values": ["qwen3_vl_32b_fp8.safetensors"]
+      "widgets_values": ["text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"]
     },
     {
       "id": 4,
@@ -57,7 +57,7 @@
         {"name": "MINIMAX_H3_VAE", "type": "MINIMAX_H3_VAE", "links": [4], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "RHMiniMaxH3VAELoader"},
-      "widgets_values": ["minimax_h3_video_vae.safetensors"]
+      "widgets_values": ["vae/minimax_h3_video_vae_fp16.safetensors"]
     },
     {
       "id": 5,
@@ -92,7 +92,7 @@
       ],
       "properties": {"Node name for S&R": "RHMiniMaxH3T2VATextEncode"},
       "widgets_values": [
-        "Architectural visualization of modern museum facade, slow cinematic push-in shot with 35mm architectural lens, twilight dusk illumination, warm 3500K interior glow through curtainwall, preserve building geometry, photorealistic architectural photography, 4k ultra detailed",
+        "Architectural visualization of museum facade, Camera: slow cinematic push-in shot with 35mm architectural lens, Motion: subtle architectural reveal, Lighting: twilight dusk illumination, Geometry: preserve building geometry, Material: fair-faced concrete facade, 4k resolution",
         "wall deformation, window artifacting, noise, flickering, unstable structure"
       ]
     },

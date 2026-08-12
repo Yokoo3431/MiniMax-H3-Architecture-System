@@ -1,11 +1,11 @@
 {
-  "system": "0.8.0-rc2",
-  "system_name": "MiniMax H3 Architecture System Architect Daily Usage Package RC2",
+  "system": "0.8.0-rc3",
+  "system_name": "MiniMax H3 Architecture System Local Production Workflow Adaptation RC3",
   "comfyui": "0.27.0",
-  "workflow_version": "1.8.02",
-  "skill_version": "1.8.02",
+  "workflow_version": "1.8.03",
+  "skill_version": "1.8.03",
   "node_version": "1.0.0",
-  "release_tag": "v0.8.0-rc2",
-  "release_name": "MiniMax H3 Architecture System V0.8.0 RC2 Architect Daily Usage Release",
+  "release_tag": "v0.8.0-rc3",
+  "release_name": "MiniMax H3 Architecture System V0.8.0 RC3 Local Adaptation Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }
