@@ -1,0 +1,47 @@
+{
+  "catalog_version": "1.0.0",
+  "system_name": "MiniMax H3 Frozen Architectural Workflow Catalog",
+  "total_workflows": 5,
+  "workflows": {
+    "01_Exterior_Hero": {
+      "name": "Exterior Hero Reveal",
+      "workflow_file": "workflows/01_Exterior_Hero.json",
+      "purpose": "Architectural presentation video revealing building facade",
+      "input_requirement": "1-3 exterior architectural rendering images",
+      "recommended_prompt_template": "Architectural visualization of {scene}, slow cinematic push-in shot with 35mm architectural lens, twilight dusk illumination, warm 3500K interior glow through curtainwall, preserve building geometry, photorealistic architectural photography, 4k ultra detailed",
+      "output_format": "1280x720 24fps MP4 Video"
+    },
+    "02_Day_Night_Transition": {
+      "name": "Day Night Atmosphere Transition",
+      "workflow_file": "workflows/02_Day_Night_Transition.json",
+      "purpose": "Architectural atmosphere transformation from day to night",
+      "input_requirement": "1-2 day rendering images",
+      "recommended_prompt_template": "Time-lapse animation of {scene} facade transitioning from golden hour sunset to twilight night, warm interior lights gradually illuminating windows, preserve building geometry",
+      "output_format": "1280x720 24fps MP4 Video"
+    },
+    "03_Material_Detail": {
+      "name": "Material Texture Showcase",
+      "workflow_file": "workflows/03_Material_Detail.json",
+      "purpose": "Architectural material detail and texture focus",
+      "input_requirement": "1 material close-up or elevation image",
+      "recommended_prompt_template": "Tactile architectural detail focus on {material} facade, 35mm architectural lens, soft daylight filtering, macro architectural photography, preserve building geometry, 4k ultra detailed",
+      "output_format": "1280x720 24fps MP4 Video"
+    },
+    "04_Drone_Aerial": {
+      "name": "Drone Aerial Orbit Masterplan",
+      "workflow_file": "workflows/04_Drone_Aerial.json",
+      "purpose": "Masterplan / campus / landscape overview",
+      "input_requirement": "1 aerial rendering or masterplan image",
+      "recommended_prompt_template": "High altitude drone orbit sweeping architectural masterplan context, golden hour daylight, crisp architectural presentation, stable camera flight trajectory, preserve building geometry",
+      "output_format": "1280x720 24fps MP4 Video"
+    },
+    "05_Slow_Walkthrough": {
+      "name": "Pedestrian Eye-Level Walkthrough",
+      "workflow_file": "workflows/05_Slow_Walkthrough.json",
+      "purpose": "Interior architectural space walkthrough",
+      "input_requirement": "1 interior rendering or courtyard image",
+      "recommended_prompt_template": "Pedestrian eye level walkthrough through {space}, steady camera movement, soft daylighting, architectural interior photography, preserve building geometry, 4k resolution",
+      "output_format": "1280x720 24fps MP4 Video"
+    }
+  }
+}
