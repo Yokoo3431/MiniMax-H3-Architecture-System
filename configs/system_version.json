@@ -1,11 +1,11 @@
 {
-  "system": "0.8.0-rc3",
-  "system_name": "MiniMax H3 Architecture System Local Production Workflow Adaptation RC3",
+  "system": "0.8.0-rc3.1",
+  "system_name": "MiniMax H3 Architecture System Local Integration Fix RC3.1",
   "comfyui": "0.27.0",
-  "workflow_version": "1.8.03",
-  "skill_version": "1.8.03",
+  "workflow_version": "1.8.31",
+  "skill_version": "1.8.31",
   "node_version": "1.0.0",
-  "release_tag": "v0.8.0-rc3",
-  "release_name": "MiniMax H3 Architecture System V0.8.0 RC3 Local Adaptation Release",
+  "release_tag": "v0.8.0-rc3.1",
+  "release_name": "MiniMax H3 Architecture System V0.8.0 RC3.1 Integration Fix Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }
