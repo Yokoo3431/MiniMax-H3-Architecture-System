@@ -1,0 +1,30 @@
+{
+  "test_suite": "V0.7.4.1 Production Hardening Validation Cases",
+  "total_cases": 3,
+  "cases": [
+    {
+      "id": "case_01",
+      "name": "Museum Exterior Twilight Animation",
+      "input_image": "museum.png",
+      "task": "制作黄昏慢推进建筑宣传动画",
+      "expected_workflow": "3_night_transition",
+      "expected_preset": "day_night_transition"
+    },
+    {
+      "id": "case_02",
+      "name": "Interior Spatial Walkthrough",
+      "input_image": "library_atrium.jpg",
+      "task": "制作室内漫游动画",
+      "expected_workflow": "5_walkthrough",
+      "expected_preset": "walkthrough"
+    },
+    {
+      "id": "case_03",
+      "name": "Architectural Massing Analysis",
+      "input_image": "concept_massing.png",
+      "task": "制作建筑体块演变分析动画",
+      "expected_workflow": "6_massing_evolution",
+      "expected_preset": "architecture_analysis"
+    }
+  ]
+}

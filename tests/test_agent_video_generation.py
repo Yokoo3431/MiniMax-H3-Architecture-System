@@ -1,4 +1,4 @@
-"""Unit test for End-to-End Agent Video Generation API.
+"""Unit test for End-to-End Agent Video Generation API (V0.7.4.1 Upgraded).
 """
 
 import sys
@@ -21,10 +21,13 @@ class TestAgentVideoGeneration(unittest.TestCase):
         )
         self.assertEqual(res["status"], "completed")
         self.assertIn("video_path", res)
-        self.assertEqual(res["workflow"], "3_night_transition")
+        self.assertIn("workflow", res)
+        self.assertEqual(res["workflow"]["workflow_id"], "3_night_transition")
         self.assertGreaterEqual(res["prompt_score"], 85.0)
-        self.assertIn("execution_package", res)
-        self.assertIn("vision_analysis", res)
+        self.assertIn("execution", res)
+        self.assertIn("vision", res)
+        self.assertIn("intent", res)
+        self.assertIn("output", res)
 
 if __name__ == "__main__":
     unittest.main()
