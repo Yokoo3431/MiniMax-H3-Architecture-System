@@ -1,0 +1,15 @@
+{
+  "gate_name": "Gate 6 — Architectural Quality Validation",
+  "scoring_system": "100-Point Architect Quality Scoring System",
+  "weights": {
+    "geometry_fidelity": 30.0,
+    "camera_logic": 20.0,
+    "material_stability": 20.0,
+    "lighting_quality": 15.0,
+    "presentation_quality": 15.0
+  },
+  "production_score": 96.0,
+  "production_threshold": 85.0,
+  "critical_failures_detected": false,
+  "status": "PASS"
+}

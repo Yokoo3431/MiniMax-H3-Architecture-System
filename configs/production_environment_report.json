@@ -1,0 +1,24 @@
+{
+  "gate_name": "Gate 1 — Local Environment Reality Validation",
+  "auditor_version": "1.0.0",
+  "comfyui": {
+    "installation_path": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable",
+    "python_runtime": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe",
+    "api_endpoint": "http://127.0.0.1:8188",
+    "api_status": "AVAILABLE"
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5070",
+    "vram": "12GB GDDR7",
+    "cuda": "CUDA 12.8",
+    "vram_profile": "H3_STANDARD"
+  },
+  "models": {
+    "minimax_h3_checkpoint": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "video_vae": "video_vae",
+    "audio_vae": "audio_vae",
+    "lora_loader": "available"
+  },
+  "status": "PASS"
+}

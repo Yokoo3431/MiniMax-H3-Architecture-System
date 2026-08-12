@@ -1,0 +1,17 @@
+{
+  "case_id": "case_05_walkthrough",
+  "name": "Slow Pedestrian Walkthrough",
+  "input_images": ["tests/assets/architect_cases/interior_architectural.jpg"],
+  "workflow_json": "workflows/5_walkthrough.json",
+  "generated_prompt": "Pedestrian eye level walkthrough through atrium courtyard, steady camera movement, soft daylighting, architectural interior photography, preserve building geometry, 4k resolution",
+  "output_video_metadata": {
+    "format": "mp4",
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "duration_seconds": 5.0,
+    "file_size_bytes": 19660800,
+    "file_path": "userdata/outputs/5_walkthrough_output.mp4"
+  },
+  "representative_frames": ["userdata/outputs/frames/case_05_frame_01.jpg"]
+}

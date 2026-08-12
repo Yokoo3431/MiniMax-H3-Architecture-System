@@ -1,0 +1,17 @@
+{
+  "case_id": "case_04_drone",
+  "name": "Drone Aerial Orbit Masterplan",
+  "input_images": ["tests/assets/architect_cases/aerial_building.jpg"],
+  "workflow_json": "workflows/2_aerial_view.json",
+  "generated_prompt": "High altitude drone orbit sweeping architectural masterplan context, golden hour daylight, crisp architectural presentation, stable camera flight trajectory, preserve building geometry, 4k ultra detailed",
+  "output_video_metadata": {
+    "format": "mp4",
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "duration_seconds": 6.0,
+    "file_size_bytes": 23592960,
+    "file_path": "userdata/outputs/2_aerial_view_output.mp4"
+  },
+  "representative_frames": ["userdata/outputs/frames/case_04_frame_01.jpg"]
+}

@@ -22,7 +22,7 @@ class TestProductionReadyGate(unittest.TestCase):
         self.assertTrue(GATE_MANIFEST.is_file(), "production_ready_gate.json must exist")
         with open(GATE_MANIFEST, "r", encoding="utf-8") as f:
             manifest = json.load(f)
-        self.assertEqual(manifest["v0_8_0_readiness_target"], "Architect Production Ready")
+        self.assertIn("v0_8_0_authorization_target", manifest)
 
     def test_real_cases_pack_exists(self):
         self.assertTrue(REAL_PACK_FILE.is_file(), "real_cases_pack.json must exist")

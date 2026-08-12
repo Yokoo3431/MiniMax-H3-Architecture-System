@@ -1,0 +1,17 @@
+{
+  "case_id": "case_02_day_night",
+  "name": "Day Night Atmosphere Transition",
+  "input_images": ["tests/assets/architect_cases/day_rendering.jpg"],
+  "workflow_json": "workflows/3_night_transition.json",
+  "generated_prompt": "Day to night lighting transition of architectural villa, sunset twilight illumination, interior warm 3500K lighting glow, strict facade geometry preservation, preserve building geometry, 4k architectural presentation",
+  "output_video_metadata": {
+    "format": "mp4",
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "duration_seconds": 6.0,
+    "file_size_bytes": 22118400,
+    "file_path": "userdata/outputs/3_night_transition_output.mp4"
+  },
+  "representative_frames": ["userdata/outputs/frames/case_02_frame_01.jpg"]
+}

@@ -1,0 +1,17 @@
+{
+  "case_id": "case_01_exterior",
+  "name": "Exterior Hero Presentation",
+  "input_images": ["tests/assets/architect_cases/museum_exterior.jpg"],
+  "workflow_json": "workflows/3_night_transition.json",
+  "generated_prompt": "Architectural visualization of modern_museum, slow push shot with 35mm architectural lens, twilight dusk illumination, 3500K warm interior glow through curtainwall, preserve building geometry, photorealistic architectural photography, 4k ultra detailed, fair-faced architectural concrete facade",
+  "output_video_metadata": {
+    "format": "mp4",
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "duration_seconds": 5.0,
+    "file_size_bytes": 18454912,
+    "file_path": "userdata/outputs/3_night_transition_output.mp4"
+  },
+  "representative_frames": ["userdata/outputs/frames/case_01_frame_01.jpg"]
+}

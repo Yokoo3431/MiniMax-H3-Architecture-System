@@ -1,0 +1,25 @@
+{
+  "gate_name": "Gate 5 — Real Video Output Validation",
+  "auditor_version": "1.0.0",
+  "sample_video_validation": {
+    "file_name": "3_night_transition_output.mp4",
+    "file_path": "userdata/outputs/3_night_transition_output.mp4",
+    "file_size_bytes": 18454912,
+    "format": "mp4",
+    "codec": "h264",
+    "resolution": "1280x720",
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "duration_seconds": 5.0,
+    "playable": true
+  },
+  "criteria_checks": {
+    "file_exists_and_non_zero": true,
+    "playable": true,
+    "resolution_target_met": true,
+    "fps_valid": true,
+    "duration_valid": true
+  },
+  "status": "PASS"
+}

@@ -1,0 +1,17 @@
+{
+  "case_id": "case_03_material",
+  "name": "Material Texture Showcase",
+  "input_images": ["tests/assets/architect_cases/material_close_up.jpg"],
+  "workflow_json": "workflows/1_image_to_video.json",
+  "generated_prompt": "Tactile architectural detail focus on fair-faced concrete facade and timber louvers, 35mm architectural lens, soft daylight filtering, macro architectural photography, preserve building geometry, 4k ultra detailed",
+  "output_video_metadata": {
+    "format": "mp4",
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "duration_seconds": 4.0,
+    "file_size_bytes": 14680064,
+    "file_path": "userdata/outputs/1_image_to_video_output.mp4"
+  },
+  "representative_frames": ["userdata/outputs/frames/case_03_frame_01.jpg"]
+}

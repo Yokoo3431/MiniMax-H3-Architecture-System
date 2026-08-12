@@ -1,11 +1,11 @@
 {
   "system": "0.7.8.4",
-  "system_name": "MiniMax H3 Architecture System Real Production Validation Layer",
+  "system_name": "MiniMax H3 Architecture System Final Real Production Validation Layer",
   "comfyui": "0.27.0",
   "workflow_version": "1.7.84",
   "skill_version": "1.7.84",
   "node_version": "1.0.0",
   "release_tag": "v0.7.8.4",
-  "release_name": "MiniMax H3 Architecture System V0.7.8.4 Real Production Validation Layer Release",
+  "release_name": "MiniMax H3 Architecture System V0.7.8.4 Final Real Production Validation Layer Release",
   "repository": "https://github.com/Yokoo3431/MiniMax-H3-Architecture-System"
 }

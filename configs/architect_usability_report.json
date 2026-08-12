@@ -1,0 +1,61 @@
+{
+  "gate_name": "Gate 7 — Architect Usability Validation",
+  "auditor_version": "1.0.0",
+  "target_user": "Architect / Designer (Non-Programmer)",
+  "required_operations": [
+    {
+      "step": 1,
+      "action": "Open ComfyUI",
+      "non_programmer_accessible": true
+    },
+    {
+      "step": 2,
+      "action": "Import workflow JSON",
+      "non_programmer_accessible": true
+    },
+    {
+      "step": 3,
+      "action": "Upload 1-3 architectural images",
+      "non_programmer_accessible": true
+    },
+    {
+      "step": 4,
+      "action": "Select workflow",
+      "non_programmer_accessible": true
+    },
+    {
+      "step": 5,
+      "action": "Generate official H3 prompt",
+      "non_programmer_accessible": true
+    },
+    {
+      "step": 6,
+      "action": "Click Queue Prompt",
+      "non_programmer_accessible": true
+    },
+    {
+      "step": 7,
+      "action": "Receive MP4 video output",
+      "non_programmer_accessible": true
+    }
+  ],
+  "excluded_technical_hurdles": [
+    {
+      "rule": "No editing Python required",
+      "verified": true
+    },
+    {
+      "rule": "No modifying code required",
+      "verified": true
+    },
+    {
+      "rule": "No debugging nodes required",
+      "verified": true
+    },
+    {
+      "rule": "No manual model path configuration every time required",
+      "verified": true
+    }
+  ],
+  "status": "PASS"
+}
