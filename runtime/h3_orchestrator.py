@@ -1,5 +1,5 @@
-"""MiniMax H3 Orchestrator (V0.7.5 Acceleration Engine Upgraded)
-Integrates Vision Intelligence -> Intent Parser -> Architecture Reasoning -> Memory Retriever -> Prompt Engine -> Workflow Selector -> Generation Strategy Selector -> Execution Logger -> ComfyUI Execution Payload.
+"""MiniMax H3 Orchestrator (V0.7.6 Critic Intelligence Upgraded)
+Integrates Vision -> Intent -> Reasoning -> Memory -> Prompt -> Workflow -> Acceleration -> Execution -> Architectural Critic.
 """
 
 import os
@@ -22,9 +22,10 @@ from runtime.hardware_adapter import HardwareAdapter
 from runtime.comfy_workflow_adapter import ComfyWorkflowAdapter
 from runtime.execution.execution_manager import ExecutionManager
 from runtime.execution.execution_logger import ExecutionLogger
+from runtime.critic.critic_pipeline import CriticPipeline
 
 class H3Orchestrator:
-    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.5."""
+    """Main Agent Orchestrator for MiniMax H3 Architecture System V0.7.6."""
 
     def __init__(self, comfy_url: str = "http://127.0.0.1:8188", profile_override: str = None):
         self.system_root = SYSTEM_ROOT
@@ -37,6 +38,7 @@ class H3Orchestrator:
         self.comfy_adapter = ComfyWorkflowAdapter()
         self.execution_manager = ExecutionManager(comfy_url=comfy_url)
         self.logger = ExecutionLogger()
+        self.critic_pipeline = CriticPipeline()
         self.output_dir = self.system_root / "userdata" / "outputs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -158,11 +160,36 @@ class H3Orchestrator:
                 "suggestion": "Check input rendering image path and ComfyUI server connectivity."
             }
 
+    def critic_generation_result(
+        self,
+        video_path: str,
+        original_image: str,
+        task: str,
+        prompt_score: float = 95.0
+    ) -> dict:
+        """Critic Agent evaluation API returning scores, failure diagnosis, and recommendations."""
+        critic_out = self.critic_pipeline.run_critic_pipeline(
+            video_path=video_path,
+            original_image=original_image,
+            task=task,
+            prompt_score=prompt_score
+        )
+
+        res_data = critic_out["critic_result"]
+        return {
+            "overall_score": res_data["overall_score"],
+            "dimensions": res_data["dimensions"],
+            "issues": res_data["issues"],
+            "recommendations": res_data["recommendations"],
+            "revision_strategy": critic_out["revision_strategy"],
+            "memory_feedback": critic_out["memory_feedback"]
+        }
+
     def process_agent_request(self, image_path: str, task_description: str = "制作安藤混凝土美术馆黄昏推进动画", **kwargs) -> dict:
         return self.generate_architecture_video(image=image_path, task=task_description, **kwargs)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.5")
+    parser = argparse.ArgumentParser(description="MiniMax H3 Orchestrator CLI V0.7.6")
     parser.add_argument("--image", required=True, help="Input rendering image path")
     parser.add_argument("--task", default="制作安藤混凝土美术馆黄昏推进动画", help="Task description")
     parser.add_argument("--profile", choices=["H3_LOW", "H3_STANDARD", "H3_PRO"], default=None, help="Hardware profile override")
@@ -170,5 +197,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     orchestrator = H3Orchestrator(profile_override=args.profile)
     res = orchestrator.generate_architecture_video(image=args.image, task=args.task)
-    print("\n[H3 Orchestrator V0.7.5 Result]:")
+    print("\n[H3 Orchestrator V0.7.6 Generation Result]:")
     print(json.dumps(res, indent=2, ensure_ascii=False))
+
+    critic_res = orchestrator.critic_generation_result(res["video_path"], args.image, args.task)
+    print("\n[H3 Orchestrator V0.7.6 Critic Evaluation Result]:")
+    print(json.dumps(critic_res, indent=2, ensure_ascii=False))

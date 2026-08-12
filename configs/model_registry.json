@@ -1,6 +1,22 @@
 {
   "registry_version": "1.0.0",
   "system_name": "MiniMax H3 Model Ecosystem Registry",
+  "usage_history": [
+    {
+      "date": "2026-08-12",
+      "workflow_id": "3_night_transition",
+      "profile": "H3_STANDARD",
+      "result": "success"
+    }
+  ],
+  "quality_score": 95.5,
+  "failure_cases": [
+    {
+      "case_id": "fail_01",
+      "category": "geometry_failure",
+      "note": "facade deformation under aggressive tilt-shift"
+    }
+  ],
   "models": {
     "minimax_h3_core": {
       "type": "checkpoint",

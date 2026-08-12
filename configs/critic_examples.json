@@ -1,0 +1,67 @@
+{
+  "dataset_version": "1.0.0",
+  "system_name": "MiniMax H3 Architectural Critic Examples Dataset",
+  "total_examples": 50,
+  "typologies": ["museum", "gallery", "campus", "residence", "courtyard", "interior", "landscape", "urban"],
+  "examples": [
+    {"id": "ex_01", "typology": "museum", "input_problem": "fair-faced concrete wall deforms under zoom", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "increase geometry_lock weight, add strict structural preservation constraint"},
+    {"id": "ex_02", "typology": "museum", "input_problem": "concrete texture becomes blurry and low res", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "apply concrete_realism_v1 LoRA weight 0.8"},
+    {"id": "ex_03", "typology": "museum", "input_problem": "camera tilts unexpectedly causing architectural distortion", "failure_category": "camera_failure", "severity": "high", "recommended_fix": "inject 35mm architectural tilt-shift lens perspective trigger"},
+    {"id": "ex_04", "typology": "museum", "input_problem": "dusk lighting changes to bright noon sunlight", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "enforce twilight_dusk lighting model trigger"},
+    {"id": "ex_05", "typology": "museum", "input_problem": "quiet serene space becomes dramatic action scene", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "enforce quiet monumental atmosphere constraint"},
+
+    {"id": "ex_06", "typology": "gallery", "input_problem": "white plaster walls show heavy noise artifacts", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "increase denoise video filtering"},
+    {"id": "ex_07", "typology": "gallery", "input_problem": "curtainwall glass panels wobble", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "enable strict structural geometry lock"},
+    {"id": "ex_08", "typology": "gallery", "input_problem": "camera spins around facade unnaturally", "failure_category": "camera_failure", "severity": "high", "recommended_fix": "lock tripod camera movement"},
+    {"id": "ex_09", "typology": "gallery", "input_problem": "interior lighting turns unnatural purple", "failure_category": "lighting_failure", "severity": "high", "recommended_fix": "lock interior light temperature to 3500K warm glow"},
+    {"id": "ex_10", "typology": "gallery", "input_problem": "exhibition hall layout shifts between frames", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "enable composition_lock constraint"},
+
+    {"id": "ex_11", "typology": "campus", "input_problem": "academic building roofline bends", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "increase geometry_lock weight"},
+    {"id": "ex_12", "typology": "campus", "input_problem": "brick facade turns into smooth plastic", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "enhance brick material texture prompt"},
+    {"id": "ex_13", "typology": "campus", "input_problem": "drone flyover is shaky", "failure_category": "camera_failure", "severity": "medium", "recommended_fix": "use high_altitude_orbit camera model"},
+    {"id": "ex_14", "typology": "campus", "input_problem": "shadow direction is inconsistent across quad", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "fix sun position in prompt"},
+    {"id": "ex_15", "typology": "campus", "input_problem": "modern campus looks like gothic cathedral", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "reinforce modern academic design language"},
+
+    {"id": "ex_16", "typology": "residence", "input_problem": "timber louvers melt into solid wall", "failure_category": "material_failure", "severity": "high", "recommended_fix": "apply timber_slat_v1 LoRA"},
+    {"id": "ex_17", "typology": "residence", "input_problem": "cantilever balcony sags", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "enforce structural geometry integrity constraint"},
+    {"id": "ex_18", "typology": "residence", "input_problem": "camera zooms too close to window glass", "failure_category": "camera_failure", "severity": "medium", "recommended_fix": "adjust camera distance in prompt"},
+    {"id": "ex_19", "typology": "residence", "input_problem": "sunset glow turns pitch black", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "enforce golden_hour lighting preset"},
+    {"id": "ex_20", "typology": "residence", "input_problem": "private villa looks like commercial mall", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "reinforce residential privacy character"},
+
+    {"id": "ex_21", "typology": "courtyard", "input_problem": "traditional courtyard wooden columns distort", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "apply column preservation constraint"},
+    {"id": "ex_22", "typology": "courtyard", "input_problem": "grey roof tiles lose texture details", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "add roof tile texture prompt detail"},
+    {"id": "ex_23", "typology": "courtyard", "input_problem": "walkthrough camera clips through pavilion post", "failure_category": "camera_failure", "severity": "high", "recommended_fix": "use eye_level_walkthrough with path constraint"},
+    {"id": "ex_24", "typology": "courtyard", "input_problem": "courtyard shadow contrasts too harsh", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "soften daylight shadow diffusion"},
+    {"id": "ex_25", "typology": "courtyard", "input_problem": "peaceful garden mood turns chaotic", "failure_category": "architectural_intent_failure", "severity": "medium", "recommended_fix": "reinforce tranquil oriental courtyard mood"},
+
+    {"id": "ex_26", "typology": "interior", "input_problem": "interior ceiling height collapses", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "enforce vertical spatial volume lock"},
+    {"id": "ex_27", "typology": "interior", "input_problem": "marble floor reflections flicker", "failure_category": "material_failure", "severity": "high", "recommended_fix": "apply glass_reflection_v1 LoRA"},
+    {"id": "ex_28", "typology": "interior", "input_problem": "camera motion jitters inside hallway", "failure_category": "camera_failure", "severity": "medium", "recommended_fix": "use steady eye-level pedestrian motion"},
+    {"id": "ex_29", "typology": "interior", "input_problem": "recessed spotlighting disappears", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "add architectural spot lighting prompt"},
+    {"id": "ex_30", "typology": "interior", "input_problem": "minimalist atrium becomes cluttered retail space", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "reinforce minimalist spatial intent"},
+
+    {"id": "ex_31", "typology": "landscape", "input_problem": "terraced landscape steps flatten out", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "preserve topographical contour geometry"},
+    {"id": "ex_32", "typology": "landscape", "input_problem": "water feature surface turns solid grey", "failure_category": "material_failure", "severity": "high", "recommended_fix": "add water caustics and sky reflection prompt"},
+    {"id": "ex_33", "typology": "landscape", "input_problem": "panoramic camera rotates too fast", "failure_category": "camera_failure", "severity": "medium", "recommended_fix": "slow down panorama camera speed"},
+    {"id": "ex_34", "typology": "landscape", "input_problem": "fog atmosphere overpowers building facade", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "reduce atmospheric fog intensity"},
+    {"id": "ex_35", "typology": "landscape", "input_problem": "natural park setting becomes industrial yard", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "reinforce ecological landscape intent"},
+
+    {"id": "ex_36", "typology": "urban", "input_problem": "skyscraper glass tower warps at top", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "apply vertical line geometry lock"},
+    {"id": "ex_37", "typology": "urban", "input_problem": "aluminum panel facade turns into cloth", "failure_category": "material_failure", "severity": "high", "recommended_fix": "enhance metallic panel material prompt"},
+    {"id": "ex_38", "typology": "urban", "input_problem": "aerial camera cuts off tower crown", "failure_category": "camera_failure", "severity": "medium", "recommended_fix": "adjust high_altitude_orbit framing"},
+    {"id": "ex_39", "typology": "urban", "input_problem": "city skyline backdrop flickers", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "stabilize background urban lighting"},
+    {"id": "ex_40", "typology": "urban", "input_problem": "landmark tower loses architectural dominance", "failure_category": "architectural_intent_failure", "severity": "high", "recommended_fix": "reinforce urban landmark intent"},
+
+    {"id": "ex_41", "typology": "museum", "input_problem": "fair-faced concrete joint lines disappear", "failure_category": "material_failure", "severity": "low", "recommended_fix": "add concrete seam detail prompt"},
+    {"id": "ex_42", "typology": "residence", "input_problem": "glass sliding door frames warp", "failure_category": "geometry_failure", "severity": "medium", "recommended_fix": "enforce window frame structural lock"},
+    {"id": "ex_43", "typology": "interior", "input_problem": "wood grain direction rotates", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "specify horizontal wood grain direction"},
+    {"id": "ex_44", "typology": "campus", "input_problem": "pedestrian walkway shifts position", "failure_category": "geometry_failure", "severity": "medium", "recommended_fix": "lock ground paving geometry"},
+    {"id": "ex_45", "typology": "courtyard", "input_problem": "bamboo screen louvers blur into mass", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "enhance lora weight for bamboo slats"},
+
+    {"id": "ex_46", "typology": "gallery", "input_problem": "spotlight beam casts double shadows", "failure_category": "lighting_failure", "severity": "low", "recommended_fix": "simplify interior light sources"},
+    {"id": "ex_47", "typology": "urban", "input_problem": "street level podium glass turns black", "failure_category": "lighting_failure", "severity": "medium", "recommended_fix": "add podium interior lighting glow"},
+    {"id": "ex_48", "typology": "landscape", "input_problem": "stone retaining wall loses stone pattern", "failure_category": "material_failure", "severity": "medium", "recommended_fix": "add dry-stacked stone texture prompt"},
+    {"id": "ex_49", "typology": "museum", "input_problem": "skylight structural steel trusses disappear", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "add steel truss structural preservation constraint"},
+    {"id": "ex_50", "typology": "residence", "input_problem": "infinity pool edge dissolves into air", "failure_category": "geometry_failure", "severity": "high", "recommended_fix": "lock infinity pool edge geometry line"}
+  ]
+}
