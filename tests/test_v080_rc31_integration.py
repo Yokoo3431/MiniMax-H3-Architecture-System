@@ -19,7 +19,7 @@ class TestV080RC31Integration(unittest.TestCase):
     def test_workflow_deployer_and_validator(self):
         res = deploy_and_validate_workflows()
         self.assertEqual(res["status"], "PASS")
-        self.assertTrue(res["zero_missing_nodes_verified"])
+        self.assertTrue(res.get("zero_runninghub_nodes_verified", res.get("zero_missing_nodes_verified")))
         self.assertEqual(len(res["deployed_production_workflows"]), 5)
         self.assertTrue((CONFIG_DIR / "workflow_validation_report.json").is_file())
 

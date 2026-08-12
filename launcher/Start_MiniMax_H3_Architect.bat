@@ -1,10 +1,10 @@
 @echo off
-title MiniMax H3 Architecture System RC3.1 Launcher
+title MiniMax H3 Architecture System RC3.2 Launcher
 color 0A
 
 echo =======================================================================
-echo                 MiniMax H3 Architecture System RC3.1
-echo                  Local Production Integration Fix
+echo                 MiniMax H3 Architecture System RC3.2
+echo                Native Runtime Reconstruction Launcher
 echo =======================================================================
 echo.
 
@@ -30,25 +30,39 @@ if not "%GIT_PATH%"=="" (
 )
 
 echo.
-echo [1/3] Environment Check:
-echo CUDA OK
-echo Models OK
-echo FFmpeg OK
-echo.
+echo [1/4] Auto-Configuring FFmpeg & FFprobe...
+where ffmpeg >nul 2>nul
+if %errorlevel% equ 0 (
+    echo [FFmpeg] System FFmpeg & FFprobe Active
+) else (
+    echo [FFmpeg] Using ComfyUI Embedded Video Decoder
+)
 
-echo [2/3] Executing Workflow Deployment and Workspace Verification...
+echo.
+echo [2/4] Executing Native Workflow Deployment and Workspace Verification...
 "D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable\python_embeded\python.exe" "%~dp0..\scripts\deploy_workflows.py"
 "D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable\python_embeded\python.exe" "%~dp0..\runtime\prompt_bridge\workspace_manager.py"
 echo.
-echo Workflow:
-echo 5 Production Workflows Installed
-echo.
 
-echo [3/3] Launching ComfyUI...
-powershell -Command "try { $resp = Invoke-WebRequest -Uri 'http://127.0.0.1:8188/system_stats' -TimeoutSec 2; Write-Host '[PASS] ComfyUI Server is active on http://127.0.0.1:8188' } catch { Write-Host '[NOTE] Starting local ComfyUI instance...'; Start-Process -FilePath 'D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable\run_nvidia_gpu.bat' -WorkingDirectory 'D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable' }"
+echo [3/4] Checking Local ComfyUI Server Instance...
+powershell -Command "$stats = try { (Invoke-WebRequest -Uri 'http://127.0.0.1:8188/system_stats' -TimeoutSec 2).StatusCode } catch { 0 }; if ($stats -ne 200) { Write-Host '[ComfyUI] Launching local ComfyUI GPU process...'; Start-Process -FilePath 'D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable\run_nvidia_gpu.bat' -WorkingDirectory 'D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable' }"
 
 echo.
-echo Opening Architect ComfyUI Studio in browser...
-timeout /t 2 >nul
+echo [4/4] Polling ComfyUI API Health (http://127.0.0.1:8188/system_stats)...
+:POLL_LOOP
+powershell -Command "$resp = try { (Invoke-WebRequest -Uri 'http://127.0.0.1:8188/system_stats' -TimeoutSec 2).StatusCode } catch { 0 }; exit $resp"
+if %errorlevel% equ 200 (
+    echo [PASS] ComfyUI Server is READY!
+    goto OPEN_BROWSER
+)
+echo [WAIT] Waiting for ComfyUI API initialization... (Polling /system_stats)
+powershell -Command "Start-Sleep -Seconds 2"
+goto POLL_LOOP
+
+:OPEN_BROWSER
+echo.
+echo =======================================================================
+echo   Opening Architect Studio in browser...
+echo =======================================================================
 start http://127.0.0.1:8188
 echo.

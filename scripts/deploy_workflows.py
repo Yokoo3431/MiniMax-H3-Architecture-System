@@ -1,5 +1,5 @@
-"""Workflow Deployer & Validator Script for ComfyUI Integration (V0.8.0 RC3.1).
-Deploys 5 production workflows to ComfyUI's native workflow directory, archives old RC2 workflows, and validates node completeness.
+"""Workflow Deployer & Native Node Auditor Script for ComfyUI Integration (V0.8.0 RC3.2).
+Deploys 5 native production workflows to ComfyUI's native workflow directory, archives old RC2 workflows, and asserts ZERO RunningHub nodes.
 """
 
 import sys
@@ -29,14 +29,15 @@ OLD_WORKFLOW_FILES = [
     "3_建筑夜景灯光变化_NightTransition.json"
 ]
 
-REQUIRED_NODE_TYPES = [
-    "LoadImage",
-    "RHMiniMaxH3ModelLoader",
-    "RHMiniMaxH3TextEncoderLoader",
-    "RHMiniMaxH3VAELoader",
-    "RHMiniMaxH3T2VATextEncode",
-    "RHMiniMaxH3DualSigmaSampler",
-    "RHMiniMaxH3DecodeAV",
+FORBIDDEN_RUNNINGHUB_PREFIXES = ["RHMiniMaxH3", "RunningHub"]
+
+NATIVE_REQUIRED_NODE_TYPES = [
+    "UNETLoader",
+    "CLIPLoader",
+    "VAELoader",
+    "CLIPTextEncode",
+    "KSampler",
+    "VAEDecode",
     "VHS_VideoCombine"
 ]
 
@@ -44,7 +45,7 @@ def deploy_and_validate_workflows() -> dict:
     COMFYUI_WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. Move old workflows to ARCHIVE_RC2
+    # 1. Move old workflows to ARCHIVE_RC2 & clean root old workflow files
     archived_files = []
     for old_file in OLD_WORKFLOW_FILES:
         src = COMFYUI_WORKFLOWS_DIR / old_file
@@ -53,7 +54,7 @@ def deploy_and_validate_workflows() -> dict:
             shutil.move(str(src), str(dst))
             archived_files.append(old_file)
 
-    # 2. Copy 5 production workflows
+    # 2. Copy 5 native production workflows
     deployed_files = []
     validation_details = []
     all_workflows_valid = True
@@ -66,15 +67,19 @@ def deploy_and_validate_workflows() -> dict:
             shutil.copy2(str(src), str(dst))
             deployed_files.append(wf_file)
 
-            # Validate nodes
+            # Validate zero RunningHub nodes & native nodes
             with open(src, "r", encoding="utf-8") as f:
                 wf_json = json.load(f)
 
             nodes = wf_json.get("nodes", [])
-            node_types = [n.get("type") for n in nodes]
-            missing_required_nodes = [r for r in REQUIRED_NODE_TYPES if r not in node_types]
+            node_types = [n.get("type", "") for n in nodes]
 
-            wf_valid = len(missing_required_nodes) == 0
+            runninghub_nodes_found = [
+                t for t in node_types if any(p.lower() in t.lower() for p in FORBIDDEN_RUNNINGHUB_PREFIXES)
+            ]
+            missing_native_nodes = [r for r in NATIVE_REQUIRED_NODE_TYPES if r not in node_types]
+
+            wf_valid = (len(runninghub_nodes_found) == 0) and (len(missing_native_nodes) == 0)
             if not wf_valid:
                 all_workflows_valid = False
 
@@ -82,7 +87,9 @@ def deploy_and_validate_workflows() -> dict:
                 "workflow": wf_file,
                 "deployed_to": str(dst),
                 "total_nodes": len(nodes),
-                "missing_nodes_count": 0 if wf_valid else len(missing_required_nodes),
+                "runninghub_nodes_count": len(runninghub_nodes_found),
+                "runninghub_nodes_detected": runninghub_nodes_found,
+                "missing_native_nodes_count": len(missing_native_nodes),
                 "status": "PASS" if wf_valid else "FAIL"
             })
         else:
@@ -99,7 +106,7 @@ def deploy_and_validate_workflows() -> dict:
         "archived_old_workflows": archived_files,
         "deployed_production_workflows": deployed_files,
         "validation_results": validation_details,
-        "zero_missing_nodes_verified": all_workflows_valid,
+        "zero_runninghub_nodes_verified": all_workflows_valid,
         "status": "PASS" if all_workflows_valid else "FAIL"
     }
 
@@ -115,7 +122,8 @@ def deploy_and_validate_workflows() -> dict:
 if __name__ == "__main__":
     res = deploy_and_validate_workflows()
     print("\n=======================================================")
-    print(f"Workflow Deployment Status: {res['status']}")
+    print(f"Native Workflow Deployment Status: {res['status']}")
+    print(f"Zero RunningHub Nodes Verified: {res['zero_runninghub_nodes_verified']}")
     print(f"Deployed Workflows: {len(res['deployed_production_workflows'])} files")
     print("=======================================================\n")
     print(json.dumps(res, indent=2, ensure_ascii=False))

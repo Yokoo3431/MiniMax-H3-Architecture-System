@@ -14,39 +14,49 @@
     {
       "workflow": "01_Exterior_Hero.json",
       "deployed_to": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\user\\default\\workflows\\ARCHITECTURE_PRODUCTION\\01_Exterior_Hero.json",
-      "total_nodes": 11,
-      "missing_nodes_count": 0,
+      "total_nodes": 10,
+      "runninghub_nodes_count": 0,
+      "runninghub_nodes_detected": [],
+      "missing_native_nodes_count": 0,
       "status": "PASS"
     },
     {
       "workflow": "02_Day_Night_Transition.json",
       "deployed_to": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\user\\default\\workflows\\ARCHITECTURE_PRODUCTION\\02_Day_Night_Transition.json",
-      "total_nodes": 11,
-      "missing_nodes_count": 0,
+      "total_nodes": 10,
+      "runninghub_nodes_count": 0,
+      "runninghub_nodes_detected": [],
+      "missing_native_nodes_count": 0,
       "status": "PASS"
     },
     {
       "workflow": "03_Material_Detail.json",
       "deployed_to": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\user\\default\\workflows\\ARCHITECTURE_PRODUCTION\\03_Material_Detail.json",
-      "total_nodes": 11,
-      "missing_nodes_count": 0,
+      "total_nodes": 10,
+      "runninghub_nodes_count": 0,
+      "runninghub_nodes_detected": [],
+      "missing_native_nodes_count": 0,
       "status": "PASS"
     },
     {
       "workflow": "04_Drone_Aerial.json",
       "deployed_to": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\user\\default\\workflows\\ARCHITECTURE_PRODUCTION\\04_Drone_Aerial.json",
-      "total_nodes": 11,
-      "missing_nodes_count": 0,
+      "total_nodes": 10,
+      "runninghub_nodes_count": 0,
+      "runninghub_nodes_detected": [],
+      "missing_native_nodes_count": 0,
       "status": "PASS"
     },
     {
       "workflow": "05_Slow_Walkthrough.json",
       "deployed_to": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\user\\default\\workflows\\ARCHITECTURE_PRODUCTION\\05_Slow_Walkthrough.json",
-      "total_nodes": 11,
-      "missing_nodes_count": 0,
+      "total_nodes": 10,
+      "runninghub_nodes_count": 0,
+      "runninghub_nodes_detected": [],
+      "missing_native_nodes_count": 0,
       "status": "PASS"
     }
   ],
-  "zero_missing_nodes_verified": true,
+  "zero_runninghub_nodes_verified": true,
   "status": "PASS"
 }
