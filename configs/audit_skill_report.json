@@ -1,0 +1,26 @@
+{
+  "auditor_version": "1.0.0",
+  "official_h3_skill": {
+    "name": "minimax-h3-architectural-video",
+    "path": "D:\\AntigravityWorkspace\\Minimax H3-Comfyui Configuration\\MiniMax-H3-Architecture-System\\skills\\minimax-h3-architectural-video\\SKILL.md",
+    "exists": true,
+    "version": "1.7.81",
+    "source": "MiniMax Official H3 Architecture Skill Specification",
+    "compatibility": "Compatible with Antigravity Agent & MiniMax H3 0.27.0",
+    "status": "PASS"
+  },
+  "h3_prompt_rules": {
+    "path": "D:\\AntigravityWorkspace\\Minimax H3-Comfyui Configuration\\MiniMax-H3-Architecture-System\\skills\\architecture_prompt\\h3_rules",
+    "exists": true,
+    "loaded_rules": [
+      "architectural_material.yaml",
+      "camera_motion.yaml",
+      "geometry_lock.yaml",
+      "lighting_transition.yaml",
+      "negative_prompt.yaml"
+    ],
+    "rule_count": 5,
+    "status": "PASS"
+  },
+  "overall_status": "PASS"
+}

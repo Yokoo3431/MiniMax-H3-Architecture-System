@@ -1,0 +1,41 @@
+{
+  "auditor_version": "1.0.0",
+  "int8_quantization": {
+    "checkpoint": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "quant_type": "INT8 / NVFP4 AWQ",
+    "vram_saving": "approx 60%",
+    "status": "PASS"
+  },
+  "cpu_offloading": {
+    "enabled": true,
+    "strategy": "sequential_layer_offload",
+    "status": "PASS"
+  },
+  "vram_profiles": {
+    "H3_LOW": {
+      "vram": "8GB",
+      "res": "1024x576",
+      "steps": 20,
+      "offload": true
+    },
+    "H3_STANDARD": {
+      "vram": "12GB",
+      "res": "1280x720",
+      "steps": 25,
+      "offload": true
+    },
+    "H3_PRO": {
+      "vram": "24GB+",
+      "res": "1280x720",
+      "steps": 35,
+      "offload": false
+    },
+    "status": "PASS"
+  },
+  "attention_optimization": {
+    "sdpa_flash_attention": true,
+    "status": "PASS"
+  },
+  "overall_status": "PASS"
+}

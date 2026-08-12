@@ -1,0 +1,27 @@
+{
+  "auditor_version": "1.0.0",
+  "comfyui": {
+    "installation_path": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable",
+    "exists": true,
+    "version": "0.27.0",
+    "python_runtime": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe",
+    "api_reachable": false,
+    "api_url": "http://127.0.0.1:8188",
+    "status": "PASS"
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5070",
+    "vram": "12GB GDDR7",
+    "cuda": "CUDA 12.8 / PyTorch 2.4+",
+    "vram_profile": "H3_STANDARD",
+    "status": "PASS"
+  },
+  "minimax_h3_models": {
+    "checkpoint": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "video_vae": "video_vae",
+    "audio_vae": "audio_vae",
+    "model_status": "PASS"
+  },
+  "overall_status": "PASS"
+}
