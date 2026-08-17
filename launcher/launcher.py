@@ -73,6 +73,17 @@ class Launcher:
         )
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _production_ready(report: dict) -> bool:
+        checks = report.get("checks", {})
+        gpu = checks.get("gpu", {}).get("status")
+        memory = checks.get("memory", {}).get("status")
+        comfyui = checks.get("comfyui", {}).get("status")
+        models = checks.get("models", {}).get("status")
+        pread = checks.get("pread", {}).get("status")
+        return bool(gpu == "PASS" and memory != "BLOCK" and comfyui != "BLOCK"
+                    and models != "BLOCK" and pread == "PASS")
+
     def start(self, skip_env: bool = False) -> int:
         self.logger.info("launcher starting")
         try:
@@ -85,14 +96,37 @@ class Launcher:
         try:
             if not skip_env:
                 checker = self._env_checker or EnvChecker(paths=self.paths)
-                report = checker.check_all()
+                report = checker.check_all(light=True)
                 print("Environment check:", report["overall"])
-                if report["overall"] == "BLOCK":
-                    self.logger.error("environment check BLOCK")
+                if report["checks"].get("python", {}).get("status") == "BLOCK":
+                    self.logger.error("bootstrap python BLOCK")
                     self.lock.release()
                     return 1
             else:
                 self.logger.warning("env check skipped (--skip-env)")
+
+            production_ready = self._production_ready(report) if not skip_env else True
+            if not production_ready:
+                # First-run / incomplete environment -> SETUP_REQUIRED.
+                # Start Studio ONLY (Environment Center); do not start ComfyUI.
+                conflicts = PortManager.conflicts([ProcessManager.STUDIO_PORT])
+                if conflicts[ProcessManager.STUDIO_PORT]["in_use"]:
+                    self.logger.error("port 8788 in use")
+                    print("[BLOCK] port 8788 in use")
+                    self.lock.release()
+                    return 1
+                self.logger.info("SETUP_REQUIRED: starting Studio in Setup Mode")
+                studio = self.pm.start_studio()
+                if studio.state == "FAILED":
+                    self.logger.error(f"Studio failed: {studio.failure}")
+                    self.lock.release()
+                    return 1
+                url = "http://127.0.0.1:8788"
+                if not self.no_browser and not self.dry_run:
+                    _open_browser(url)
+                print(f"[SETUP_REQUIRED] Studio running in Setup Mode ({url})")
+                print("  请完成 Environment Center 配置后继续。日志：logs\\launcher.log")
+                return self._serve()
 
             conflicts = PortManager.conflicts(
                 [ProcessManager.COMFYUI_PORT, ProcessManager.STUDIO_PORT])

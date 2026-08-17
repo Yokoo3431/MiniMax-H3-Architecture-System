@@ -202,6 +202,14 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 from ._paths import REPO_ROOT
                 catalog = json.loads((REPO_ROOT / "configs" / "workflow_catalog.json").read_text(encoding="utf-8"))
                 return self._ok(catalog)
+            if path == "/api/system/environment" and method == "GET":
+                return self._ok(apis["system"].environment())
+            if path == "/api/system/configure" and method == "POST":
+                return self._ok(apis["system"].configure(body))
+            if path == "/api/system/recheck" and method == "POST":
+                return self._ok(apis["system"].recheck())
+            if path == "/api/system/open-comfyui" and method == "POST":
+                return self._ok(apis["system"].open_comfyui())
             raise KeyError(f"unknown api route: {method} {path}")
 
     return Handler
@@ -217,6 +225,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     from .project_api import ProjectAPI
     from .prompt_api import PromptAPI
     from .reference_api import ReferenceAPI
+    from .system_api import SystemAPI
 
     output_api = OutputAPI(store)
     runtime_adapter = None
@@ -239,5 +248,6 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                       comfy_input_dir=os.environ.get(
                           "H3_COMFY_INPUT", "<NATIVE_ROOT>/ComfyUI/input")),
         "output": output_api,
+        "system": SystemAPI(store),
     }
     return StudioServer(addr, store, apis)

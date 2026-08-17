@@ -44,6 +44,13 @@ function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; 
 function clearErr() { errEl.style.display = 'none'; }
 
 async function loadAll() {
+  try {
+    const env = await get('/api/system/environment');
+    if (env.overall === 'SETUP_REQUIRED' || env.overall === 'BLOCK') {
+      location.href = 'setup.html';
+      return;
+    }
+  } catch (_) { /* fall through to workspace */ }
   const [p, c] = await Promise.all([
     get(`/api/projects/${projectId}`),
     get('/api/catalog'),

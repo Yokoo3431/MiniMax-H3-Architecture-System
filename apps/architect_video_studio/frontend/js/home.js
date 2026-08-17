@@ -53,6 +53,19 @@ async function loadTasks() {
   } catch (e) { showErr(e.message); }
 }
 
+async function checkSystem() {
+  try {
+    const env = await get('/api/system/environment');
+    const el = document.getElementById('sys-status');
+    el.innerHTML = env.overall === 'READY'
+      ? '<span class="ok">System Ready</span>'
+      : `<span class="${env.overall === 'BLOCK' ? 'err' : 'warn'}">System ${esc(env.overall)} — 请打开 Environment Center</span>`;
+    if (env.overall === 'SETUP_REQUIRED' || env.overall === 'BLOCK') {
+      location.href = 'setup.html';
+    }
+  } catch (_) { /* keep silent; page still usable */ }
+}
+
 document.getElementById('new-video-btn').addEventListener('click', () => {
   document.getElementById('new-task-box').style.display = 'block';
 });
@@ -72,3 +85,4 @@ document.getElementById('task-create-btn').addEventListener('click', async () =>
 });
 
 loadTasks();
+checkSystem();

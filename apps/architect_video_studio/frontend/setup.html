@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Architect Video Studio — System Setup</title>
+  <link rel="stylesheet" href="css/studio.css">
+  <style>
+    .setup-shell { display: grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: start; }
+    .group-nav { display: flex; flex-direction: column; gap: 4px; }
+    .group-nav button {
+      text-align: left; padding: 9px 12px; border: 1px solid var(--line);
+      background: var(--panel); border-radius: 5px; cursor: pointer;
+      font-family: inherit; font-size: 13px; color: var(--ink);
+    }
+    .group-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .status-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted var(--line); font-size: 13px; }
+    .status-row .k { color: var(--muted); }
+    .gate-row { padding: 5px 0; font-size: 13px; }
+    .ok { color: var(--ok); font-weight: 600; }
+    .warn { color: var(--warn); font-weight: 600; }
+    .err { color: var(--err); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
+    <a href="index.html">Home</a>
+    <span class="crumb">System Setup</span>
+    <span class="spacer"></span>
+    <span id="overall-badge" class="badge state">…</span>
+  </div>
+  <div class="wrap">
+    <h2 style="margin-top:0;">System Setup / Environment Center</h2>
+    <div id="err" class="error-banner" style="display:none;"></div>
+
+    <div class="setup-shell">
+      <aside class="panel">
+        <h3>System Groups</h3>
+        <div class="group-nav" id="group-nav">
+          <button data-g="system" class="on">SYSTEM</button>
+          <button data-g="runtime">RUNTIME</button>
+          <button data-g="models">MODELS</button>
+          <button data-g="prompt">PROMPT</button>
+          <button data-g="workflows">WORKFLOWS</button>
+          <button data-g="advanced">ADVANCED</button>
+        </div>
+      </aside>
+
+      <div class="panel" id="inspector">
+        <div class="muted">正在读取环境…</div>
+      </div>
+    </div>
+
+    <div class="panel mt">
+      <h3>Configuration</h3>
+      <div class="param-grid">
+        <div><label>Native Runtime Path</label><input type="text" id="cfg-native" placeholder="例如 D:\ComfyUI_H3_NATIVE_TEST"></div>
+        <div><label>Models Path</label><input type="text" id="cfg-models" placeholder="模型根目录（含 diffusion_models/ 等）"></div>
+        <div class="wide">
+          <label>Manual fallback：也可将 Native 根目录写入 <span class="mono">native_env.path</span>（仅高级用户）</label>
+        </div>
+      </div>
+      <div class="mt" style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn primary" id="save-btn">Save Configuration</button>
+        <button class="btn" id="recheck-btn">Re-check Environment</button>
+        <button class="btn ok" id="continue-btn" disabled>Continue to Studio</button>
+        <button class="btn" id="open-comfy-btn" disabled>Open Native ComfyUI（Advanced）</button>
+      </div>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/setup.js"></script>
+</body>
+</html>

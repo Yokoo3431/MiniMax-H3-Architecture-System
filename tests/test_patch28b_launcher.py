@@ -258,8 +258,10 @@ class TestLauncherFailureHandling(unittest.TestCase):
             tmp = Path(tmpd)
             paths = _make_paths(tmp)
             class Blocker:
-                def check_all(self):
-                    return {"overall": "BLOCK", "checks": {}}
+                def check_all(self, light=False):
+                    # Bootstrap-level failure (python missing) -> hard BLOCK exit.
+                    return {"overall": "BLOCK",
+                            "checks": {"python": {"status": "BLOCK"}}}
             launcher = Launcher(dry_run=True, lock_path=tmp / "runtime.lock",
                                 paths=paths, env_checker=Blocker())
             self.assertEqual(launcher.start(), 1)

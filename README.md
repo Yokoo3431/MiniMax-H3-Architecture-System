@@ -32,15 +32,14 @@
 
 ## Quick Start（Windows）
 
-1. **配置模型**：按 `models/manifest.json` 放置四个模型
-   （DiT / Text Encoder / Video VAE / Audio VAE）；Launcher 启动时自动校验
-   SHA-256。首次使用需配置 Native 运行时根目录（见 `native_env.path.example`）。
-2. **双击启动**：双击仓库根目录的
-   **`Start_ArchitectVideoStudio.bat`**（无需打开终端、无需 cd、无需手动运行
-   Python、无需进入 `launcher/` 子目录）。
-3. **等待环境检查**：自动执行环境检查 → 启动 Native ComfyUI（8189）→
-   启动 Architect Video Studio（8788）。
-4. **浏览器自动打开** `http://127.0.0.1:8788`。
+1. **下载**：获取仓库/Release 压缩包并解压。
+2. **双击启动**：双击仓库根目录的 **`Start_ArchitectVideoStudio.bat`**
+   （无需打开终端、无需 cd、无需手动运行 Python、无需进入 `launcher/` 子目录）。
+3. **完成首次配置**：首次运行自动打开 System Setup / Environment Center——
+   在页面中选择 Native Runtime 文件夹与 Models 文件夹（或自动检测标准相对位置），
+   点击 **Save Configuration** → **Re-check Environment**。
+4. **System Ready**：检查项全部通过后点击 **Continue to Studio**，
+   浏览器自动打开 `http://127.0.0.1:8788`（Native ComfyUI 8189 + Studio 8788）。
 5. **生成视频**：新建 Study → 上传参考图 → 批准 → 输入意图 → 确认 → Generate
    → 任务中心查看输出。
 
@@ -51,6 +50,11 @@ FREE COMMIT TOO LOW / PORT 8189 OCCUPIED），详细日志见 `logs\launcher.log
 
 **`Open_Native_ComfyUI.bat`**（仓库根目录）：直接进入 Native ComfyUI
 （端口 8189，PREAD safe-load）。普通用户不需要使用，也不会自动打开 Studio。
+
+**Manual Configuration（手动配置 fallback）**：高级用户可不使用页面配置，
+直接在仓库根目录创建 `native_env.path`（第一行为 Native ComfyUI 根目录，
+模板见 `native_env.path.example`）。首次配置已由 System Setup 页面自动完成时
+无需手工编辑。
 
 首次生成教程见 [docs/User_Guide.md](docs/User_Guide.md)（Exterior Hero 示例）。
 

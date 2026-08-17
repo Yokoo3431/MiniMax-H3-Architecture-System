@@ -134,7 +134,7 @@ class EnvChecker:
         return {"status": "PASS" if avail else "BLOCK",
                 "detail": f"cuda_available={avail}", "expected": True}
 
-    def check_models(self) -> dict:
+    def check_models(self, light: bool = False) -> dict:
         baseline = json.loads(self.paths.baseline_path.read_text(encoding="utf-8"))
         models = baseline.get("models", {})
         results = []
@@ -149,14 +149,16 @@ class EnvChecker:
                                 "detail": f"missing {path}"})
                 all_pass = False
                 continue
-            actual = self.hash_fn(path)
-            if expected_sha and actual != expected_sha:
+            actual = None if light else self.hash_fn(path)
+            if actual is not None and expected_sha and actual != expected_sha:
                 results.append({"key": key, "status": "BLOCK",
                                 "detail": f"sha256 mismatch {path.name}"})
                 all_pass = False
             else:
                 results.append({"key": key, "status": "PASS",
-                                "detail": filename, "sha256": actual})
+                                "detail": filename,
+                                "sha256": actual,
+                                "sha_verified": not light})
         return {"status": "PASS" if all_pass else "BLOCK",
                 "models": results}
 
@@ -221,17 +223,19 @@ class EnvChecker:
                 "rule": ">=50 PASS, 10-50 WARNING, <10 BLOCK"}
 
     # ------------------------------------------------------------------ #
-    def check_all(self) -> dict:
+    def check_all(self, light: bool = False) -> dict:
         checks = {
             "python": self.check_python(),
             "gpu": self.check_gpu(),
-            "models": self.check_models(),
+            "models": self.check_models(light=light),
             "comfyui": self.check_comfyui(),
             "frontend": self.check_frontend(),
             "pread": self.check_pread(),
             "memory": self.check_memory(),
             "disk": self.check_disk(),
         }
+        if light:
+            checks["light"] = True
         if any(c.get("status") == "BLOCK" for c in checks.values()):
             overall = "BLOCK"
         elif any(c.get("status") == "WARNING" for c in checks.values()):
