@@ -1,0 +1,3 @@
+# Put the absolute path to your Native ComfyUI root on the FIRST line,
+# then save this file as native_env.path (next to this example):
+#   D:\ComfyUI_H3_NATIVE_TEST

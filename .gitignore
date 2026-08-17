@@ -37,10 +37,16 @@ apps/architect_video_studio/screenshots/
 runtime/logs/
 
 # --- Legacy dev tools (historical, not part of RC public set) ---
-launcher/Start_*.bat
+# NOTE: explicit names only; case-insensitive globs (launcher/Start_*.bat)
+# would also exclude the public start_architect_video_studio.bat.
+launcher/Start_MiniMax_H3_Architect.bat
+launcher/Start_H3.bat
 launcher/Install_*.bat
 launcher/Update_*.bat
 launcher/Diagnose_*.bat
+
+# --- User-configured native runtime root (never committed) ---
+native_env.path
 
 # --- Phase validation records in configs (internal) ---
 configs/rc33_*

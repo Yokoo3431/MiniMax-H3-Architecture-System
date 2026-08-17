@@ -30,16 +30,27 @@
 | Drone Reveal | I2VA | 鸟瞰/总图揭示 |
 | Slow Walkthrough | I2VA | 慢速空间漫游 |
 
-## Quick Start（5 步）
+## Quick Start（Windows）
 
-1. **下载**：获取 `ArchitectVideoStudio` 压缩包并解压（SSD，~100GB 可用空间）。
-2. **检查模型**：按 `models/manifest.json` 放置四个模型
-   （DiT / Text Encoder / Video VAE / Audio VAE）；Launcher 自动校验 SHA-256。
-3. **启动 Launcher**：双击 `launcher\start_architect_video_studio.bat`
-   （自动环境检查 → 启动 ComfyUI 8189 → 启动 Studio 8788）。
-4. **打开 Studio**：浏览器自动打开 `http://127.0.0.1:8788`。
+1. **配置模型**：按 `models/manifest.json` 放置四个模型
+   （DiT / Text Encoder / Video VAE / Audio VAE）；Launcher 启动时自动校验
+   SHA-256。首次使用需配置 Native 运行时根目录（见 `native_env.path.example`）。
+2. **双击启动**：双击仓库根目录的
+   **`Start_ArchitectVideoStudio.bat`**（无需打开终端、无需 cd、无需手动运行
+   Python、无需进入 `launcher/` 子目录）。
+3. **等待环境检查**：自动执行环境检查 → 启动 Native ComfyUI（8189）→
+   启动 Architect Video Studio（8788）。
+4. **浏览器自动打开** `http://127.0.0.1:8788`。
 5. **生成视频**：新建 Study → 上传参考图 → 批准 → 输入意图 → 确认 → Generate
    → 任务中心查看输出。
+
+启动失败时窗口会显示简单错误（MODEL MISSING / CUDA NOT AVAILABLE /
+FREE COMMIT TOO LOW / PORT 8189 OCCUPIED），详细日志见 `logs\launcher.log`。
+
+### Advanced Users（高级/开发者）
+
+**`Open_Native_ComfyUI.bat`**（仓库根目录）：直接进入 Native ComfyUI
+（端口 8189，PREAD safe-load）。普通用户不需要使用，也不会自动打开 Studio。
 
 首次生成教程见 [docs/User_Guide.md](docs/User_Guide.md)（Exterior Hero 示例）。
 
