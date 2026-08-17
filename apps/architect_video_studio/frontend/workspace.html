@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Architect Video Studio — Video Studio</title>
+  <link rel="stylesheet" href="css/studio.css">
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
+    <a href="index.html">Home</a>
+    <a href="jobs.html">Job Center</a>
+    <span class="spacer"></span>
+    <span id="task-title" class="small muted">…</span>
+  </div>
+  <div class="wrap wrap-wide">
+    <div class="task-head">
+      <div>
+        <h2 id="task-name" style="margin:0;">…</h2>
+        <div id="task-meta" class="muted small"></div>
+      </div>
+      <div style="text-align:right;">
+        <span id="task-state" class="badge state"></span>
+        <div id="steps" class="steps" style="justify-content:flex-end;"></div>
+      </div>
+    </div>
+    <div id="err" class="error-banner" style="display:none;"></div>
+
+    <div class="studio">
+      <!-- VIDEO VIEWPORT (render area, 70%) -->
+      <section class="viewport">
+        <div class="v-head">
+          <span>VIDEO VIEWPORT</span>
+          <span class="spacer"></span>
+          <span id="v-wf" class="small mono">workflow: —</span>
+        </div>
+        <div class="v-body" id="v-body">
+          <div class="v-empty" id="v-empty">
+            参考图将在此渲染预览<br>
+            <span class="small">PATCH2.6-D.2 · Mock 视口（无真实生成）</span>
+          </div>
+        </div>
+        <div class="v-chip" id="v-mode-chip">—</div>
+        <div class="v-params" id="v-params">1344×768 · 24fps · 4s</div>
+        <div class="v-foot">
+          <span id="v-status" class="small">GENERATION STATUS — 空闲</span>
+          <div class="progress"><div class="bar" id="v-progress" style="width:0%"></div></div>
+        </div>
+      </section>
+
+      <!-- TOOL DRAWERS (30%) -->
+      <div class="drawers">
+        <!-- LEFT: REFERENCE DRAWER -->
+        <aside class="drawer collapsed" id="drawer-reference">
+          <button class="drawer-head" id="ref-toggle" type="button">
+            <span>REFERENCE</span><span class="chev">▾</span>
+          </button>
+          <div class="drawer-body">
+            <label>上传参考图（first / last frame）</label>
+            <input type="file" id="ref-file" accept="image/*">
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <select id="ref-role">
+                <option value="first_frame">first_frame</option>
+                <option value="last_frame">last_frame</option>
+              </select>
+              <button class="btn" id="upload-btn">上传</button>
+            </div>
+            <div id="refs" class="mt"></div>
+          </div>
+        </aside>
+
+        <!-- RIGHT: GENERATION CONTROL DRAWER -->
+        <aside class="drawer" id="drawer-control">
+          <button class="drawer-head" id="ctl-toggle" type="button">
+            <span>GENERATION CONTROL</span><span class="chev">▾</span>
+          </button>
+          <div class="drawer-body">
+            <!-- Intent -->
+            <label>Video Intent（自然语言）</label>
+            <textarea id="intent-text" placeholder="例如：做一个入口缓慢推进的视频，突出建筑尺度感"></textarea>
+            <button class="btn primary" id="analyze-btn" style="width:100%;">分析意图</button>
+            <div id="intent-card"></div>
+            <div id="confirm-box" style="display:none;margin-top:10px;">
+              <label>选择工作流（候选）</label>
+              <select id="wf-candidates"></select>
+              <button class="btn mt" id="confirm-btn" style="width:100%;">确认工作流</button>
+            </div>
+
+            <div id="param-shelf" class="mt" style="display:none;">
+              <!-- Camera -->
+              <div class="ctl-group">
+                <h4>Camera</h4>
+                <div class="seg" id="camera-seg">
+                  <button data-cam="static">Static</button>
+                  <button data-cam="push">Push</button>
+                  <button data-cam="reveal">Reveal</button>
+                  <button data-cam="walkthrough">Walkthrough</button>
+                  <button data-cam="aerial">Aerial</button>
+                </div>
+                <div id="cam-hint" class="small muted mt"></div>
+              </div>
+
+              <!-- Output parameters (bound to VideoGenerationRequest) -->
+              <div class="ctl-group">
+                <h4>Output Parameters</h4>
+                <div class="param-grid">
+                  <div><label>Duration</label><select id="param-duration"><option>4s</option></select></div>
+                  <div><label>Resolution</label><select id="param-resolution"><option>1344×768</option><option>1280×720</option></select></div>
+                  <div><label>FPS</label><select id="param-fps"><option>24</option></select></div>
+                  <div><label>Quality</label><select id="param-quality"><option>Diagnostic</option><option>Production (future)</option></select></div>
+                  <div class="wide"><label>Seed（可选，留空=随机）</label><input type="text" id="param-seed" placeholder="例如 777888999"></div>
+                </div>
+              </div>
+
+              <!-- Workflow -->
+              <div class="ctl-group">
+                <h4>Workflow</h4>
+                <select id="wf-select"></select>
+                <div id="wf-meta" class="small muted mt"></div>
+              </div>
+
+              <!-- Prompt preview: collapsed by default -->
+              <div class="ctl-group prompt-wrap" id="prompt-wrap">
+                <button class="prompt-toggle" id="prompt-toggle" type="button">
+                  <span>Prompt Preview · Official Skill Generated</span><span class="chev"></span>
+                </button>
+                <div class="prompt-collapse">
+                  <pre class="prompt" id="prompt-preview">未生成</pre>
+                </div>
+              </div>
+
+              <div class="risk mt">
+                <strong>Risk Warning</strong>
+                <div id="risk-text" class="small">参考质量与运动风险提示显示于此。</div>
+              </div>
+              <label class="mt"><input type="checkbox" id="risk-check"> 我已审阅风险提示</label>
+              <div class="mt" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button class="btn" id="preview-btn" disabled>生成 Prompt 预览</button>
+                <button class="btn primary" id="generate-btn" disabled>Generate</button>
+                <span id="gate-note" class="gate-note"></span>
+              </div>
+            </div>
+
+            <!-- Advanced (hidden in D.2, interface retained for later) -->
+            <div class="adv-card mt hidden" id="adv-card">
+              <h3 style="margin-top:0;">Advanced</h3>
+              <div class="small" id="adv-info">提交 Prompt 后显示：Current Workflow / Reference / Prompt Hash。</div>
+              <button class="btn small mt" id="open-comfy-btn" disabled>Open Native ComfyUI（接口设计）</button>
+              <div id="adv-contract" class="small muted mono mt" style="display:none;"></div>
+            </div>
+
+            <!-- Workflow Controller -->
+            <div class="adv-card mt">
+              <h3 style="margin-top:0;">Workflow Controller</h3>
+              <div class="strategy-grid">
+                <div class="strategy"><div class="s-name">Single Image <span class="badge done">当前</span></div><div class="s-note">I2VA · 01/03/04/05</div></div>
+                <div class="strategy"><div class="s-name">Multi Reference <span class="badge state">未来</span></div><div class="s-note">同机位多参考一致性</div></div>
+                <div class="strategy"><div class="s-name">Keyframe Sequence <span class="badge warn">2帧可用</span></div><div class="s-note">FL2VA / 分段拼接</div></div>
+                <div class="strategy"><div class="s-name">Scene Sequence <span class="badge state">未来</span></div><div class="s-note">场景级分段成片</div></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/workspace.js"></script>
+</body>
+</html>

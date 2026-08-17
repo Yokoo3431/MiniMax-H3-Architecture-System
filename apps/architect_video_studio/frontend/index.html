@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Architect Video Studio — Home</title>
+  <link rel="stylesheet" href="css/studio.css">
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
+    <span class="crumb">Home</span>
+    <span class="spacer"></span>
+    <span class="small muted">PATCH2.6-D · V2 · Mock</span>
+  </div>
+  <div class="wrap">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <h2 style="margin:0;">Recent Studies</h2>
+      <span class="muted small">建筑师 AI 视频生成工作站</span>
+      <span class="spacer" style="flex:1;"></span>
+      <button class="btn primary" id="new-video-btn">+ New Study</button>
+    </div>
+
+    <div id="new-task-box" class="panel mb" style="display:none;">
+      <h3>New Study</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+        <div style="flex:2;min-width:220px;">
+          <label>Study 标题</label>
+          <input type="text" id="task-title" placeholder="例如：入口缓慢推进（杭州办公园区）">
+        </div>
+        <div style="flex:1;min-width:150px;">
+          <label>类型标签（辅助）</label>
+          <select id="task-project-type">
+            <option value="exterior">exterior</option>
+            <option value="interior">interior</option>
+            <option value="material">material</option>
+            <option value="lighting">lighting</option>
+            <option value="aerial">aerial</option>
+            <option value="landscape">landscape</option>
+            <option value="mixed">mixed</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:130px;">
+          <label>阶段</label>
+          <select id="task-stage">
+            <option>方案</option><option>扩初</option><option>报建</option><option>展示</option>
+          </select>
+        </div>
+        <button class="btn" id="task-cancel-btn">取消</button>
+        <button class="btn primary" id="task-create-btn">创建 Study</button>
+      </div>
+    </div>
+
+    <div id="tasks" class="task-grid"></div>
+    <div id="err" class="error-banner" style="display:none;"></div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/home.js"></script>
+</body>
+</html>

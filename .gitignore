@@ -1,14 +1,94 @@
 # Git Ignore Rules for MiniMax H3 Architecture System
 
-# Python Cache
+# --- Python ---
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 
-# Local Output Media (Excluded from Git, kept in local ComfyUI/output)
+# --- Models (weights never committed) ---
+models/*.safetensors
+models/**/*.safetensors
+models/**/put_*_files_here
+
+# --- Runtime data / outputs ---
+userdata/
+!userdata/README.md
+userdata/output/
+userdata/projects/
+userdata/personal_workspace/
+userdata_backup_temp_test/
+distribution_test/**/userdata/
+distribution_test/**/logs/
+distribution_test/**/launcher/runtime.lock
+distribution_test/**/env_report.json
+distribution_test/**/studio/apps/architect_video_studio/data/projects/
+install_test/
+
+# --- Internal development archive (NOT part of public release) ---
+docs/internal_archive/
+
+# --- Non-public workspaces / validation tools ---
+distribution_test/
+install_test/
+runtime/validation/
+apps/architect_video_studio/data/
+apps/architect_video_studio/screenshots/
+runtime/logs/
+
+# --- Legacy dev tools (historical, not part of RC public set) ---
+launcher/Start_*.bat
+launcher/Install_*.bat
+launcher/Update_*.bat
+launcher/Diagnose_*.bat
+
+# --- Phase validation records in configs (internal) ---
+configs/rc33_*
+configs/rc34_*
+configs/rc3_*
+configs/audit_*
+configs/production_environment_report.json
+configs/system_version.json
+configs/workflow_validation_report.json
+configs/video_output_validation.json
+configs/extra_model_paths.yaml
+configs/model_*
+configs/official_*
+
+# --- Logs / locks ---
+Logs/
+logs/
+*.log
+runtime.lock
+env_report.json
+
+# --- Local Output Media ---
 *.mp4
 *.avi
 *.mov
+*.webm
+
+# --- Secrets (never commit) ---
+.env
+.env.*
+*.key
+*.pem
+credentials*.json
+*secret*
+!**/docs/**/*secret*       # allow documentation mentions
+
+# --- Editor / OS / agent temp ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+.codex_tmp/
+.agents/
+
+# --- Misc temp ---
+*.tmp
+*.bak
 
 # Environment / Temp
 *.tmp

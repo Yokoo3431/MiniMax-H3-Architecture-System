@@ -1,0 +1,31 @@
+{
+  "fixture_id": "02_Day_Night_Transition",
+  "workflow": "02_Day_Night_Transition",
+  "video_task": "day_night_transition",
+  "mode": "FL2VA",
+  "pinned_skill_revision": "2026-07-29-main-reviewed",
+  "duration_seconds": 4.0,
+  "frame_count": 107,
+  "fps": 24.0,
+  "architect_intent": {
+    "project_type": "lighting",
+    "video_task": "day_night_transition",
+    "scene": "courtyard building day-to-night",
+    "camera_motion": "static",
+    "amplitude": "very_small",
+    "speed": "slow",
+    "priority": "lighting",
+    "constraints": ["geometry"]
+  },
+  "reference_metadata": {
+    "input_images": ["fixture_02_day.png", "fixture_02_night.png"],
+    "user_approved": true
+  },
+  "expected_structure": {
+    "alignment_prefix": "How the reference pictures align with the target video",
+    "field_order": ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"],
+    "non_diegetic_music": "N/A",
+    "two_pictures": true,
+    "end_time_seconds": "4.46"
+  }
+}

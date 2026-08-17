@@ -48,8 +48,9 @@ class TestV080RC3LocalAdaptation(unittest.TestCase):
         self.assertIn("positive_prompt", res)
 
     def test_rc3_docs_exist(self):
-        self.assertTrue((SYSTEM_ROOT / "docs" / "Architect_RC3_Test_Guide.md").is_file())
-        self.assertTrue((SYSTEM_ROOT / "docs" / "V0.8.0_RC3_Adaptation_Report.md").is_file())
+        # PATCH2.8-G: internal docs moved to docs/internal_archive/ (not public release).
+        self.assertTrue((SYSTEM_ROOT / "docs" / "internal_archive" / "Architect_RC3_Test_Guide.md").is_file())
+        self.assertTrue((SYSTEM_ROOT / "docs" / "internal_archive" / "V0.8.0_RC3_Adaptation_Report.md").is_file())
 
 if __name__ == "__main__":
     unittest.main()

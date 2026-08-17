@@ -1,0 +1,752 @@
+{
+  "last_node_id": 16,
+  "last_link_id": 19,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        60,
+        80
+      ],
+      "size": [
+        320,
+        320
+      ],
+      "widgets_values": [
+        "02_Day_Night_Transition--DAY.png",
+        "image"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "title": "FIRST FRAME - DAY reference"
+      }
+    },
+    {
+      "id": 16,
+      "type": "LoadImage",
+      "pos": [
+        60,
+        420
+      ],
+      "size": [
+        320,
+        320
+      ],
+      "widgets_values": [
+        "02_Day_Night_Transition--NIGHT.png",
+        "image"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "title": "LAST FRAME - NIGHT reference"
+      }
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        420,
+        80
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "title": "TE - official NVFP4 AWQ"
+      }
+    },
+    {
+      "id": 3,
+      "type": "UNETLoader",
+      "pos": [
+        420,
+        200
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "widgets_values": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "default"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            4,
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "title": "DiT - official pruned INT8 (PREAD safe load)"
+      }
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [
+        420,
+        320
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            2,
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "title": "Video VAE"
+      }
+    },
+    {
+      "id": 5,
+      "type": "VAELoader",
+      "pos": [
+        420,
+        420
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "title": "Audio VAE"
+      }
+    },
+    {
+      "id": 6,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        760,
+        80
+      ],
+      "size": [
+        380,
+        280
+      ],
+      "widgets_values": [
+        "How the reference pictures align with the target video \u2014 Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 4.46-second mark of the target video.\n\nintegrated_multimodal_description: [Shot 1] Cinematic wide hero shot of the exterior facade. the camera holds a static position with small amplitude at slow speed. Natural daylight with soft directional illumination. Geometry and structure stay consistent with the reference. Material textures remain faithful to the reference. Motion is continuous and temporally consistent across the clip; no jarring cuts in this single-shot sequence. The scene transitions continuously from the DAY reference (Picture 1) to the NIGHT reference (Picture 2), changing only sky, ambient brightness, interior illumination, landscape lighting, shadow softness, and color temperature. Architecture, camera, facade, materials, and landscape geometry remain unchanged. Environment: environment consistent with the reference site; weather: mild, stable weather; calm, contemplative mood. No text, subtitles, logos, or watermarks.\n\noverall_soundscape: Gentle ambient environment sound consistent with the scene, subtle wind, and light spatial room tone; no dialogue.\n\nnon_diegetic_music: N/A",
+        1344,
+        768,
+        107
+      ],
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 1
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 2
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "title": "02_Day_Night_Transition NATIVE (FL2VA)"
+      }
+    },
+    {
+      "id": 7,
+      "type": "KSamplerSelect",
+      "pos": [
+        760,
+        380
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [
+        "res_multistep"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "title": "official native sampler"
+      }
+    },
+    {
+      "id": 8,
+      "type": "BasicScheduler",
+      "pos": [
+        760,
+        480
+      ],
+      "size": [
+        300,
+        110
+      ],
+      "widgets_values": [
+        "simple",
+        20,
+        1.0
+      ],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "title": "official native scheduler (20 steps)"
+      }
+    },
+    {
+      "id": 9,
+      "type": "RandomNoise",
+      "pos": [
+        760,
+        610
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [
+        777888999
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "title": "seed"
+      }
+    },
+    {
+      "id": 10,
+      "type": "BasicGuider",
+      "pos": [
+        1080,
+        80
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 5
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "title": "guider"
+      }
+    },
+    {
+      "id": 11,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1080,
+        200
+      ],
+      "size": [
+        320,
+        140
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 10
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 11
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 8
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 9
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            12,
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "title": "native sampler"
+      }
+    },
+    {
+      "id": 12,
+      "type": "VAEDecode",
+      "pos": [
+        1080,
+        360
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 12
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "title": "video decode"
+      }
+    },
+    {
+      "id": 13,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        1080,
+        470
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 13
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "title": "audio decode"
+      }
+    },
+    {
+      "id": 14,
+      "type": "CreateVideo",
+      "pos": [
+        1380,
+        80
+      ],
+      "size": [
+        280,
+        120
+      ],
+      "widgets_values": [
+        24.0
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "title": "mux 24fps"
+      }
+    },
+    {
+      "id": 15,
+      "type": "SaveVideo",
+      "pos": [
+        1380,
+        220
+      ],
+      "size": [
+        300,
+        140
+      ],
+      "widgets_values": [
+        "video/02_Day_Night_Transition",
+        "auto",
+        "auto"
+      ],
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 16
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "title": "output"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      6,
+      0,
+      "CLIP"
+    ],
+    [
+      2,
+      4,
+      0,
+      6,
+      1,
+      "VAE"
+    ],
+    [
+      3,
+      1,
+      0,
+      6,
+      2,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      8,
+      0,
+      "MODEL"
+    ],
+    [
+      5,
+      3,
+      0,
+      10,
+      0,
+      "MODEL"
+    ],
+    [
+      6,
+      6,
+      0,
+      10,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      7,
+      6,
+      1,
+      11,
+      4,
+      "LATENT"
+    ],
+    [
+      8,
+      7,
+      0,
+      11,
+      2,
+      "SAMPLER"
+    ],
+    [
+      9,
+      8,
+      0,
+      11,
+      3,
+      "SIGMAS"
+    ],
+    [
+      10,
+      9,
+      0,
+      11,
+      0,
+      "NOISE"
+    ],
+    [
+      11,
+      10,
+      0,
+      11,
+      1,
+      "GUIDER"
+    ],
+    [
+      12,
+      11,
+      0,
+      12,
+      0,
+      "LATENT"
+    ],
+    [
+      13,
+      11,
+      0,
+      13,
+      0,
+      "LATENT"
+    ],
+    [
+      14,
+      12,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      13,
+      0,
+      14,
+      1,
+      "AUDIO"
+    ],
+    [
+      16,
+      14,
+      0,
+      15,
+      0,
+      "VIDEO"
+    ],
+    [
+      17,
+      5,
+      0,
+      13,
+      1,
+      "VAE"
+    ],
+    [
+      18,
+      4,
+      0,
+      12,
+      1,
+      "VAE"
+    ],
+    [
+      19,
+      16,
+      0,
+      6,
+      3,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "title": "02_Day_Night_Transition NATIVE (FL2VA)",
+      "bounding": [
+        40,
+        40,
+        1750,
+        900
+      ],
+      "color": "#1f5f3a",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {
+    "rc33_patch24_w02": {
+      "runtime": "official_native_h3",
+      "mode": "FL2VA",
+      "resolution": "1344x768",
+      "requested_duration_seconds": 4.0,
+      "fps": 24,
+      "frames": 107,
+      "seed": 777888999,
+      "reference_day": "参考效果图/02_Day_Night_Transition--DAY.png",
+      "reference_night": "参考效果图/02_Day_Night_Transition--NIGHT.png",
+      "first_frame": "DAY (node 1) -> MiniMaxH3ImageToVideo.first_frame",
+      "last_frame": "NIGHT (node 16) -> MiniMaxH3ImageToVideo.last_frame",
+      "reference_status": "USER_SUPPLIED (card confirmation presented)",
+      "safe_load": "H3_WINDOWS_SAFE_LOAD=pread",
+      "official_skill": "h3-prompt-writing (SKILL.md + base-en.txt) via H3PromptBridge (FL2VA)",
+      "non_diegetic_music": "N/A",
+      "production_principle": "LIGHTING_TRANSFORMATION_OVER_SCENE_REGENERATION",
+      "validation": "NOT_YET_NATIVE_VALIDATED"
+    }
+  },
+  "version": 0.4
+}

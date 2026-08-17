@@ -1,0 +1,220 @@
+{
+  "last_node_id": 11,
+  "last_link_id": 13,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [80, 100],
+      "size": [340, 330],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [1], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage", "title": "USER INPUT 1: Architectural Rendering Image"},
+      "widgets_values": ["architectural_render_sample.png", "image"]
+    },
+    {
+      "id": 5,
+      "type": "RHMiniMaxH3FL2VAFirstFrameCondition",
+      "pos": [460, 100],
+      "size": [340, 100],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "first_frame", "type": "IMAGE", "link": 1}
+      ],
+      "outputs": [
+        {"name": "keyframes", "type": "MINIMAX_H3_KEYFRAMES", "links": [5, 12], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3FL2VAFirstFrameCondition", "title": "PIPELINE: H3 First Frame Conditioning"}
+    },
+    {
+      "id": 6,
+      "type": "RHMiniMaxH3FL2VATarget",
+      "pos": [460, 240],
+      "size": [340, 180],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "keyframes", "type": "MINIMAX_H3_KEYFRAMES", "link": 5}
+      ],
+      "outputs": [
+        {"name": "target", "type": "MINIMAX_H3_TARGET", "links": [6, 7], "slot_index": 0},
+        {"name": "shape_info", "type": "STRING", "links": null}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3FL2VATarget", "title": "USER INPUT 3: Duration & Resolution Target"},
+      "widgets_values": ["auto", 5.0, 1280, 736]
+    },
+    {
+      "id": 2,
+      "type": "RHMiniMaxH3ModelLoader",
+      "pos": [80, 480],
+      "size": [340, 120],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": [
+        {"name": "h3_model", "type": "MINIMAX_H3_MODEL", "links": [2], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3ModelLoader", "title": "BACKEND: H3 DiT Model Loader"},
+      "widgets_values": ["FL2VA", "MiniMax-H3", "auto", "MiniMax-H3-FL2VA-int8_convrot.safetensors"]
+    },
+    {
+      "id": 3,
+      "type": "RHMiniMaxH3TextEncoderLoader",
+      "pos": [80, 640],
+      "size": [340, 120],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "outputs": [
+        {"name": "h3_text_encoder", "type": "MINIMAX_H3_TEXT_ENCODER", "links": [3], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3TextEncoderLoader", "title": "BACKEND: Qwen3-VL Text Encoder Loader"},
+      "widgets_values": ["MiniMax-H3", "auto", "qwen3-vl-32b-int8_convrot.safetensors"]
+    },
+    {
+      "id": 4,
+      "type": "RHMiniMaxH3VAELoader",
+      "pos": [80, 800],
+      "size": [340, 140],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "outputs": [
+        {"name": "h3_vae_bundle", "type": "MINIMAX_H3_VAE_BUNDLE", "links": [4, 11], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3VAELoader", "title": "BACKEND: H3 Dual VAE Loader"},
+      "widgets_values": ["MiniMax-H3", "MiniMax-H3-video_vae.safetensors", "MiniMax-H3-audio_vae.safetensors"]
+    },
+    {
+      "id": 7,
+      "type": "RHMiniMaxH3FL2VAEncode",
+      "pos": [840, 100],
+      "size": [400, 240],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "h3_text_encoder", "type": "MINIMAX_H3_TEXT_ENCODER", "link": 3},
+        {"name": "h3_vae_bundle", "type": "MINIMAX_H3_VAE_BUNDLE", "link": 4},
+        {"name": "target", "type": "MINIMAX_H3_TARGET", "link": 6},
+        {"name": "keyframes", "type": "MINIMAX_H3_KEYFRAMES", "link": 12}
+      ],
+      "outputs": [
+        {"name": "conditioning", "type": "MINIMAX_H3_CONDITIONING", "links": [8], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3FL2VAEncode", "title": "USER INPUT 2: Architectural Intent & H3 FL2VA Encoder"},
+      "widgets_values": [
+        "High altitude drone orbit sweeping architectural masterplan context, golden hour daylight, crisp architectural presentation, stable camera flight trajectory, preserve building geometry, photorealistic architectural rendering, 4k ultra detailed"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "RHMiniMaxH3EmptyAVLatent",
+      "pos": [840, 380],
+      "size": [340, 100],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "target", "type": "MINIMAX_H3_TARGET", "link": 7}
+      ],
+      "outputs": [
+        {"name": "av_latent", "type": "MINIMAX_H3_AV_LATENT", "links": [9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3EmptyAVLatent", "title": "PIPELINE: H3 Empty AV Latent Generator"}
+    },
+    {
+      "id": 9,
+      "type": "RHMiniMaxH3DualSigmaSampler",
+      "pos": [840, 520],
+      "size": [360, 280],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "h3_model", "type": "MINIMAX_H3_MODEL", "link": 2},
+        {"name": "conditioning", "type": "MINIMAX_H3_CONDITIONING", "link": 8},
+        {"name": "av_latent", "type": "MINIMAX_H3_AV_LATENT", "link": 9}
+      ],
+      "outputs": [
+        {"name": "sampled_av_latent", "type": "MINIMAX_H3_AV_LATENT", "links": [10], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3DualSigmaSampler", "title": "USER INPUT 4: Dual Sigma Sampler & Seed"},
+      "widgets_values": [777888999, 50, 12.0, 3.0, "off", true]
+    },
+    {
+      "id": 10,
+      "type": "RHMiniMaxH3DecodeAV",
+      "pos": [1260, 100],
+      "size": [340, 120],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "h3_vae_bundle", "type": "MINIMAX_H3_VAE_BUNDLE", "link": 11},
+        {"name": "sampled_av_latent", "type": "MINIMAX_H3_AV_LATENT", "link": 10}
+      ],
+      "outputs": [
+        {"name": "frames", "type": "IMAGE", "links": [13], "slot_index": 0},
+        {"name": "audio", "type": "AUDIO", "links": null}
+      ],
+      "properties": {"Node name for S&R": "RHMiniMaxH3DecodeAV", "title": "PIPELINE: H3 Decode Video + Audio"}
+    },
+    {
+      "id": 11,
+      "type": "VHS_VideoCombine",
+      "pos": [1260, 260],
+      "size": [340, 290],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 13}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "VHS_VideoCombine", "title": "OUTPUT: MP4 Video Export"},
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "04_Drone_Aerial_GOLDEN_MiniMaxH3",
+        "format": "video/h264-mp4",
+        "pingpong": false,
+        "save_output": true
+      }
+    }
+  ],
+  "links": [
+    [1, 1, 0, 5, 0, "IMAGE"],
+    [2, 2, 0, 9, 0, "MINIMAX_H3_MODEL"],
+    [3, 3, 0, 7, 0, "MINIMAX_H3_TEXT_ENCODER"],
+    [4, 4, 0, 7, 1, "MINIMAX_H3_VAE_BUNDLE"],
+    [5, 5, 0, 6, 0, "MINIMAX_H3_KEYFRAMES"],
+    [6, 6, 0, 7, 2, "MINIMAX_H3_TARGET"],
+    [7, 6, 0, 8, 0, "MINIMAX_H3_TARGET"],
+    [8, 7, 0, 9, 1, "MINIMAX_H3_CONDITIONING"],
+    [9, 8, 0, 9, 2, "MINIMAX_H3_AV_LATENT"],
+    [10, 9, 0, 10, 1, "MINIMAX_H3_AV_LATENT"],
+    [11, 4, 0, 10, 0, "MINIMAX_H3_VAE_BUNDLE"],
+    [12, 5, 0, 7, 3, "MINIMAX_H3_KEYFRAMES"],
+    [13, 10, 0, 11, 0, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "USER INPUTS & BACKEND LOADERS",
+      "bounding": [60, 40, 1560, 940],
+      "color": "#1f3a60",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

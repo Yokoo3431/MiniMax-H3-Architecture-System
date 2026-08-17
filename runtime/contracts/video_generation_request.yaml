@@ -1,0 +1,162 @@
+# RC3.4 PATCH2.7-A - Video Generation Request Contract
+# Single source of truth for the Runtime Adapter boundary.
+# DESIGN ONLY: no GPU / ComfyUI / Native runtime call.
+
+video_generation_request:
+  study_id:
+    type: string
+    example: "facade_motion_study"
+    required: true
+
+  reference_assets:
+    type: list
+    required: true
+    min_items: 1
+    items:
+      asset_id:
+        type: string
+      role:
+        type: enum
+        allowed: ["first_frame", "last_frame", "context"]
+      path_or_ref:
+        type: string
+      sha256:
+        type: string
+        nullable: true
+
+  workflow_id:
+    type: enum
+    allowed:
+      - "01_Exterior_Hero"
+      - "02_Day_Night_Transition"
+      - "03_Material_Detail"
+      - "04_Drone_Aerial"
+      - "05_Slow_Walkthrough"
+    required: true
+
+  camera_motion:
+    type: enum
+    allowed:
+      - static
+      - slow_push
+      - slow_pull
+      - slow_pan
+      - slow_arc
+      - walkthrough
+      - aerial_reveal
+    required: true
+
+  generation_parameters:
+    type: object
+    required: true
+    fields:
+      resolution:
+        type: string
+        allowed: ["1344x768", "1280x720"]
+        default: "1344x768"
+      fps:
+        type: integer
+        allowed: [24]
+        default: 24
+      duration:
+        type: number
+        default: 4.0
+      quality:
+        type: enum
+        allowed: ["diagnostic", "production"]
+        default: "diagnostic"
+      seed:
+        type: integer
+        required: true
+
+  prompt_payload:
+    type: object
+    required: true
+    fields:
+      mode:
+        type: enum
+        allowed: ["I2VA", "FL2VA"]
+      prompt:
+        type: string
+      alignment:
+        type: string
+      integrated_multimodal_description:
+        type: string
+      overall_soundscape:
+        type: string
+      non_diegetic_music:
+        type: string
+        default: "N/A"
+      prompt_hash:
+        type: string
+      provenance_ref:
+        type: string
+        nullable: true
+
+  output_spec:
+    type: object
+    required: true
+    fields:
+      container:
+        type: string
+        default: "mp4"
+      codec:
+        type: string
+        default: "h264"
+      fps:
+        type: integer
+        default: 24
+      resolution:
+        type: string
+        default: "1344x768"
+      preview_frames:
+        type: list
+        default: ["first", "0.25", "0.5", "0.75", "last"]
+      report_format:
+        type: string
+        default: "json"
+
+  gates:
+    type: object
+    required: true
+    fields:
+      reference_approved:
+        type: boolean
+        required: true
+      intent_confirmed:
+        type: boolean
+        required: true
+      prompt_verified:
+        type: boolean
+        required: true
+      risk_reviewed:
+        type: boolean
+        required: true
+
+runtime_status:
+  allowed:
+    - QUEUED
+    - PREPARING
+    - LOADING_MODEL
+    - SAMPLING
+    - ENCODING
+    - EXPORTING
+    - COMPLETED
+    - FAILED
+    - CANCELLED
+  terminal:
+    - COMPLETED
+    - FAILED
+    - CANCELLED
+
+# Runtime Status -> Existing Job Status (mapping ONLY; state machine unchanged)
+state_mapping:
+  QUEUED: PREPARING
+  PREPARING: PREPARING
+  LOADING_MODEL: LOADING_MODEL
+  SAMPLING: SAMPLING
+  ENCODING: ENCODING
+  EXPORTING: EXPORTING
+  COMPLETED: COMPLETED
+  FAILED: GPU_FAILED
+  CANCELLED: GPU_FAILED   # existing machine has no CANCELLED; terminal, no auto retry

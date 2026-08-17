@@ -13,7 +13,8 @@ from scripts.deploy_workflows import deploy_and_validate_workflows
 
 WORKFLOWS_DIR = SYSTEM_ROOT / "workflows"
 LAUNCHER_FILE = SYSTEM_ROOT / "launcher" / "Start_MiniMax_H3_Architect.bat"
-REPORT_DOC = SYSTEM_ROOT / "docs" / "V0.8.0_RC3.2_Runtime_Reconstruction_Report.md"
+# PATCH2.8-G: internal docs moved to docs/internal_archive/ (not public release).
+REPORT_DOC = SYSTEM_ROOT / "docs" / "internal_archive" / "V0.8.0_RC3.2_Runtime_Reconstruction_Report.md"
 
 FROZEN_WORKFLOW_FILES = [
     "01_Exterior_Hero.json",

@@ -1,0 +1,125 @@
+# RC3.3 PATCH2.5 - Architect Video Intent Schema
+# Converts architect natural-language intent into a structure the
+# Official MiniMax H3 Skill (h3-prompt-writing) can consume via H3PromptBridge.
+#
+# The official skill remains the ONLY prompt-authoring authority.
+# This schema normalizes INPUT intent; it never replaces the skill output schema.
+
+intent:
+  # project_type DESCRIBES the architectural scene/context. It MUST NOT select
+  # the workflow by itself. Workflow selection is driven by `video_task`.
+  project_type:
+    - exterior        # facade / building exterior showcase
+    - interior        # interior or spatial walkthrough
+    - material        # material / detail close-up
+    - lighting        # day-night / atmosphere transition
+    - aerial          # drone / masterplan / site context
+    - landscape       # landscape / urban context (not a workflow task)
+    - mixed           # mixed scene/context (ambiguous; requires video_task)
+
+  # video_task SELECTS the production workflow. Allowed production values:
+  video_task:
+    - exterior_hero
+    - day_night_transition
+    - material_detail
+    - drone_aerial
+    - slow_walkthrough
+
+  classification:
+    # Deterministic natural-language classifier policy (PATCH2.5-A).
+    high_confidence_threshold: 0.8
+    ambiguous_threshold: 0.5
+    explicit_workflow_overrides: true   # user-selected 01..05 always wins
+    requires_user_confirmation_policy:
+      - "high confidence: proceed to reference gate"
+      - "ambiguous / low confidence: DO NOT guess; return 2-3 workflow choices and request user confirmation"
+    valid_combinations:
+      - "project_type=interior + video_task=day_night_transition"
+      - "project_type=exterior + video_task=material_detail"
+      - "project_type=exterior + video_task=slow_walkthrough"
+      - "project_type=landscape + video_task=drone_aerial"
+      - "project_type=mixed + video_task=exterior_hero"
+
+  scene:
+    optional_fields:
+      - building_type       # e.g. villa, office, campus, museum, civic
+      - location            # e.g. courtyard, street, atrium, waterfront
+      - style               # e.g. minimalist, traditional, parametric
+      - materials           # list of dominant materials (concrete/stone/metal/timber/glass)
+      - lighting_state      # day / dusk / night / golden-hour (for single-state shots)
+
+  camera:
+    motion:
+      - static              # no camera movement
+      - slow_push           # slow push in, small amplitude
+      - slow_pull           # slow pull out, small amplitude
+      - slow_pan            # pan, small amplitude, slow speed
+      - slow_arc            # arc shot, SMALL amplitude only
+      - walkthrough         # slow forward spatial exploration
+      - aerial_reveal       # controlled aerial reveal, no large orbit
+    amplitude:
+      - very_small
+      - small
+      - medium
+      - large               # discouraged for single-image generation
+    speed:
+      - slow
+      - normal
+      - fast                # discouraged for architecture validation
+
+  priority:
+    - geometry              # structure / proportion / perspective preservation
+    - material              # texture / joint / edge / reflectivity fidelity
+    - lighting              # illumination transition / atmosphere
+    - atmosphere            # mood / environment consistency
+
+  constraints:
+    preserve:
+      - massing
+      - facade_rhythm
+      - roof_geometry
+      - openings
+      - materials
+      - perspective
+      - camera_position
+    prohibit:
+      - geometry_redesign
+      - material_replacement
+      - large_orbit
+      - fast_zoom
+      - scene_cuts
+      - texture_swimming
+      - facade_melting
+
+  reference:
+    mode:                   # resolved by the skill layer
+      - I2VA                # one first-frame image
+      - FL2VA               # first + last frame images
+      - L2VA                # one last-frame image
+      - T2VA                # text only
+      - Ref2VA              # full references (images/videos/audio)
+    input_count:
+      I2VA: 1
+      FL2VA: 2
+      L2VA: 1
+      T2VA: 0
+      Ref2VA: "1-9 images + optional videos/audio"
+    user_approval_required: true   # no GPU before explicit user reference approval
+
+  output:
+    - prompt_id
+    - mode
+    - official_prompt_schema
+    - workflow_profile
+    - quality_guidance
+
+validation_rules:
+  - "Every final prompt must pass verify_official_structure / verify_fl2va_structure from H3PromptBridge."
+  - "No manual prompt concatenation; no direct raw intent to the model."
+  - "Workflow selection is driven by video_task, never by project_type alone."
+  - "Ambiguous natural-language intent must return 2-3 workflow choices and require user confirmation; the classifier must not silently guess."
+  - "Explicit user workflow selection (01..05) overrides automatic classification once reference/input requirements are valid."
+  - "Production generation is BLOCKED when installed skill revision != pinned skill revision."
+  - "Upstream skill revision != pinned revision surfaces OFFICIAL_SKILL_UPDATE_AVAILABLE; it never auto-updates production."
+  - "Single-image generation must not request large camera movement (motion risk guard)."
+  - "Large viewpoint changes prefer FL2VA or multi-reference / segmented clips."

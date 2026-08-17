@@ -1,0 +1,26 @@
+{
+  "template": "video_minimax_h3_i2v.json",
+  "commit": "5c75d9f137bb27706a70dd337dac6249b2e51ded",
+  "commit_date": "2026-08-03",
+  "sha256": "bb71aecdd3c0b62e56eafe03acb14d1cfeabec7072eaed9cbdf473c2aaf73009",
+  "node_types": [
+    "SaveVideo",
+    "LoadImage",
+    "ResolutionSelector",
+    "4c314f31-ecda-4b08-ae98-faaba1bf613f",
+    "MarkdownNote",
+    "MarkdownNote",
+    "MarkdownNote",
+    "ImageScaleToTotalPixels",
+    "GetImageSize"
+  ],
+  "models_referenced": [
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "minimax_h3_video_vae_fp16.safetensors",
+    "minimax_h3_audio_vae_fp32.safetensors"
+  ],
+  "default_resolution": "1344x768 (node 105 widgets)",
+  "default_duration_seconds": 5.0,
+  "note": "Template node 105 is a hashed custom-node id (4c314f31-...) not resolvable to a core class; the executable official core-native I2V composition uses MiniMaxH3ImageToVideo + official R2V-style sampler/decode/save nodes (verified against ComfyUI 0.33.1 object_info)."
+}

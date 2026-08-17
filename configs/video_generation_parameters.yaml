@@ -1,0 +1,89 @@
+# RC3.3 PATCH2.6-C - Video Generation Parameters Schema
+# DESIGN ONLY: parameter contract for the Architect Video Studio workstation.
+# NOT wired to any GPU / Native runtime. Frozen production components unchanged.
+
+generation:
+  # --- output contract ---
+  resolution:
+    baseline: "1344x768"          # office-workstation diagnostic standard
+    allowed:
+      - "1344x768"                # validated baseline
+      - "1280x720"                # legacy diagnostic
+    note: "do not lower below validated diagnostic resolution for material detail"
+
+  fps:
+    baseline: 24
+    allowed: [24]
+
+  duration_seconds:
+    baseline: 4.0
+    allowed: [4.0]                 # first diagnostic validation; future durations derived
+    derived_from:
+      - "H3 frame-grid result (frame_count / fps)"
+      - "actual frame count"
+      - "fps"
+    rule: "FL2VA end-time MUST be computed from frame_count/fps, never hard-coded"
+
+  quality:
+    baseline: diagnostic
+    allowed:
+      - diagnostic                # 20-step official Native baseline, no acceleration hacks
+      - production                # future: reviewed final-output policy (NOT implemented)
+    note: "production quality tier is a future decision; do not mask a failing baseline"
+
+  seed:
+    type: integer
+    fixed_per_job: true
+    note: "fixed seed recorded in report/provenance for reproducibility"
+
+  safe_load:
+    baseline: pread
+    frozen: true                  # H3_WINDOWS_SAFE_LOAD=pread shim; never mmap / --disable-mmap
+
+  # --- camera motion (values aligned with configs/architect_video_intent_schema.yaml) ---
+  camera_motion:
+    allowed:
+      - static                    # no camera movement
+      - slow_push                 # slow push in, small amplitude
+      - slow_pull                 # slow pull out, small amplitude
+      - slow_pan                  # pan, small amplitude, slow speed
+      - slow_arc                  # arc shot, SMALL amplitude only
+      - walkthrough               # slow forward spatial exploration
+      - aerial_reveal             # controlled aerial reveal, no large orbit
+    motion_policy:
+      - "single-image tasks must not request large camera movement (risk guard)"
+      - "large viewpoint change prefers FL2VA / multi-reference / segmented clips"
+
+  # --- workflow (frozen catalog only) ---
+  workflow:
+    allowed:
+      - "01_Exterior_Hero"
+      - "02_Day_Night_Transition"
+      - "03_Material_Detail"
+      - "04_Drone_Aerial"
+      - "05_Slow_Walkthrough"
+    frozen: true                  # UI may select 01-05 only; never edit workflow JSON
+    mode_by_workflow:
+      "01_Exterior_Hero": I2VA
+      "02_Day_Night_Transition": FL2VA
+      "03_Material_Detail": I2VA
+      "04_Drone_Aerial": I2VA
+      "05_Slow_Walkthrough": I2VA
+
+  # --- camera -> workflow suggestion (advisory; explicit user choice overrides) ---
+  camera_to_workflow_suggestion:
+    walkthrough: "05_Slow_Walkthrough"
+    aerial_reveal: "04_Drone_Aerial"
+    static_material: "03_Material_Detail"   # intent material_detail
+    static_day_night: "02_Day_Night_Transition"  # intent day_night_transition
+    slow_push: "01_Exterior_Hero"
+    reveal: "01_Exterior_Hero"
+    slow_arc: "01_Exterior_Hero"            # small amplitude only
+    slow_pan: "01_Exterior_Hero"
+    slow_pull: "01_Exterior_Hero"
+
+validation_rules:
+  - "Parameters are advisory UI inputs; the frozen adapter/workflow contract remains authoritative."
+  - "No parameter change may modify frozen workflow JSON, adapter, bridge, or skill version policy."
+  - "Generation remains gated: reference approved + intent confirmed + prompt verified + risk reviewed."
+  - "Every job persists parameters + provenance to report.json for traceability."

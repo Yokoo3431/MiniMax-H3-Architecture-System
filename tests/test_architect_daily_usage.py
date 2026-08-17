@@ -15,8 +15,9 @@ from runtime.prompt_bridge.official_h3_prompt_adapter import OfficialH3PromptAda
 TEST_WORKSPACE = SYSTEM_ROOT / "tests" / "personal_workspace"
 LAUNCHER_FILE = SYSTEM_ROOT / "launcher" / "Start_MiniMax_H3_Architect.bat"
 CATALOG_FILE = SYSTEM_ROOT / "configs" / "workflow_catalog.json"
-QUICK_START_DOC = SYSTEM_ROOT / "docs" / "Architect_Quick_Start.md"
-REPORT_DOC = SYSTEM_ROOT / "docs" / "V0.8.0_RC2_Architect_Daily_Usage_Report.md"
+# PATCH2.8-G: internal docs moved to docs/internal_archive/ (not public release).
+QUICK_START_DOC = SYSTEM_ROOT / "docs" / "internal_archive" / "Architect_Quick_Start.md"
+REPORT_DOC = SYSTEM_ROOT / "docs" / "internal_archive" / "V0.8.0_RC2_Architect_Daily_Usage_Report.md"
 
 class TestArchitectDailyUsage(unittest.TestCase):
     def setUp(self):

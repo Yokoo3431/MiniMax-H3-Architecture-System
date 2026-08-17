@@ -1,0 +1,28 @@
+{
+  "fixture_id": "01_Exterior_Hero",
+  "workflow": "01_Exterior_Hero",
+  "video_task": "exterior_hero",
+  "mode": "I2VA",
+  "pinned_skill_revision": "2026-07-29-main-reviewed",
+  "duration_seconds": 4.0,
+  "architect_intent": {
+    "project_type": "exterior",
+    "video_task": "exterior_hero",
+    "scene": "modern villa entrance facade",
+    "camera_motion": "slow_push",
+    "amplitude": "small",
+    "speed": "slow",
+    "priority": "geometry",
+    "constraints": ["geometry", "material"]
+  },
+  "reference_metadata": {
+    "input_images": ["fixture_01_exterior_hero.png"],
+    "user_approved": true
+  },
+  "expected_structure": {
+    "alignment_prefix": "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+    "field_order": ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"],
+    "non_diegetic_music": "N/A",
+    "single_shot": true
+  }
+}

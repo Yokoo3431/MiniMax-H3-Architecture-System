@@ -1,5 +1,16 @@
-"""Official MiniMax H3 Prompt Adapter Engine (V0.8.0 RC3).
-Adapts Chinese & English natural language design intent into MiniMax H3 structured prompts (Camera, Motion, Lighting, Geometry, Material, Atmosphere).
+"""DEPRECATED - Official MiniMax H3 Prompt Adapter Engine (V0.8.0 RC3).
+
+WARNING: This module is DEPRECATED and MUST NOT be used in the production chain
+(RC3.3 PATCH2.5+). It performs manual natural-language concatenation, which
+violates the production principle that the Official MiniMax H3 Skill
+(h3-prompt-writing) is the ONLY prompt-authoring authority.
+
+Production path (runtime/prompt_bridge/official_skill_adapter.py ->
+architect_h3_prompt_bridge.H3PromptBridge) never imports this module.
+Runtime/prompt_bridge/__init__.py intentionally does not export it.
+
+Retained only for forensic/historical reference. Removal is deferred until the
+forensic audit is complete.
 """
 
 from typing import Dict, Any

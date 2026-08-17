@@ -1,81 +1,91 @@
-# MiniMax H3 Architecture Infrastructure System
+# Architect Video Studio
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](docs/version.md)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![ComfyUI](https://img.shields.io/badge/ComfyUI-0.27.0-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
-[![Hardware](https://img.shields.io/badge/GPU-RTX%205070%2012GB-76B900.svg)](https://nvidia.com)
+**建筑师 AI 视频生成工作站** —— 用参考图 + 自然语言，在本地 Native 运行时上生成
+建筑展示视频。
 
-A professional, version-controlled, cross-machine, Agent-callable infrastructure layer for **MiniMax H3** architectural video generation workflows.
+> **路径约定**：本仓库不包含机器绝对路径。需要引用本地位置时使用占位符
+> `<PROJECT_ROOT>`（仓库根）、`<USER_HOME>`（用户目录）、`<SAMPLE_PROJECT>`
+> （示例项目）；内部开发记录在 `docs/internal_archive/`，不随公开发布。
 
----
-
-## 🌟 Key Features
-
-1. **Asset Separation**: Workflows, prompt dictionaries, skills, and configuration files are isolated into a standalone Git repository, avoiding local ComfyUI folder lock-in.
-2. **Model Path Abstraction (`configs/extra_model_paths.yaml`)**: Decouples 40GB model weights from code. Supports `D:\`, `E:\`, and `NAS` network shares without duplicating weight files across computers.
-3. **Environment Restoration (`scripts/setup_environment.bat`)**: Automated 5-stage script to check dependencies, link custom nodes, and restore workflows into ComfyUI.
-4. **Agent Integration Layer (`scripts/agent_h3_video_api.py`)**: Programmatic API for AI Agents (Antigravity, Codex, Hermes) to trigger video generation given natural language task prompts and rendering images.
-5. **Version Control & Auditing**: Semantic versioning (`version.md`) and change tracking (`CHANGELOG.md`) with 100% hash parity validation.
+> 这不是 ComfyUI 的包装器，也不是项目管理工具。它是面向建筑师的
+> **视频生成工作流控制层**：Reference → Intent → Official Skill Prompt →
+> Native Workflow → 视频输出。
 
 ---
 
-## 📁 Repository Structure
+## Features
+
+- **Reference guided video**：上传效果图 → 质量卡 → 人工批准 → 生成
+- **Native H3 runtime**：ComfyUI Native v0.33.1 + MiniMax H3（PREAD safe-load，
+  Windows mmap 缓解）
+- **Official Skill prompt**：MiniMax H3 官方 `h3-prompt-writing` 是唯一
+  prompt 权威（版本 pin，自动 provenance）
+- **Five architecture workflows**：
+
+| 用户名称 | 模式 | 说明 |
+| --- | --- | --- |
+| Architecture Presentation | I2VA | 建筑外观展示 |
+| Day Night | FL2VA | 日景 → 夜景过渡 |
+| Material Detail | I2VA | 材质保真特写 |
+| Drone Reveal | I2VA | 鸟瞰/总图揭示 |
+| Slow Walkthrough | I2VA | 慢速空间漫游 |
+
+## Quick Start（5 步）
+
+1. **下载**：获取 `ArchitectVideoStudio` 压缩包并解压（SSD，~100GB 可用空间）。
+2. **检查模型**：按 `models/manifest.json` 放置四个模型
+   （DiT / Text Encoder / Video VAE / Audio VAE）；Launcher 自动校验 SHA-256。
+3. **启动 Launcher**：双击 `launcher\start_architect_video_studio.bat`
+   （自动环境检查 → 启动 ComfyUI 8189 → 启动 Studio 8788）。
+4. **打开 Studio**：浏览器自动打开 `http://127.0.0.1:8788`。
+5. **生成视频**：新建 Study → 上传参考图 → 批准 → 输入意图 → 确认 → Generate
+   → 任务中心查看输出。
+
+首次生成教程见 [docs/User_Guide.md](docs/User_Guide.md)（Exterior Hero 示例）。
+
+## Hardware
+
+| | 最低 | 推荐 |
+| --- | --- | --- |
+| GPU | NVIDIA CUDA 12GB VRAM | RTX 5070 12.8GB（已验证基线） |
+| 内存 | 32GB RAM | 64GB RAM |
+| 磁盘 | 100GB 可用 | 200GB+ SSD |
+| 系统 | Windows 10/11 64-bit | Windows 11 |
+| 页面文件（Free Commit） | ≥ 50GB | ≥ 80GB |
+
+## Architecture
+
+生产链与分层说明见
+[docs/Developer_Architecture.md](docs/Developer_Architecture.md)：
 
 ```
-MiniMax-H3-Architecture-System/
-├── workflows/         # Production architectural workflow JSONs
-│   ├── 1_建筑效果图_ImageToVideo.json
-│   ├── 2_建筑鸟瞰动画_AerialView.json
-│   └── 3_建筑夜景灯光变化_NightTransition.json
-├── prompts/           # Structured architectural positive/negative prompt presets
-│   └── architectural_animation_prompts.json
-├── skills/            # Antigravity AI Agent Skill definition
-│   └── minimax-h3-architectural-video/SKILL.md
-├── configs/           # Path abstraction & system defaults
-│   ├── extra_model_paths.yaml
-│   └── system_config.json
-├── scripts/           # Environment recovery, Agent API & sync simulation
-│   ├── setup_environment.bat
-│   ├── agent_h3_video_api.py
-│   └── sync_test_simulation.py
-└── docs/              # Version specs, changelog & infrastructure audit report
-    ├── version.md
-    ├── CHANGELOG.md
-    └── MiniMax_H3_Architecture_Infrastructure_Report.md
+Reference → Intent → Skill Prompt → Workflow Mapping → Native Runtime
+→ Output Package
 ```
 
----
+冻结边界：H3 Runtime / 01-05 Workflow JSON / Prompt Pipeline /
+RuntimeAdapter / WorkflowMapping / NativeRuntimeAdapter 不可修改。
 
-## 🚀 Quick Start Guide
+## Repository Layout
 
-### 1. Clone Repository (Machine B)
-```bash
-git clone https://github.com/Yokoo3431/MiniMax-H3-Architecture-System.git
-cd MiniMax-H3-Architecture-System
+```
+launcher/   production launcher（env check / process / lock / logs）
+apps/       architect_video_studio（UI + mock API + state machine）
+runtime/    contracts / adapters / prompt bridge（冻结）
+workflows/  01-05 native workflow JSON（只读）
+configs/    baseline / schema / profiles / catalog
+references/ frozen official skill reference
+samples/    example reference images
+docs/       user guide / developer architecture / phase reports
+tests/      regression suite（288）
 ```
 
-### 2. Environment Restoration
-Double click `scripts/setup_environment.bat` or run:
-```cmd
-scripts\setup_environment.bat
-```
+`core/ hardware/ installer/ interface/ plugins/ prompts/ release/ skills/
+sync/ updater/` 为早期开发遗留目录（[LEGACY]，保留历史证据，不属于生产链）。
 
-### 3. Agent Programmatic Invocation
-```python
-from scripts.agent_h3_video_api import MiniMaxH3AgentAPI
+## License
 
-api = MiniMaxH3AgentAPI()
-result = api.generate_video(
-    image_path="path/to/rendering.png",
-    task_description="Modern glass villa evening lighting pan",
-    workflow_name="1_建筑效果图_ImageToVideo.json"
-)
-
-print("Generated Video Path:", result["video_path"])
-```
-
----
-
-## 📄 License & Audit
-
-For detailed infrastructure architecture documentation and audit metrics, see [docs/MiniMax_H3_Architecture_Infrastructure_Report.md](docs/MiniMax_H3_Architecture_Infrastructure_Report.md).
+- **项目 License**：Apache License 2.0（见 [LICENSE](LICENSE)）
+- **第三方许可**：见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- **模型许可分离**：模型权重（DiT / TE / Video VAE / Audio VAE）不随仓库分发；
+  需单独获取并遵守上游（MiniMax / Qwen）各自的授权条款

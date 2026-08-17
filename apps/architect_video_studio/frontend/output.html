@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Architect Video Studio — Output Review</title>
+  <link rel="stylesheet" href="css/studio.css">
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
+    <a href="index.html">Home</a>
+    <a href="jobs.html">Job Center</a>
+    <span class="spacer"></span>
+    <span class="small muted">PATCH2.6-D · V2 · Mock</span>
+    <span id="job-id" class="small">…</span>
+  </div>
+  <div class="wrap">
+    <h2 style="margin-top:0;">Output Review</h2>
+    <div id="err" class="error-banner" style="display:none;"></div>
+    <div class="workspace" style="grid-template-columns:1fr 1fr;">
+      <div class="panel">
+        <h3>视频</h3>
+        <div class="video-box">MP4 placeholder<br><span class="small">PATCH2.6-B Mock（无真实 GPU 输出）</span></div>
+        <div id="params" class="mt"></div>
+      </div>
+      <div class="panel">
+        <h3>生成记录</h3>
+        <div id="record" class="small"></div>
+      </div>
+    </div>
+    <div class="panel mt">
+      <h3>Output Package 结构</h3>
+      <div class="pkg-tree" id="pkg-tree"></div>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/output.js"></script>
+</body>
+</html>

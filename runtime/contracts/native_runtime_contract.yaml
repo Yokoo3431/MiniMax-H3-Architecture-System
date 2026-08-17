@@ -1,0 +1,138 @@
+# RC3.4 PATCH2.7-C1 - Native Runtime Adapter Contract
+# DESIGN ONLY. No ComfyUI / GPU / Native runtime call is made from this contract.
+
+meta:
+  phase: "PATCH2.7-C1 Native Runtime Adapter Design"
+  status: "DESIGN / CONTRACT"
+  depends_on:
+    - "PATCH2.7-A VideoGenerationRequest / VideoGenerationOutput"
+    - "PATCH2.7-B workflow_mapping (workflow selection / asset / parameter)"
+  future: "NativeRuntimeAdapter implementation (PATCH2.7-C2+)"
+
+# --- Native Runtime Request --------------------------------
+# Produced by the Runtime Mapping Layer + NativeRuntimeAdapter.prepare()
+native_runtime_request:
+  job_id: string
+  study_id: string
+  workflow_asset: string          # frozen native asset reference, e.g. workflows/05_Slow_Walkthrough_NATIVE.json
+  translated_payload:
+    inputs:
+      references: list            # reference asset bindings (role -> path/ref)
+      prompt: object              # official prompt payload (never re-authored here)
+    video:
+      resolution: string          # 1344x768 | 1280x720
+      fps: integer                # 24
+      duration: number            # seconds
+    generation:
+      seed: integer
+      quality: string             # diagnostic | production
+    camera:
+      motion: string              # frozen camera enum
+    workflow:
+      id: string                  # 01-05
+    output:
+      container: string
+      codec: string
+    gates:
+      reference_approved: boolean # traceability only; enforcement upstream
+      intent_confirmed: boolean
+      prompt_verified: boolean
+      risk_reviewed: boolean
+  control:
+    submit_timeout_seconds: number
+    poll_interval_seconds: number
+    history_timeout_seconds: number
+
+# --- Native Runtime Response -------------------------------
+# Returned by ComfyUI submit boundary (future)
+native_runtime_response:
+  prompt_id: string
+  submitted_at: string            # ISO timestamp
+  initial_status: string
+  comfyui_node_status: string     # future; node-level detail only, never UI-facing
+
+# --- Runtime Event ------------------------------------------
+# Event layer is NOT bound to ComfyUI nodes.
+runtime_event:
+  job_id: string
+  stage:
+    type: enum
+    allowed:
+      - QUEUED
+      - PREPARING
+      - LOADING_MODEL
+      - SAMPLING
+      - ENCODING
+      - EXPORTING
+      - COMPLETED
+      - FAILED
+      - CANCELLED
+  progress:
+    type: number
+    min: 0
+    max: 100
+  message: string
+  timestamp: string               # ISO timestamp
+  detail_ref: string              # optional internal log reference (nullable)
+
+# --- Runtime Error ------------------------------------------
+# Refined error classification. UI shows "生成失败"; internal detail is preserved.
+runtime_error:
+  error_code:
+    type: enum
+    allowed:
+      - MODEL_LOAD_ERROR
+      - WORKFLOW_EXECUTION_ERROR
+      - RESOURCE_ERROR
+      - TIMEOUT_ERROR
+      - OUTPUT_ERROR
+      - CANCELLED
+  message: string
+  detail_ref: string              # internal log / provenance reference
+  mapped_job_status:
+    type: enum
+    allowed: [FAILED, GPU_FAILED]
+
+error_mapping:
+  MODEL_LOAD_ERROR: GPU_FAILED
+  WORKFLOW_EXECUTION_ERROR: GPU_FAILED
+  RESOURCE_ERROR: GPU_FAILED
+  TIMEOUT_ERROR: FAILED
+  OUTPUT_ERROR: FAILED
+  CANCELLED: GPU_FAILED           # terminal; no auto retry
+
+# --- Output Collection --------------------------------------
+# Keeps PATCH2.7-A VideoGenerationOutput contract; adds provenance.
+native_output:
+  job_id: string
+  video_path: string              # future: native MP4 path; current mock://
+  preview_path: string
+  metadata:
+    study_id: string
+    workflow_id: string
+    camera_motion: string
+    resolution: string
+    fps: integer
+    duration: number
+    quality: string
+    seed: integer
+    prompt_hash: string
+  runtime_info:
+    adapter: string               # mock | native
+    gpu_invoked: boolean
+    comfyui_invoked: boolean
+    native_runtime_invoked: boolean
+    prompt_id: string             # future
+  provenance:
+    official_skill_revision: string
+    prompt_hash: string
+    workflow_asset_hash: string
+    reference_hashes: object
+    user_reference_approved: boolean
+
+# --- Architecture Rules (no responsibility mixing) ----------
+rules:
+  - "Workflow Mapping Layer: chooses WHICH workflow."
+  - "Runtime Adapter: decides HOW to execute."
+  - "ComfyUI: future execution environment only."
+  - "Prompt Pipeline can NEVER be bypassed: prompt is always the frozen official payload."

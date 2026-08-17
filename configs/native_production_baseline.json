@@ -1,0 +1,112 @@
+{
+  "phase": "RC3.3 PATCH2.5 - Phase 0 Freeze Verified Native Baseline",
+  "frozen_utc": "2026-08-14",
+  "status": "FROZEN",
+  "repository_baseline": "fb1f51e076ef9f5fc95d4142102600376bf1ec67 (v0.8.0-rc3.2)",
+  "runtime": {
+    "comfyui": "v0.33.1 (official release)",
+    "native_h3_node": "comfy_extras/nodes_minimax_h3.py (bundled with ComfyUI v0.33.1)",
+    "frontend": "comfyui-frontend-package 1.48.7 (aligned with required 1.48.7)",
+    "python": "3.13.12 (embedded)",
+    "torch": "2.12.0+cu130",
+    "safetensors": "0.8.0",
+    "comfy_kitchen": "0.2.31",
+    "comfy_aimdo": "0.4.10 (installed; required 0.4.13 - pre-existing drift, NOT part of this freeze)",
+    "gpu": "NVIDIA GeForce RTX 5070 12.8GB"
+  },
+  "safe_load": {
+    "mechanism": "H3_WINDOWS_SAFE_LOAD=pread (custom_nodes/windows_safe_load shim)",
+    "threshold": "H3_SAFE_LOAD_MIN_GB=8",
+    "scope": "Windows only; .safetensors >= 8GB; filename allowlist default minimax_h3_fl2va",
+    "confidence": "MITIGATION_VALIDATED_4_REAL_RUNS (W01/W05/W03/W02)",
+    "status": "INTERMITTENT / MITIGATION_UNDER_OBSERVATION - NOT an upstream fix; re-check Comfy-Org/ComfyUI #15424/#15438 before RC release"
+  },
+  "models": {
+    "dit": {
+      "filename": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "size_bytes": 20970379616,
+      "sha256": "E889202C41DAFB67B10D67B97F0D8541508036A6090AF23425A5C2615D03C47A",
+      "precision": "int8_convrot"
+    },
+    "text_encoder": {
+      "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "size_bytes": 15687142551,
+      "sha256": "35A88D51044231FE332301D7A62AA81E3F2CBA62FEBEB446E2C1E3E0EF76F2C6",
+      "precision": "nvfp4_awq"
+    },
+    "video_vae": {
+      "filename": "minimax_h3_video_vae_fp16.safetensors",
+      "size_bytes": 5207808496,
+      "sha256": "7C1F131492E7EDDACAAC9069A61B81BDD39DE5CC96561E677C5EAB1CDCE5E522",
+      "precision": "fp16"
+    },
+    "audio_vae": {
+      "filename": "minimax_h3_audio_vae_fp32.safetensors",
+      "size_bytes": 605254808,
+      "sha256": "8E505D95DD1561D47ABD43D4238FD40D9BB1AE9E147ED0A4CBA778D76AE4DB48",
+      "precision": "fp32"
+    }
+  },
+  "prompt": {
+    "official_skill": "MiniMax-AI/MiniMax-H3/skills/h3-prompt-writing",
+    "skill_files": {
+      "SKILL.md": {
+        "sha256": "3411537CB4FC9B580AE4137DE683948952331D4A862DE0C1CA183D9BC1AA60CE",
+        "bytes": 2180
+      },
+      "references/base-en.txt": {
+        "sha256": "AEFB0DA9FBE3E9F69AB52A2DBEEB7D8610C811D680F3D415DA7596BBB5AB2B0C",
+        "bytes": 15776
+      }
+    },
+    "skill_recheck": "2026-08-14 - I2VA/FL2VA structure unchanged",
+    "prompt_bridge": {
+      "module": "runtime/prompt_bridge/architect_h3_prompt_bridge.py (H3PromptBridge)",
+      "sha256": "1B0C3AE5DE8B129C496103FA8262CAE3648E70649F2E2E8C69CA5D1026EE000F",
+      "skill_registry": "runtime/prompt_bridge/skill_registry/minimax_h3_skill_rules.json (sha256 8D14D601089833B4C8CF9D1D0AF6E8EC4F7928D0A59EEF677989EBD0EF1BEE61)",
+      "production_adapter": "runtime/prompt_bridge/official_skill_adapter.py (PATCH2.5 / PATCH2.5-A)",
+      "adapter_sha256": "E9032CCA489B8086C7C07B67E1ABB29732CE9505CDAB73B70E2F95D65981C0E8",
+      "skill_version_module": "runtime/prompt_bridge/skill_version.py (PATCH2.5-A; sha256 0C6AAB1B5CF3F6E5980BD9046FA192285AA280BB075673F4A0629370345BBBC5)"
+    }
+  },
+  "skill_version_policy": {
+    "policy": "PIN, DO NOT FLOAT (PATCH2.5-A)",
+    "pinned_skill_revision": {
+      "label": "2026-07-29-main-reviewed",
+      "files": {
+        "SKILL.md": "3411537CB4FC9B580AE4137DE683948952331D4A862DE0C1CA183D9BC1AA60CE",
+        "references/base-en.txt": "AEFB0DA9FBE3E9F69AB52A2DBEEB7D8610C811D680F3D415DA7596BBB5AB2B0C"
+      }
+    },
+    "installed_skill_revision": {
+      "SKILL.md": "3411537CB4FC9B580AE4137DE683948952331D4A862DE0C1CA183D9BC1AA60CE",
+      "references/base-en.txt": "AEFB0DA9FBE3E9F69AB52A2DBEEB7D8610C811D680F3D415DA7596BBB5AB2B0C"
+    },
+    "latest_upstream_skill_revision": "UNKNOWN (SKILL_UPSTREAM_CHECK_REQUIRED - manual check only, never auto-fetch)",
+    "generation_policy": {
+      "installed_equals_pinned": "GENERATION_ALLOWED",
+      "installed_ne_pinned": "BLOCK generation with configuration error",
+      "upstream_ne_pinned": "generation allowed using pinned reviewed Skill; surface OFFICIAL_SKILL_UPDATE_AVAILABLE",
+      "upstream_unknown": "generation allowed; surface SKILL_UPSTREAM_CHECK_REQUIRED",
+      "auto_update": false
+    },
+    "gate_status": "GENERATION_ALLOWED (2026-08-15 verification)",
+    "upgrade_procedure": "docs/Official_H3_Skill_Update_Policy.md"
+  },
+  "workflows": {
+    "01_Exterior_Hero": "NATIVE_DIAGNOSTIC_PASS",
+    "02_Day_Night_Transition": "NATIVE_DIAGNOSTIC_PASS (FL2VA)",
+    "03_Material_Detail": "NATIVE_DIAGNOSTIC_PASS",
+    "04_Drone_Aerial": "NATIVE_GOLDEN_VALIDATED",
+    "05_Slow_Walkthrough": "NATIVE_DIAGNOSTIC_PASS"
+  },
+  "patch24_overall": "PATCH2_4_PASS (all five workflows human-approved; final UI/release NOT complete)",
+  "frozen_components_do_not_modify": [
+    "H3 loader (PREAD shim)",
+    "model weights",
+    "sampler (res_multistep / simple / 20 steps)",
+    "VAE (video fp16 / audio fp32)",
+    "quantization (int8_convrot DiT / nvfp4_awq TE)",
+    "native inference pipeline"
+  ]
+}

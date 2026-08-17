@@ -1,0 +1,332 @@
+{
+  "meta": {
+    "source": "MiniMax-AI/MiniMax-H3 skills/h3-prompt-writing (official) + references/base-en.txt",
+    "mode": "FL2VA",
+    "compatibility": "Local skill-specification integration only; NOT a call to the hosted H3-Context-IR API.",
+    "policy": "Structure, field names, section order, and timing notation follow the official guide. No generic video prompt templates."
+  },
+  "fl2va": {
+    "alignment_instruction": "How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video.",
+    "core_fields_order": [
+      "integrated_multimodal_description",
+      "overall_soundscape",
+      "non_diegetic_music"
+    ],
+    "rules": [
+      "State overall style and initial composition at the start of [Shot 1].",
+      "Describe composition, subjects, environment, actions, camera, and the exact point where referenced content appears.",
+      "Do not add a timestamp to the first shot; use [Shot N] with strictly increasing cut times for later shots.",
+      "Camera motion = motion type + amplitude + speed written as natural English within the shot.",
+      "overall_soundscape summarizes ambient, physical-action, and non-verbal human sounds.",
+      "non_diegetic_music describes background music only the audience hears.",
+      "Preserve reference-image consistency: geometry, material, lighting, and framing."
+    ],
+    "guardrails": [
+      "No text, subtitles, logos or watermarks.",
+      "Duration and motion timing must match the requested duration."
+    ]
+  },
+  "categories": {
+    "camera": {
+      "keywords": [
+        {
+          "match": [
+            "subtle",
+            "轻微",
+            "细微",
+            "保守"
+          ],
+          "phrase": "Very subtle aerial reveal framing"
+        },
+        {
+          "match": [
+            "aerial",
+            "top-down",
+            "bird",
+            "鸟瞰",
+            "航拍"
+          ],
+          "phrase": "Aerial establishing shot, top-down drone perspective, wide framing"
+        },
+        {
+          "match": [
+            "hero",
+            "exterior",
+            "facade",
+            "外观",
+            "立面"
+          ],
+          "phrase": "Cinematic wide hero shot of the exterior facade"
+        },
+        {
+          "match": [
+            "close-up",
+            "detail",
+            "特写",
+            "细节"
+          ],
+          "phrase": "Close-up shot with shallow depth of field"
+        },
+        {
+          "match": [
+            "interior",
+            "walkthrough",
+            "室内",
+            "漫游"
+          ],
+          "phrase": "First-person interior walkthrough framing"
+        },
+        {
+          "match": [
+            "wide"
+          ],
+          "phrase": "Wide establishing framing"
+        }
+      ],
+      "default": "Cinematic architectural establishing framing"
+    },
+    "motion": {
+      "movement_types": {
+        "orbit": "performs a slow arc orbit",
+        "push-in": "pushes in",
+        "pan": "pans slowly",
+        "dolly": "glides forward on a gentle dolly",
+        "static": "holds a static position"
+      },
+      "keywords": [
+        {
+          "match": [
+            "环绕",
+            "orbit",
+            "arc"
+          ],
+          "motion": "orbit"
+        },
+        {
+          "match": [
+            "推近",
+            "push in",
+            "push-in"
+          ],
+          "motion": "push-in"
+        },
+        {
+          "match": [
+            "横移",
+            "pan"
+          ],
+          "motion": "pan"
+        },
+        {
+          "match": [
+            "漫游",
+            "walk",
+            "walkthrough",
+            "dolly"
+          ],
+          "motion": "dolly"
+        },
+        {
+          "match": [
+            "固定",
+            "static",
+            "hold"
+          ],
+          "motion": "static"
+        }
+      ],
+      "amplitude": {
+        "small": "small amplitude",
+        "large": "large amplitude",
+        "default": "small amplitude"
+      },
+      "speed": {
+        "slow": "slow speed",
+        "fast": "fast speed",
+        "default": "slow speed"
+      },
+      "keywords_amplitude": [
+        {
+          "match": [
+            "小幅度",
+            "subtle"
+          ],
+          "value": "small"
+        },
+        {
+          "match": [
+            "大幅度",
+            "large",
+            "dramatic"
+          ],
+          "value": "large"
+        }
+      ],
+      "keywords_speed": [
+        {
+          "match": [
+            "缓慢",
+            "slow",
+            "gentle"
+          ],
+          "value": "slow"
+        },
+        {
+          "match": [
+            "快速",
+            "fast",
+            "quick"
+          ],
+          "value": "fast"
+        }
+      ],
+      "temporal_consistency": "Motion is continuous and temporally consistent across the clip; no jarring cuts in this single-shot sequence."
+    },
+    "lighting": {
+      "keywords": [
+        {
+          "match": [
+            "保持光线",
+            "保持原图光线",
+            "keep lighting",
+            "original lighting",
+            "光线不变"
+          ],
+          "phrase": "Lighting remains consistent with the reference image; no lighting transformation"
+        },
+        {
+          "match": [
+            "黄昏",
+            "golden hour",
+            "dusk",
+            "sunset"
+          ],
+          "phrase": "Golden-hour daylight with warm directional illumination"
+        },
+        {
+          "match": [
+            "夜景",
+            "night",
+            "evening"
+          ],
+          "phrase": "Night scene with warm interior light spilling from windows and cool ambient moonlight"
+        },
+        {
+          "match": [
+            "日光",
+            "daylight",
+            "日景",
+            "noon"
+          ],
+          "phrase": "Bright natural daylight with even soft illumination"
+        },
+        {
+          "match": [
+            "雨后",
+            "after rain"
+          ],
+          "phrase": "Post-rain atmosphere with clean reflective surfaces"
+        }
+      ],
+      "default": "Natural daylight with soft directional illumination"
+    },
+    "geometry": {
+      "preservation": "Architectural structure, proportions, and spatial relationships remain consistent with the reference image.",
+      "keywords": [
+        {
+          "match": [
+            "保持建筑体量",
+            "preserve volume",
+            "保持体量",
+            "preserve building"
+          ],
+          "phrase": "Building volume and massing are preserved exactly as in the reference"
+        },
+        {
+          "match": [
+            "保持几何",
+            "preserve geometry",
+            "几何一致"
+          ],
+          "phrase": "Geometry and structure stay consistent with the reference"
+        }
+      ]
+    },
+    "material": {
+      "texture_behavior": "Materials keep their characteristic texture, reflectivity, and tactile behavior.",
+      "keywords": [
+        {
+          "match": [
+            "混凝土",
+            "concrete"
+          ],
+          "phrase": "Concrete surfaces keep crisp board-formed texture"
+        },
+        {
+          "match": [
+            "玻璃",
+            "glass"
+          ],
+          "phrase": "Glass reflects the surrounding sky and light with clean reflections"
+        },
+        {
+          "match": [
+            "木",
+            "timber",
+            "wood",
+            "wooden"
+          ],
+          "phrase": "Timber surfaces show warm grain and natural tonal variation"
+        },
+        {
+          "match": [
+            "金属",
+            "metal"
+          ],
+          "phrase": "Metal elements hold sharp highlights and fine surface finish"
+        }
+      ],
+      "default": "Material textures remain faithful to the reference"
+    },
+    "atmosphere": {
+      "keywords": [
+        {
+          "match": [
+            "雾",
+            "haze",
+            "fog"
+          ],
+          "phrase": "light atmospheric haze"
+        },
+        {
+          "match": [
+            "晴朗",
+            "clear"
+          ],
+          "phrase": "clear air with crisp visibility"
+        },
+        {
+          "match": [
+            "宁静",
+            "calm",
+            "peaceful"
+          ],
+          "phrase": "calm, contemplative mood"
+        },
+        {
+          "match": [
+            "宏伟",
+            "epic",
+            "monumental"
+          ],
+          "phrase": "monumental, cinematic mood"
+        }
+      ],
+      "environment_default": "environment consistent with the reference site",
+      "weather_default": "mild, stable weather",
+      "mood_default": "calm cinematic mood"
+    }
+  },
+  "soundscape_default": "Gentle ambient environment sound consistent with the scene, subtle wind, and light spatial room tone; no dialogue.",
+  "music_default": "Minimal ambient cinematic score, slow tempo, warm and restrained, fading in softly."
+}

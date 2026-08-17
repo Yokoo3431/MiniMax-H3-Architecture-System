@@ -1,0 +1,138 @@
+# RC3.4 PATCH2.7-B - Runtime Workflow Mapping Contract
+# Single source of truth for the Runtime Mapping Layer (DESIGN ONLY).
+# No real workflow JSON is created here; native_asset references frozen assets.
+
+meta:
+  phase: "PATCH2.7-B Runtime Workflow Mapping"
+  status: "DESIGN / CONTRACT"
+  scope: "workflow selection, asset mapping, parameter contract"
+  frozen_workflows: ["01_Exterior_Hero", "02_Day_Night_Transition",
+                     "03_Material_Detail", "04_Drone_Aerial", "05_Slow_Walkthrough"]
+
+workflow_registry:
+  "01_Exterior_Hero":
+    display_name: "Architecture Presentation"
+    native_asset: "workflows/01_Exterior_Hero_NATIVE.json"
+    input_mode: "I2VA"
+    supported_input:
+      - first_frame
+    supported_camera:
+      - slow_push
+      - slow_pull
+      - slow_pan
+      - slow_arc
+    output_contract:
+      container: mp4
+      codec: h264
+      resolution: ["1344x768", "1280x720"]
+      fps: [24]
+      preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
+
+  "02_Day_Night_Transition":
+    display_name: "Day Night"
+    native_asset: "workflows/02_Day_Night_Transition_NATIVE.json"
+    input_mode: "FL2VA"
+    supported_input:
+      - first_frame
+      - last_frame
+    supported_camera:
+      - static
+    output_contract:
+      container: mp4
+      codec: h264
+      resolution: ["1344x768", "1280x720"]
+      fps: [24]
+      preview_frames: ["first", "0.2", "0.4", "0.6", "0.8", "last"]
+
+  "03_Material_Detail":
+    display_name: "Material Detail"
+    native_asset: "workflows/03_Material_Detail_NATIVE.json"
+    input_mode: "I2VA"
+    supported_input:
+      - first_frame
+    supported_camera:
+      - static
+    output_contract:
+      container: mp4
+      codec: h264
+      resolution: ["1344x768", "1280x720"]
+      fps: [24]
+      preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
+
+  "04_Drone_Aerial":
+    display_name: "Drone Reveal"
+    native_asset: "workflows/04_Drone_Aerial_NATIVE_GOLDEN.json"
+    input_mode: "I2VA"
+    supported_input:
+      - first_frame
+    supported_camera:
+      - aerial_reveal
+    output_contract:
+      container: mp4
+      codec: h264
+      resolution: ["1344x768", "1280x720"]
+      fps: [24]
+      preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
+
+  "05_Slow_Walkthrough":
+    display_name: "Slow Walkthrough"
+    native_asset: "workflows/05_Slow_Walkthrough_NATIVE.json"
+    input_mode: "I2VA"
+    supported_input:
+      - first_frame
+    supported_camera:
+      - walkthrough
+    output_contract:
+      container: mp4
+      codec: h264
+      resolution: ["1344x768", "1280x720"]
+      fps: [24]
+      preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
+
+# Allowed camera motions (frozen architect schema subset used by the registry)
+allowed_camera_motions:
+  - static
+  - slow_push
+  - slow_pull
+  - slow_pan
+  - slow_arc
+  - walkthrough
+  - aerial_reveal
+
+# --- Parameter Mapping Contract --------------------------------
+# VideoGenerationRequest -> runtime execution payload (DESIGN ONLY, not emitted)
+parameter_mapping:
+  request_fields:
+    reference_assets: "payload.inputs.references"
+    prompt_payload: "payload.prompt"
+    generation_parameters: "payload.generation"
+  generation_parameters:
+    resolution: "payload.video.resolution"
+    fps: "payload.video.fps"
+    duration: "payload.video.duration"
+    seed: "payload.generation.seed"
+    quality: "payload.generation.quality"
+  camera_motion: "payload.camera.motion"
+  workflow_id: "payload.workflow.id"
+  study_id: "payload.study.id"
+  output_spec: "payload.output"
+  gates: "payload.gates"   # traceability only; enforcement happens upstream
+
+# --- Error Mapping Contract (future runtime -> existing job status) ----
+error_mapping:
+  INVALID_REQUEST: FAILED
+  WORKFLOW_NOT_FOUND: FAILED
+  ASSET_NOT_FOUND: FAILED
+  NODE_EXECUTION_FAILED: GPU_FAILED
+  OUT_OF_MEMORY: GPU_FAILED
+  TIMEOUT: FAILED
+  CANCELLED: GPU_FAILED      # terminal; no auto retry
+  COMPLETED_OK: COMPLETED
+
+# --- Responsibility Rules (no mixing) --------------------------------
+rules:
+  - "Runtime Adapter: generate / status / cancel only."
+  - "Mapping Layer: workflow selection, asset mapping, parameter contract only."
+  - "ComfyUI: future implementation, never in this contract."
+  - "Workflow assets are FROZEN; native_asset entries are references, not copies."
+  - "Unknown workflow_id must be rejected before any runtime submission."

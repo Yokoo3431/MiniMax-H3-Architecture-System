@@ -1,0 +1,483 @@
+{
+  "last_node_id": 15,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        60,
+        80
+      ],
+      "size": [
+        320,
+        320
+      ],
+      "widgets_values": [
+        "01_Exterior_Hero.png",
+        "image"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "properties": {
+        "title": "FIRST FRAME"
+      }
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        420,
+        80
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "widgets_values": [
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "UNETLoader",
+      "pos": [
+        420,
+        200
+      ],
+      "size": [
+        300,
+        100
+      ],
+      "widgets_values": [
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "default"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "VAELoader",
+      "pos": [
+        420,
+        320
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "widgets_values": [
+        "minimax_h3_video_vae_fp16.safetensors"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "VAELoader",
+      "pos": [
+        420,
+        420
+      ],
+      "size": [
+        300,
+        90
+      ],
+      "widgets_values": [
+        "minimax_h3_audio_vae_fp32.safetensors"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "MiniMaxH3ImageToVideo",
+      "pos": [
+        760,
+        80
+      ],
+      "size": [
+        380,
+        260
+      ],
+      "widgets_values": [
+        "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] Very subtle aerial reveal framing. the camera pushes in with small amplitude at slow speed. Natural daylight with soft directional illumination. Architectural structure, proportions, and spatial relationships remain consistent with the reference image.. Material textures remain faithful to the reference. Motion is continuous and temporally consistent across the clip; no jarring cuts in this single-shot sequence. Environment: environment consistent with the reference site; weather: mild, stable weather; calm cinematic mood. No text, subtitles, logos, or watermarks.\n\noverall_soundscape: Gentle ambient environment sound consistent with the scene, subtle wind, and light spatial room tone; no dialogue.\n\nnon_diegetic_music: Minimal ambient cinematic score, slow tempo, warm and restrained, fading in softly.",
+        1344,
+        768,
+        107
+      ],
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": []
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "title": "01_Exterior_Hero NATIVE"
+      }
+    },
+    {
+      "id": 7,
+      "type": "KSamplerSelect",
+      "pos": [
+        760,
+        360
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [
+        "res_multistep"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "BasicScheduler",
+      "pos": [
+        760,
+        460
+      ],
+      "size": [
+        300,
+        110
+      ],
+      "widgets_values": [
+        "simple",
+        20,
+        1.0
+      ],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "RandomNoise",
+      "pos": [
+        760,
+        590
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [
+        777888999
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "BasicGuider",
+      "pos": [
+        1080,
+        80
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": null
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1080,
+        200
+      ],
+      "size": [
+        320,
+        140
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": null
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": null
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": null
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": null
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "LATENT",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "VAEDecode",
+      "pos": [
+        1080,
+        360
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "VAEDecodeAudio",
+      "pos": [
+        1080,
+        470
+      ],
+      "size": [
+        260,
+        90
+      ],
+      "widgets_values": [],
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "CreateVideo",
+      "pos": [
+        1380,
+        80
+      ],
+      "size": [
+        280,
+        120
+      ],
+      "widgets_values": [
+        24.0
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "SaveVideo",
+      "pos": [
+        1380,
+        220
+      ],
+      "size": [
+        300,
+        140
+      ],
+      "widgets_values": [
+        "video/01_Exterior_Hero",
+        "auto",
+        "auto"
+      ],
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": null
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "links": [],
+  "groups": [
+    {
+      "title": "01_Exterior_Hero NATIVE (I2VA)",
+      "bounding": [
+        40,
+        40,
+        1750,
+        820
+      ],
+      "color": "#1f5f3a",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {
+    "rc33_patch24": {
+      "runtime": "official_native_h3",
+      "mode": "I2VA",
+      "resolution": "1344x768",
+      "requested_duration_seconds": 4.0,
+      "fps": 24,
+      "seed": 777888999,
+      "reference_status": "USER_APPROVED"
+    }
+  },
+  "version": 0.4
+}

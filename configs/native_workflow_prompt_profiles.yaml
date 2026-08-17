@@ -1,0 +1,203 @@
+# RC3.3 PATCH2.5 - Native Workflow Prompt Profiles
+# Per-workflow constraints layered ON TOP of the official MiniMax H3 Skill.
+# These profiles never replace the official prompt structure; they are
+# intent constraints passed INTO H3PromptBridge.
+
+workflow_profiles:
+  "01_Exterior_Hero":
+    workflow_id: "01_Exterior_Hero"
+    video_task: "exterior_hero"
+    required_reference_count: 1
+    allowed_reference_roles:
+      - "first_frame (exterior hero view)"
+    preferred_camera: "slow cinematic reveal / slow push in"
+    maximum_motion_class: "small_amplitude_slow"
+    preservation_priority:
+      - "geometry_preservation"
+      - "material_consistency"
+    prohibited_transformations:
+      - "dramatic orbit"
+      - "large perspective change"
+      - "geometry redesign"
+    known_limitations: "single-frame geometry limitation - avoid dramatic orbit / large perspective change"
+    user_confirmation_rules: "user must explicitly approve the reference image before generation"
+    intent: "建筑外观展示 (exterior facade showcase)"
+    official_skill_mode: "I2VA"
+    input_requirement: "1 user-approved exterior hero image"
+    camera_motion:
+      preferred: "slow cinematic reveal / slow push in"
+      amplitude: "small"
+      speed: "slow"
+    priority:
+      - geometry_preservation
+      - material_consistency
+    prohibited:
+      - dramatic orbit
+      - large perspective change
+      - geometry redesign
+    motion_policy: "conservative_single_frame"
+
+  "02_Day_Night_Transition":
+    workflow_id: "02_Day_Night_Transition"
+    video_task: "day_night_transition"
+    required_reference_count: 2
+    allowed_reference_roles:
+      - "first_frame (DAY reference)"
+      - "last_frame (NIGHT target reference)"
+    preferred_camera: "static shot / nearly static with extremely subtle drift"
+    maximum_motion_class: "static"
+    preservation_priority:
+      - "lighting_transformation_over_scene_regeneration"
+      - "geometry_preservation"
+      - "camera_preservation"
+      - "material_identity"
+    prohibited_transformations:
+      - "geometry change"
+      - "camera movement"
+      - "material replacement"
+      - "scene regeneration"
+    known_limitations: "requires matched DAY+NIGHT pair (same architecture, near-identical camera)"
+    user_confirmation_rules: "user must explicitly approve the matched DAY/NIGHT pair before generation"
+    intent: "日景到夜景环境/光照过渡 (day-to-night lighting transition)"
+    official_skill_mode: "FL2VA"   # REQUIRED
+    input_requirement: "2 user-approved matched images: DAY first frame + NIGHT last frame (same architecture, near-identical camera)"
+    camera_motion:
+      preferred: "static shot / nearly static with extremely subtle drift"
+      amplitude: "zero to very small"
+      speed: "n/a"
+    priority:
+      - lighting_transformation_over_scene_regeneration   # highest
+      - geometry_preservation
+      - camera_preservation
+      - material_identity
+    allowed_transformation:
+      - sky brightness/color
+      - ambient brightness
+      - interior/facade/landscape/street lighting
+      - shadow softness
+      - color temperature
+      - controlled reflections
+    prohibited:
+      - geometry change
+      - camera movement
+      - material replacement
+      - scene regeneration
+
+  "03_Material_Detail":
+    workflow_id: "03_Material_Detail"
+    video_task: "material_detail"
+    required_reference_count: 1
+    allowed_reference_roles:
+      - "first_frame (material/detail close-up)"
+    preferred_camera: "static shot with extremely subtle drift (micro motion)"
+    maximum_motion_class: "micro_motion"
+    preservation_priority:
+      - "material_fidelity_over_motion"
+      - "texture_stability"
+      - "surface_detail"
+      - "joint_preservation"
+      - "edge_definition"
+    prohibited_transformations:
+      - "rack focus"
+      - "large zoom"
+      - "strong parallax"
+      - "texture swimming/crawling"
+      - "seam disappearance"
+    known_limitations: "LOCAL_MATERIAL_SOFTENING_UNDER_GENERATIVE_MOTION - later-frame local sharpness loss accepted as diagnostic baseline"
+    user_confirmation_rules: "user must explicitly approve the material/detail reference image before generation"
+    intent: "建筑材料/节点细节展示 (material & detail showcase)"
+    official_skill_mode: "I2VA"
+    input_requirement: "1 user-approved material/detail image with visible joints/seams/texture"
+    camera_motion:
+      preferred: "static shot with extremely subtle drift (micro motion)"
+      amplitude: "very small"
+      speed: "slow"
+    priority:
+      - material_fidelity_over_motion   # highest
+      - texture_stability
+      - surface_detail
+      - joint_preservation
+      - edge_definition
+    prohibited:
+      - rack focus
+      - large zoom
+      - strong parallax
+      - texture swimming/crawling
+      - seam disappearance
+
+  "04_Drone_Aerial":
+    workflow_id: "04_Drone_Aerial"
+    video_task: "drone_aerial"
+    required_reference_count: 1
+    allowed_reference_roles:
+      - "first_frame (aerial/masterplan view)"
+    preferred_camera: "controlled aerial reveal"
+    maximum_motion_class: "small_amplitude_slow"
+    preservation_priority:
+      - "geometry_preservation"
+      - "site_context"
+    prohibited_transformations:
+      - "large orbit"
+      - "360 rotation"
+      - "fast zoom"
+    known_limitations: "single frame geometry limitation - no large orbit / 360 rotation"
+    user_confirmation_rules: "user must explicitly approve the aerial/masterplan reference image before generation"
+    intent: "鸟瞰/总图/场地背景展示 (aerial masterplan reveal)"
+    official_skill_mode: "I2VA"
+    input_requirement: "1 user-approved aerial/masterplan image"
+    camera_motion:
+      preferred: "controlled aerial reveal"
+      amplitude: "small"
+      speed: "slow"
+    priority:
+      - geometry_preservation
+      - site_context
+    prohibited:
+      - large orbit
+      - 360 rotation
+      - fast zoom
+    reason: "single frame geometry limitation"
+    motion_policy: "conservative_single_frame"
+
+  "05_Slow_Walkthrough":
+    workflow_id: "05_Slow_Walkthrough"
+    video_task: "slow_walkthrough"
+    required_reference_count: 1
+    allowed_reference_roles:
+      - "first_frame (perspective view with clear depth and travel direction)"
+    preferred_camera: "very slow forward push in / subtle tracking"
+    maximum_motion_class: "small_amplitude_slow"
+    preservation_priority:
+      - "spatial_stability_over_camera_distance"
+      - "geometry_preservation"
+      - "perspective_preservation"
+    prohibited_transformations:
+      - "large rotation"
+      - "geometry redesign"
+      - "fast movement"
+    known_limitations: "SINGLE_FRAME_DEEP_WALKTHROUGH_LIMITATION - single-image depth reconstruction softens at later frames; future: multi-reference, first+last keyframes, segmented clip stitching"
+    user_confirmation_rules: "user must explicitly approve the walkthrough reference image before generation"
+    intent: "慢速建筑空间漫游 (slow spatial walkthrough)"
+    official_skill_mode: "I2VA"
+    input_requirement: "1 user-approved perspective image with clear depth and travel direction"
+    camera_motion:
+      preferred: "very slow forward push in / subtle tracking"
+      amplitude: "small"
+      speed: "slow"
+    priority:
+      - spatial_stability_over_camera_distance
+      - geometry_preservation
+      - perspective_preservation
+    prohibited:
+      - large rotation
+      - geometry redesign
+      - fast movement
+    known_limitation:
+      id: "SINGLE_FRAME_DEEP_WALKTHROUGH_LIMITATION"
+      note: "single-image depth reconstruction softens at later frames; future: multi-reference, first+last keyframes, segmented clip stitching"
+
+common_rules:
+  - "Official skill mode must be re-verified against the CURRENT official skill revision before every generation."
+  - "non_diegetic_music defaults to N/A for architecture validation unless user explicitly requests music."
+  - "Reference image must be user-approved before any GPU run."
+  - "Single-image workflows must not request large viewpoint reconstruction."

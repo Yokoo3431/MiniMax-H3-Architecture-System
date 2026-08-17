@@ -1,0 +1,25 @@
+{
+  "phase": "PATCH2.8-H GitHub Release Execution - preparation",
+  "candidate": "v0.8.0-rc1",
+  "branch": "release/v0.8.0-rc1",
+  "commit_candidate": {
+    "head": "fb1f51e076ef9f5fc95d4142102600376bf1ec67",
+    "note": "Working tree contains all PATCH2.1-PATCH2.8-H changes (uncommitted by policy). Human commit required before publish."
+  },
+  "directory_list": [
+    "launcher", "apps", "runtime", "workflows", "configs", "references",
+    "samples", "docs", "tests", "scripts"
+  ],
+  "test_status": "288/288 PASS (final regression, no GPU)",
+  "license_status": {
+    "third_party_notices": "THIRD_PARTY_NOTICES.md present (ComfyUI GPL-3.0 / MiniMax H3 / Qwen / Python deps)",
+    "project_license": "NOT SELECTED YET - human decision required (MIT/Apache-2.0 candidate)",
+    "model_weights": "NOT distributed; separate authorization required"
+  },
+  "privacy_status": {
+    "samples": "synthetic only (programmatic, 24-37KB)",
+    "internal_archive": "docs/internal_archive/ git-ignored (not public)",
+    "forbidden_excluded": ["userdata", "logs", "outputs", "models/*.safetensors", "runtime.lock", ".env", "docs/internal_archive"]
+  },
+  "generated_utc": "2026-08-17"
+}
