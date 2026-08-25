@@ -4,6 +4,7 @@ Audits ComfyUI installation, Python runtime, CUDA/GPU, VRAM, API availability, a
 
 import sys
 import json
+import os
 import urllib.request
 from pathlib import Path
 
@@ -26,8 +27,10 @@ class EnvironmentAuditor:
         except Exception:
             api_reachable = False
 
-        comfyui_path = "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable"
-        comfyui_exists = Path(comfyui_path).is_dir()
+        # Resolve the active runtime from the installation environment. The
+        # shareable package must never embed a developer-machine path.
+        comfyui_path = os.environ.get("H3_NATIVE_ROOT", "")
+        comfyui_exists = bool(comfyui_path) and Path(comfyui_path).is_dir()
 
         report = {
             "auditor_version": "1.0.0",

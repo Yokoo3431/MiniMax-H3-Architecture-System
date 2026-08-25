@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "active_source": "native_env.path + userdata/system/setup_state.json",
+  "active_role": "ACTIVE_PRODUCTION_NATIVE",
+  "managed_production_identity": "ArchitectVideoStudio_Runtime",
+  "managed_production_state_source": "native_env.path + userdata/system/setup_state.json",
+  "promotion_method": "same_volume_move",
+  "validation_role": "RETIRED_VALIDATION_REFERENCE",
+  "validation_root_before_promotion": null,
+  "validation_root_after_promotion": null,
+  "legacy_validated_reference_role": "LEGACY_VALIDATED_REFERENCE",
+  "legacy_validated_reference_source": "persisted external setup state",
+  "test_runtime_role": "TEST_RUNTIME",
+  "install_target_role": "INSTALL_TARGET",
+  "selection_policy": [
+    "explicitly configured active_native_root",
+    "persisted adopted production runtime",
+    "SETUP_REQUIRED"
+  ],
+  "forbidden_implicit_fallbacks": [
+    "nearby ComfyUI folder",
+    "retired validation runtime",
+    "retired test runtime"
+  ],
+  "support_layers": {
+    "minimax_h3_nodes": {
+      "repository": "https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3.git",
+      "commit": "d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad"
+    },
+    "video_helper_suite": {
+      "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+      "commit": "4ee72c065db22c9d96c2427954dc69e7b908444b"
+    },
+    "windows_patch": "patches/support_layers/minimax_h3_production_windows.patch",
+    "pread": "H3_WINDOWS_SAFE_LOAD=pread"
+  },
+  "models_root_policy": "one configured active Models Root; no copy or rename",
+  "r2a_comparison": "CONVERGED_MANAGED_PRODUCTION_BASELINE",
+  "r2a_baseline": {
+    "comfyui": "0.33.1",
+    "frontend": "1.48.7",
+    "python": "3.13.14",
+    "torch_cuda": "2.13.0+cu130",
+    "support_layer_lock": "ComfyUI/custom_nodes/support_layer.lock.json"
+  }
+}

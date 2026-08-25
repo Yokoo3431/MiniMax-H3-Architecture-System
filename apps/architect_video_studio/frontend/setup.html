@@ -19,6 +19,13 @@
     .ok { color: var(--ok); font-weight: 600; }
     .warn { color: var(--warn); font-weight: 600; }
     .err { color: var(--err); font-weight: 600; }
+    .install-plan { display: grid; gap: 8px; }
+    .install-item { border: 1px solid var(--line); border-radius: 5px; padding: 9px; background: var(--panel-2); }
+    .install-item-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .install-item-meta { color: var(--muted); font-size: 12px; margin-top: 4px; word-break: break-word; }
+    .install-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .install-progress { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+    .install-progress > div { height: 100%; background: var(--accent); transition: width .3s ease; }
   </style>
 </head>
 <body>
@@ -38,7 +45,7 @@
         <h3>System Groups</h3>
         <div class="group-nav" id="group-nav">
           <button data-g="system" class="on">SYSTEM</button>
-          <button data-g="runtime">RUNTIME</button>
+          <button data-g="runtime">NATIVE RUNTIME</button>
           <button data-g="models">MODELS</button>
           <button data-g="prompt">PROMPT</button>
           <button data-g="workflows">WORKFLOWS</button>
@@ -54,21 +61,62 @@
     <div class="panel mt">
       <h3>Configuration</h3>
       <div class="param-grid">
-        <div><label>Native Runtime Path</label><input type="text" id="cfg-native" placeholder="例如 D:\ComfyUI_H3_NATIVE_TEST"></div>
+        <div><label>Native Runtime Path</label><input type="text" id="cfg-native" placeholder="Select an existing Native Runtime folder"></div>
         <div><label>Models Path</label><input type="text" id="cfg-models" placeholder="模型根目录（含 diffusion_models/ 等）"></div>
         <div class="wide">
           <label>Manual fallback：也可将 Native 根目录写入 <span class="mono">native_env.path</span>（仅高级用户）</label>
+          <div id="discovery-note" class="small muted mt">正在检查已存在的 Runtime、模型和节点环境…</div>
         </div>
       </div>
       <div class="mt" style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn primary" id="save-btn">Save Configuration</button>
+        <button class="btn" id="use-existing-runtime-btn">Use Existing Runtime</button>
+        <button class="btn" id="use-existing-models-btn">Use Existing Models</button>
         <button class="btn" id="recheck-btn">Re-check Environment</button>
         <button class="btn ok" id="continue-btn" disabled>Continue to Studio</button>
         <button class="btn" id="open-comfy-btn" disabled>Open Native ComfyUI（Advanced）</button>
       </div>
     </div>
+
+    <div class="panel mt" id="next-step-panel">
+      <h3>接下来生成建筑视频</h3>
+      <div class="small muted">环境检查只负责确认配置。环境就绪后，点击下面按钮进入 Studio：</div>
+      <div class="mt small">
+        1. 新建 Study　→　2. 上传参考图　→　3. Approve 参考图　→　4. 分析意图并确认工作流　→　5. 生成 Prompt 预览　→　6. 审核风险并点击 Generate
+      </div>
+      <button class="btn primary mt" id="go-studio-btn" disabled>进入 Video Studio / 新建视频</button>
+    </div>
+
+    <div class="panel mt" id="desktop-settings-panel">
+      <h3>桌面设置</h3>
+      <label class="check-row"><input type="checkbox" id="startup-enabled"> 开机启动 Architect Video Studio（默认关闭）</label>
+      <label class="check-row"><input type="checkbox" id="tray-minimized"> 启动后最小化到托盘（需要桌面壳支持）</label>
+      <button class="btn mt" id="save-desktop-settings-btn">保存桌面设置</button>
+      <span id="desktop-settings-status" class="small muted"></span>
+    </div>
+
+    <div class="panel mt" id="installer-panel">
+      <h3>Install Required Components</h3>
+      <div id="install-plan-status" class="muted">正在生成安装计划…</div>
+      <div id="install-plan" class="install-plan mt"></div>
+      <div id="install-consent-wrap" class="mt" style="display:none;">
+        <label><input type="checkbox" id="install-consent"> I understand and continue. ComfyUI is GPL-3.0; model weights remain subject to their upstream licenses and are not relicensed by Architect Video Studio.</label>
+      </div>
+      <div class="install-actions mt">
+        <button class="btn" id="repair-model-paths-btn">Repair Model Paths</button>
+        <button class="btn" id="install-runtime-btn">Install Native Runtime</button>
+        <button class="btn" id="install-support-btn">Install H3 Support Layer</button>
+        <button class="btn" id="install-video-btn">Install Video Support</button>
+        <button class="btn" id="install-models-btn">Install Required Models</button>
+        <button class="btn primary" id="install-all-btn" disabled>Install Required Components</button>
+        <button class="btn" id="refresh-plan-btn">Refresh Install Plan</button>
+        <button class="btn danger" id="cancel-install-btn" disabled>Cancel</button>
+      </div>
+      <div id="install-job" class="mt" style="display:none;"></div>
+    </div>
   </div>
   <script src="js/api.js"></script>
+  <script src="js/engine_status.js"></script>
   <script src="js/setup.js"></script>
 </body>
 </html>

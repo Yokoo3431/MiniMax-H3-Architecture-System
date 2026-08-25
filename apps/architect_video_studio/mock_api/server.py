@@ -22,10 +22,12 @@ class StudioServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, addr: Tuple[str, int], store: StudioStore, apis: Dict[str, object]) -> None:
+    def __init__(self, addr: Tuple[str, int], store: StudioStore,
+                 apis: Dict[str, object], mode: str = "production") -> None:
         super().__init__(addr, _make_handler(store, apis))
         self.store = store
         self.apis = apis
+        self.mode = mode
 
 
 def _make_handler(store: StudioStore, apis: Dict[str, object]):
@@ -44,11 +46,13 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             self.end_headers()
             self.wfile.write(body)
 
-        def _send_file(self, path: Path, content_type: str) -> None:
+        def _send_file(self, path: Path, content_type: str, *, immutable: bool = False) -> None:
             body = path.read_bytes()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-store")
+            self.send_header("X-Content-Version", str(path.stat().st_mtime_ns))
             self.end_headers()
             self.wfile.write(body)
 
@@ -76,7 +80,10 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             except KeyError as exc:
                 self._fail(HTTPStatus.NOT_FOUND, str(exc))
             except ValueError as exc:
-                self._fail(HTTPStatus.CONFLICT, str(exc))
+                if type(exc).__name__ == "RuntimePathError":
+                    self._fail(HTTPStatus.CONFLICT, "运行环境路径无效，请前往环境修复。")
+                else:
+                    self._fail(HTTPStatus.CONFLICT, str(exc))
             except Exception as exc:  # noqa: BLE001 - prototype server boundary
                 self._fail(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(exc).__name__}: {exc}")
 
@@ -129,6 +136,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
 
         # ------------------------------------------------------------ #
         def _route_api(self, method: str, path: str, body: dict) -> None:
+            if method == "GET" and path == "/api/health":
+                return self._ok({"status": "ok", "mode": self.server.mode})
             if method == "GET" and path == "/api/projects":
                 return self._ok(apis["project"].list_projects())
             if method == "POST" and path == "/api/projects":
@@ -140,6 +149,14 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/projects/([^/]+)", path)
             if m and method == "GET":
                 return self._ok(apis["project"].get_project(m.group(1)))
+            m = re.fullmatch(r"/api/projects/([^/]+)/study", path)
+            if m and method == "GET":
+                return self._ok(apis["study"].get_state(m.group(1)))
+            m = re.fullmatch(r"/api/assets/([A-Za-z0-9_-]+)/content", path)
+            if m and method == "GET":
+                asset_path, content_type = apis["study"].asset_content(m.group(1))
+                self._send_file(asset_path, content_type)
+                return
             m = re.fullmatch(r"/api/projects/([^/]+)/references", path)
             if m and method == "GET":
                 return self._ok(apis["reference"].list_references(m.group(1)))
@@ -168,6 +185,10 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             if m and method == "POST":
                 return self._ok(apis["intent"].confirm_workflow(
                     m.group(1), body.get("workflow", "")))
+            m = re.fullmatch(r"/api/projects/([^/]+)/workflow/select", path)
+            if m and method == "POST":
+                return self._ok(apis["intent"].select_workflow(
+                    m.group(1), body.get("workflow", "")))
             m = re.fullmatch(r"/api/projects/([^/]+)/prompt", path)
             if m:
                 if method == "GET":
@@ -192,6 +213,12 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if m and method == "GET":
                 return self._ok(apis["job"].get_job(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/detail", path)
+            if m and method == "GET":
+                return self._ok(apis["job"].get_job_detail(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/retry", path)
+            if m and method == "POST":
+                return self._ok(apis["job"].retry_job(m.group(1)))
             m = re.fullmatch(r"/api/jobs/([^/]+)/result", path)
             if m and method == "GET":
                 return self._ok(apis["output"].get_result(m.group(1)))
@@ -204,19 +231,43 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 return self._ok(catalog)
             if path == "/api/system/environment" and method == "GET":
                 return self._ok(apis["system"].environment())
+            if path == "/api/system/engine-status" and method == "GET":
+                return self._ok(apis["system"].engine_status())
+            if path == "/api/system/desktop-settings" and method == "GET":
+                return self._ok(apis["system"].desktop_settings())
+            if path == "/api/system/desktop-settings" and method == "POST":
+                return self._ok(apis["system"].save_desktop_settings(body))
             if path == "/api/system/configure" and method == "POST":
                 return self._ok(apis["system"].configure(body))
             if path == "/api/system/recheck" and method == "POST":
                 return self._ok(apis["system"].recheck())
             if path == "/api/system/open-comfyui" and method == "POST":
                 return self._ok(apis["system"].open_comfyui())
+            if path == "/api/system/restart-comfyui" and method == "POST":
+                return self._ok(apis["system"].restart_comfyui())
+            if path == "/api/system/install-plan" and method == "GET":
+                return self._ok(apis["system"].install_plan())
+            if path == "/api/system/install-plan" and method == "POST":
+                return self._ok(apis["system"].install_plan(body))
+            if path == "/api/system/repair-model-paths" and method == "POST":
+                return self._ok(apis["system"].repair_model_paths())
+            if path == "/api/system/install" and method == "POST":
+                return self._ok(apis["system"].install(body))
+            m = re.fullmatch(r"/api/system/install/([^/]+)", path)
+            if m and method == "GET":
+                return self._ok(apis["system"].install_job(m.group(1)))
+            m = re.fullmatch(r"/api/system/install/([^/]+)/cancel", path)
+            if m and method == "POST":
+                return self._ok(apis["system"].cancel_install(m.group(1)))
+            if path == "/api/system/repair" and method == "POST":
+                return self._ok(apis["system"].repair(body))
             raise KeyError(f"unknown api route: {method} {path}")
 
     return Handler
 
 
 def make_server(addr: Tuple[str, int], data_root: Path,
-                runtime: str = "real") -> StudioServer:
+                runtime: str = "real", mode: Optional[str] = None) -> StudioServer:
     import os
     store = StudioStore(data_root)
     from .intent_api import IntentAPI
@@ -225,29 +276,40 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     from .project_api import ProjectAPI
     from .prompt_api import PromptAPI
     from .reference_api import ReferenceAPI
+    from .study_api import StudyAPI
     from .system_api import SystemAPI
+    from runtime.adapters.runtime_paths import resolve_runtime_paths
 
-    output_api = OutputAPI(store)
+    output_api = OutputAPI(store, allow_mock_outputs=False)
     runtime_adapter = None
+    runtime_paths = None
     if runtime == "real":
-        comfy_input_dir = os.environ.get(
-            "H3_COMFY_INPUT", "<NATIVE_ROOT>/ComfyUI/input")
+        runtime_paths = resolve_runtime_paths(data_root)
+        comfy_input_dir = str(runtime_paths.input_root)
         from runtime.adapters.comfyui_client import ComfyUIClient
         from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter
         runtime_adapter = NativeRuntimeAdapter(
-            client=ComfyUIClient(),
+            client=ComfyUIClient(
+                output_root=str(runtime_paths.output_root),
+                strict_output=True,
+                ffmpeg_path=str(runtime_paths.ffmpeg) if runtime_paths.ffmpeg else None,
+            ),
             comfy_input_dir=comfy_input_dir,
+            production_binding=True,
+            runtime_paths=runtime_paths,
         )
     apis = {
         "project": ProjectAPI(store),
         "reference": ReferenceAPI(store),
+        "study": StudyAPI(store),
         "intent": IntentAPI(store),
         "prompt": PromptAPI(store),
         "job": JobAPI(store, output_api=output_api,
                       runtime_adapter=runtime_adapter,
-                      comfy_input_dir=os.environ.get(
-                          "H3_COMFY_INPUT", "<NATIVE_ROOT>/ComfyUI/input")),
+                      allow_mock_jobs=False,
+                      comfy_input_dir=str(runtime_paths.input_root) if runtime_paths else None,
+                      runtime_paths=runtime_paths),
         "output": output_api,
         "system": SystemAPI(store),
     }
-    return StudioServer(addr, store, apis)
+    return StudioServer(addr, store, apis, mode=mode or ("setup" if runtime == "mock" else "production"))

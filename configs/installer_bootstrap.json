@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "runtime": {
+    "url": "https://github.com/Comfy-Org/ComfyUI/releases/download/v0.33.1/ComfyUI_windows_portable_nvidia.7z",
+    "asset": "ComfyUI_windows_portable_nvidia.7z",
+    "version": "0.33.1",
+    "sha256": "4a221588979b96b8244e0e50b2edca03af732acae1deba69d60aa3b4d60b9dba"
+  },
+  "extractor": {
+    "url": "https://www.7-zip.org/a/7zr.exe",
+    "filename": "7zr.exe",
+    "sha256": null,
+    "license": "7-Zip; see https://www.7-zip.org/license.txt"
+  },
+  "policy": {
+    "download_models_after_setup": true,
+    "models_are_not_bundled": true,
+    "requires_user_license_confirmation": true,
+    "default_install_root": "%LOCALAPPDATA%\\ArchitectVideoStudio"
+  }
+}

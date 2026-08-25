@@ -1,0 +1,205 @@
+schema_version: 1
+component_id: h3_model_configuration
+display_name: MiniMax H3 Model Configuration
+production_scope: FL2VA
+target_root_relative_to_models_root: diffusers/MiniMax-H3
+layout_contract:
+  partition: FL2VA
+  weights_root_relative_to_models_root: MiniMax-H3
+  release_root_relative_to_models_root: diffusers/MiniMax-H3
+  optional_future_partitions:
+    - Ref2VA
+runtime_asset_contract:
+  schema_version: 1
+  source_of_truth: configs/h3_sidecar_manifest.yaml
+  readiness_rule: every_required_asset_present
+  required:
+    - logical_component: transformer_config
+      group: sidecar
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/transformer/config.json, diffusers/MiniMax-H3/FL2VA/transformer/config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: text_encoder_config
+      group: sidecar
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/config.json, diffusers/MiniMax-H3/FL2VA/text_encoder/config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: video_vae_config
+      group: sidecar
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/video_vae/config.json, diffusers/MiniMax-H3/FL2VA/video_vae/config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: audio_vae_config
+      group: sidecar
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/audio_vae/config.json, diffusers/MiniMax-H3/FL2VA/audio_vae/config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: tokenizer_json
+      group: tokenizer
+      required: true
+      checksum_policy: strict
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/tokenizer.json, MiniMax-H3/FL2VA/processor/tokenizer.json, MiniMax-H3/FL2VA/tokenizer/tokenizer.json, diffusers/MiniMax-H3/FL2VA/processor/tokenizer.json, diffusers/MiniMax-H3/FL2VA/tokenizer/tokenizer.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: tokenizer_config
+      group: tokenizer
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/tokenizer_config.json, MiniMax-H3/FL2VA/processor/tokenizer_config.json, MiniMax-H3/FL2VA/tokenizer/tokenizer_config.json, diffusers/MiniMax-H3/FL2VA/processor/tokenizer_config.json, diffusers/MiniMax-H3/FL2VA/tokenizer/tokenizer_config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: tokenizer_vocab
+      group: tokenizer
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/vocab.json, MiniMax-H3/FL2VA/processor/vocab.json, MiniMax-H3/FL2VA/tokenizer/vocab.json, diffusers/MiniMax-H3/FL2VA/processor/vocab.json, diffusers/MiniMax-H3/FL2VA/tokenizer/vocab.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: tokenizer_merges
+      group: tokenizer
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/merges.txt, MiniMax-H3/FL2VA/processor/merges.txt, MiniMax-H3/FL2VA/tokenizer/merges.txt, diffusers/MiniMax-H3/FL2VA/processor/merges.txt, diffusers/MiniMax-H3/FL2VA/tokenizer/merges.txt]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: processor_preprocessor
+      group: processor
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/preprocessor_config.json, MiniMax-H3/FL2VA/processor/preprocessor_config.json, MiniMax-H3/FL2VA/tokenizer/preprocessor_config.json, diffusers/MiniMax-H3/FL2VA/processor/preprocessor_config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: processor_video_preprocessor
+      group: processor
+      required: true
+      accepted_paths: [MiniMax-H3/FL2VA/text_encoder/video_preprocessor_config.json, MiniMax-H3/FL2VA/processor/video_preprocessor_config.json, diffusers/MiniMax-H3/FL2VA/processor/video_preprocessor_config.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+  optional:
+    - logical_component: model_index
+      group: sidecar
+      required: false
+      accepted_paths: [MiniMax-H3/FL2VA/model_index.json, diffusers/MiniMax-H3/FL2VA/model_index.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+    - logical_component: processor_chat_template
+      group: processor
+      required: false
+      accepted_paths: [MiniMax-H3/FL2VA/processor/chat_template.json, MiniMax-H3/FL2VA/tokenizer/chat_template.json, diffusers/MiniMax-H3/FL2VA/processor/chat_template.json]
+      source_status: OFFICIAL_MODEL_UPSTREAM_PINNED
+      checksum_status: MANIFEST_SHA256_REQUIRED
+source:
+  repository: MiniMaxAI/MiniMax-H3
+  revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+  revision_source: Hugging Face Hub git HEAD resolved with git ls-remote
+  resolved_at: 2026-08-18T16:05:00+08:00
+  base_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/
+  source_classification: OFFICIAL_MODEL_UPSTREAM
+  download_policy: DOWNLOAD_FROM_SOURCE_AT_INSTALL_TIME
+  reject_extensions:
+    - .safetensors
+license:
+  identifier: MiniMax H3 Community License Agreement
+  path: LICENSE
+  sha256: 59B99642B95EA21630E311198DDBFFFBFE05AADBA0C2F5D884CBDF4EFCC90F44
+  distribution: install-time-download-with-license-notice
+  notice_required: true
+  notice_text: MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved.
+  restrictions_summary: Applicable Territory and Acceptable Use Policy restrictions apply; users must review the upstream license.
+files:
+  - logical_component: release_metadata
+    path: FL2VA/model_index.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/model_index.json
+    expected_size: 719
+    sha256: D1113E0F123C69F79CD0DE35CA1771606EBC3EC924270D257B771F96F584AA6B
+    required: true
+  - logical_component: transformer_config
+    path: FL2VA/transformer/config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/transformer/config.json
+    expected_size: 604
+    sha256: F619093A231FCFBCC3D035BEC26C50AD864E7331A500D5C519F5045DC1E50458
+    required: true
+  - logical_component: text_encoder_config
+    path: FL2VA/text_encoder/config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/text_encoder/config.json
+    expected_size: 1474
+    sha256: D2DD0C60D01B9E195D9447C52DA61C7302D28828524914C044D9C6E1B81D0427
+    required: true
+  - logical_component: video_vae_config
+    path: FL2VA/video_vae/config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/video_vae/config.json
+    expected_size: 1807
+    sha256: 3EDD2CDD1EBC823C868BE55EF917E1B3B8A398FDE4D3150DAE44A3BF05D9F627
+    required: true
+  - logical_component: audio_vae_config
+    path: FL2VA/audio_vae/config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/audio_vae/config.json
+    expected_size: 1973
+    sha256: D8F3BCC62E23C7E9806970FA63CCA6139C06FAA3797CF9C94034F60DB8512771
+    required: true
+  - logical_component: processor_chat_template
+    path: FL2VA/processor/chat_template.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/chat_template.json
+    expected_size: 5499
+    sha256: 5C72A170D2A4A1A3BC5ADAD2E689AE28138A9700E5B8C96C0266331E86C0ACCE
+    required: true
+  - logical_component: processor_merges
+    path: FL2VA/processor/merges.txt
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/merges.txt
+    expected_size: 1671839
+    sha256: 599BAB54075088774B1733FDE865D5BD747CBCC7A547C5BC12610E874E26F5E3
+    required: true
+  - logical_component: processor_preprocessor
+    path: FL2VA/processor/preprocessor_config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/preprocessor_config.json
+    expected_size: 390
+    sha256: 27225450AC9C6529872EE1924FCB0962FF5634834F817040F444118116F4E516
+    required: true
+  - logical_component: processor_tokenizer_config
+    path: FL2VA/processor/tokenizer_config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/tokenizer_config.json
+    expected_size: 11003
+    sha256: A07E942AC874BAA13758DE8D1FBDB186683CC03416B5589E1B6671C6B3057C68
+    required: true
+  - logical_component: processor_tokenizer
+    path: FL2VA/processor/tokenizer.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/tokenizer.json
+    expected_size: 7032403
+    sha256: A5D85B6DCC535E6B93115A9EF287E6132FDBF30270DA6218194BA742261173C7
+    required: true
+  - logical_component: processor_video_preprocessor
+    path: FL2VA/processor/video_preprocessor_config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/video_preprocessor_config.json
+    expected_size: 385
+    sha256: 7768AF27C1FAFA9CC9011C1DC20067E03F8915E03B63504550E11D5066986D13
+    required: true
+  - logical_component: processor_vocab
+    path: FL2VA/processor/vocab.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/processor/vocab.json
+    expected_size: 2776833
+    sha256: CA10D7E9FB3ED18575DD1E277A2579C16D108E32F27439684AFA0E10B1440910
+    required: true
+  - logical_component: tokenizer_merges
+    path: FL2VA/tokenizer/merges.txt
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/tokenizer/merges.txt
+    expected_size: 1671839
+    sha256: 599BAB54075088774B1733FDE865D5BD747CBCC7A547C5BC12610E874E26F5E3
+    required: true
+  - logical_component: tokenizer_config
+    path: FL2VA/tokenizer/tokenizer_config.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/tokenizer/tokenizer_config.json
+    expected_size: 11003
+    sha256: A07E942AC874BAA13758DE8D1FBDB186683CC03416B5589E1B6671C6B3057C68
+    required: true
+  - logical_component: tokenizer_json
+    path: FL2VA/tokenizer/tokenizer.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/tokenizer/tokenizer.json
+    expected_size: 7032403
+    sha256: A5D85B6DCC535E6B93115A9EF287E6132FDBF30270DA6218194BA742261173C7
+    required: true
+  - logical_component: tokenizer_vocab
+    path: FL2VA/tokenizer/vocab.json
+    source_url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/FL2VA/tokenizer/vocab.json
+    expected_size: 2776833
+    sha256: CA10D7E9FB3ED18575DD1E277A2579C16D108E32F27439684AFA0E10B1440910
+    required: true

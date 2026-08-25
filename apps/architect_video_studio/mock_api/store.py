@@ -101,6 +101,24 @@ class StudioStore:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    def study_state_file(self, project_id: str) -> Path:
+        return self.project_dir(project_id) / "study_state.json"
+
+    def save_study_state(self, project_id: str, state: Dict[str, Any]) -> None:
+        """Persist the normalized Study snapshot for diagnostics/reload visibility.
+
+        The snapshot is always regenerated from project/assets/intent/prompt/jobs;
+        it is not treated as an independent source of truth.
+        """
+        self.save_json(self.study_state_file(project_id), state)
+
+    def find_reference(self, reference_id: str) -> tuple[str, Dict[str, Any]]:
+        for d in self.projects_root.iterdir():
+            refs = self.load_json(d / "references.json", {})
+            if reference_id in refs:
+                return d.name, refs[reference_id]
+        raise KeyError(f"reference not found: {reference_id}")
+
     # ------------------------------------------------------------------ #
     # intent / prompt
     # ------------------------------------------------------------------ #
@@ -121,6 +139,11 @@ class StudioStore:
 
     def save_prompt(self, project_id: str, prompt: Dict[str, Any]) -> None:
         self.save_json(self.prompt_file(project_id), prompt)
+
+    def clear_prompt(self, project_id: str) -> None:
+        path = self.prompt_file(project_id)
+        if path.is_file():
+            path.unlink()
 
     # ------------------------------------------------------------------ #
     # jobs

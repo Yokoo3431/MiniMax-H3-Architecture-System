@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "comfyui_defaults": {
     "server_address": "http://127.0.0.1:8188",
-    "comfyui_root": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI",
-    "python_executable": "D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe"
+    "comfyui_root": "ArchitectVideoStudio_Runtime\\ComfyUI",
+    "python_executable": "ArchitectVideoStudio_Runtime\\python_embeded\\python.exe"
   },
   "hardware_targets": {
     "gpu": "NVIDIA GeForce RTX 5070 12GB",

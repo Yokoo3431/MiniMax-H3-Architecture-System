@@ -1,0 +1,31 @@
+schema_version: 1
+manifest_id: fixture
+runtime:
+  comfyui:
+    version: "0.33.1"
+    source:
+      type: archive
+      url: https://fixture.local/runtime.zip
+      status: FIXTURE
+    checksum: fixture-runtime-sha256
+    expected_size: 1
+  frontend:
+    version: "1.48.7"
+  pread_shim:
+    version: project-pinned
+    source:
+      type: bundled
+      path: runtime/native_shim/windows_safe_load.py
+models: {}
+prompt_skill:
+  pinned_revision: fixture
+installation:
+  default_runtime_root: runtime/native
+  default_models_root: runtime/native/ComfyUI/models
+  safety_margin_gb: 0
+  max_retries: 3
+# Installer fixtures
+
+The tests create a deterministic temporary `fake_runtime.zip` from the small
+text files in this directory. No fixture is a real model and no test downloads
+from the Internet.

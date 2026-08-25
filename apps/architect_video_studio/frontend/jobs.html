@@ -11,7 +11,7 @@
     <a href="index.html">Home</a>
     <span class="crumb">Job Center</span>
     <span class="spacer"></span>
-    <span class="small muted">PATCH2.6-D · V2 · Mock</span>
+    <span class="small muted">Production jobs</span>
   </div>
   <div class="wrap">
     <h2 style="margin-top:0;">Job Center</h2>
@@ -27,8 +27,23 @@
       </table>
       <div id="err" class="error-banner" style="display:none;"></div>
     </div>
+    <div class="panel job-detail-panel" id="job-detail" style="display:none;margin-top:14px;">
+      <div class="job-detail-head">
+        <div><h3 id="detail-title" style="margin:0 0 4px;">任务详情</h3><div id="detail-subtitle" class="muted small"></div></div>
+        <div id="detail-status"></div>
+      </div>
+      <div class="job-detail-grid">
+        <div id="detail-reference"></div>
+        <div>
+          <div id="detail-summary"></div>
+          <div class="job-actions mt" id="detail-actions"></div>
+          <details class="mt"><summary>技术详情</summary><pre class="prompt" id="detail-technical"></pre></details>
+        </div>
+      </div>
+    </div>
   </div>
   <script src="js/api.js"></script>
+  <script src="js/engine_status.js"></script>
   <script src="js/jobs.js"></script>
 </body>
 </html>

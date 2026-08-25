@@ -110,6 +110,36 @@ class IntentAPI:
             raise KeyError("no intent record yet")
         return intent
 
+    def select_workflow(self, project_id: str, workflow: str) -> Dict[str, Any]:
+        """Persist a deliberate workflow change and invalidate stale Prompt data."""
+        project = self.store.load_project(project_id)
+        if project["state"] not in {"PROMPT_REVIEW", "USER_CONFIRM", "GPU_FAILED"}:
+            raise ValueError(
+                f"select_workflow requires PROMPT_REVIEW/USER_CONFIRM/GPU_FAILED; "
+                f"project is {project['state']}"
+            )
+        intent = self.store.load_intent(project_id)
+        if intent is None:
+            raise ValueError("no intent record; analyze_intent first")
+        frozen = {
+            "01_Exterior_Hero", "02_Day_Night_Transition", "03_Material_Detail",
+            "04_Drone_Aerial", "05_Slow_Walkthrough",
+        }
+        if workflow not in frozen:
+            raise ValueError(f"workflow {workflow!r} is not frozen")
+        if intent.get("selected_workflow") != workflow:
+            intent["selected_workflow"] = workflow
+            intent["selected_video_task"] = self._video_task_for(workflow)
+            intent["requires_user_confirmation"] = False
+            self.store.save_intent(project_id, intent)
+            self.store.clear_prompt(project_id)
+            self.store.append_audit(project_id, {
+                "actor": "architect", "event": "select_workflow",
+                "from": project["state"], "to": project["state"],
+                "detail": {"workflow": workflow, "invalidated_prompt": True},
+            })
+        return intent
+
     @staticmethod
     def _video_task_for(workflow: str) -> str:
         return {

@@ -13,6 +13,13 @@ models/**/put_*_files_here
 
 # --- Runtime data / outputs ---
 userdata/
+userdata/cache/
+userdata/cache/runtime/
+userdata/cache/downloads/
+userdata/cache/pip/
+userdata/cache/huggingface/
+userdata/cache/temp/
+userdata/cache/extract/
 !userdata/README.md
 userdata/output/
 userdata/projects/
@@ -27,6 +34,12 @@ install_test/
 
 # --- Internal development archive (NOT part of public release) ---
 docs/internal_archive/
+docs/*
+!docs/Advanced_ComfyUI.md
+!docs/Hardware_Requirements.md
+!docs/Quick_Start.md
+!docs/SHAREABLE_RC_COMPLETION_REPORT.md
+!docs/Troubleshooting.md
 
 # --- Non-public workspaces / validation tools ---
 distribution_test/
@@ -34,7 +47,14 @@ install_test/
 runtime/validation/
 apps/architect_video_studio/data/
 apps/architect_video_studio/screenshots/
+apps/architect_video_studio/system/
+apps/architect_video_studio/scripts/capture_r2b0_setup_screenshots.mjs
+tests/assets/
 runtime/logs/
+runtime/native/
+runtime/native.installing/
+validation/runtime_native_v0331/
+validation/runtime_native_v0331.installing/
 
 # --- Legacy dev tools (historical, not part of RC public set) ---
 # NOTE: explicit names only; case-insensitive globs (launcher/Start_*.bat)
@@ -47,6 +67,7 @@ launcher/Diagnose_*.bat
 
 # --- User-configured native runtime root (never committed) ---
 native_env.path
+models_env.path
 
 # --- Phase validation records in configs (internal) ---
 configs/rc33_*
@@ -73,6 +94,9 @@ env_report.json
 *.avi
 *.mov
 *.webm
+
+# --- Locally built shareable artifacts (publish separately) ---
+release/dist/
 
 # --- Secrets (never commit) ---
 .env

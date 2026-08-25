@@ -116,7 +116,10 @@ class ProjectStateMachine(_BaseMachine):
         "QUALITY_FAILED": {
             "user_reviewed": "USER_CONFIRM",
         },
-        "COMPLETED": {},
+        # A completed Study remains reusable.  Starting another generation
+        # keeps the approved reference and prompt, but opens a fresh confirm
+        # gate for the new Job instead of treating the Study as immutable.
+        "COMPLETED": {"start_new_generation": "USER_CONFIRM"},
     }
 
 

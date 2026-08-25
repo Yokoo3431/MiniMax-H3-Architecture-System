@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
+  "test_inventory_file": "configs/regression_test_inventory.txt",
+  "inventory_sha256": "0472701A20342E956F9DD906B8DC0E00E44D374BAC39982FA20B013DD476AC06",
+  "test_source_manifest_file": "configs/regression_test_sources.json",
+  "test_source_manifest_sha256": "64A1B8310595B02E21F8E03C7174CCB96ABD07B26D9C51AF58EA7CE3DB41B043",
+  "discovered_count": 766,
+  "expected_skip_count": 38,
+  "expected_skip_ids": [
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_input_validator",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_intent_mapping",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_known_limitations_recorded",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_prompt_schema_fl2va",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_prompt_schema_i2va",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_reference_gate",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_skill_rule_loading",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_official_skill_pipeline.TestOfficialSkillPipeline.test_workflow_profile_consistency",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestDynamicFl2vaTiming.test_adapter_passes_frame_grid_into_alignment",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestDynamicFl2vaTiming.test_alternate_frame_grid",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestDynamicFl2vaTiming.test_end_time_helper",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestDynamicFl2vaTiming.test_validated_107_frame_baseline",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestFrozenFixtures.test_five_fixtures_exist",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestFrozenFixtures.test_fixture_determinism_and_structure",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestIntentClassification.test_ambiguous_intent_blocks_build_without_override",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestIntentClassification.test_ambiguous_keyword_overlap_requires_confirmation",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestIntentClassification.test_clear_intent_high_confidence",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestIntentClassification.test_explicit_workflow_override_in_text",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestIntentClassification.test_explicit_workflow_override_param",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestIntentClassification.test_vague_intent_requires_confirmation",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestLegacyAdapterHardBlock.test_legacy_module_has_deprecation_marker",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestLegacyAdapterHardBlock.test_package_init_does_not_export_legacy",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestLegacyAdapterHardBlock.test_production_sources_never_import_legacy",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestMotionRiskExtension.test_assistant_remains_advisory",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestMotionRiskExtension.test_extended_risk_contract",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestProvenance.test_provenance_metadata_present",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestProvenance.test_provenance_stored_in_report_json",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestSkillVersionPolicy.test_installed_matches_pinned_allows_generation",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestSkillVersionPolicy.test_installed_mismatch_blocks_generation",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestSkillVersionPolicy.test_require_generation_allowed_raises_on_mismatch",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestSkillVersionPolicy.test_upstream_mismatch_does_not_switch_production",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestSkillVersionPolicy.test_upstream_unknown_surfaces_check_required",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestVideoTaskSeparation.test_mixed_project_type_without_video_task_is_ambiguous",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestVideoTaskSeparation.test_project_type_alone_is_advisory_not_authoritative",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestVideoTaskSeparation.test_video_task_selects_workflow_regardless_of_project_type",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_patch25a_hardening.TestWorkflowProfileContract.test_all_profiles_have_contract_fields",
+      "reason": "optional dependency cv2/numpy is not installed"
+    },
+    {
+      "id": "test_v080_rc31_integration.TestV080RC31Integration.test_workflow_deployer_and_validator",
+      "reason": "historical external-machine deployer test is opt-in"
+    },
+    {
+      "id": "test_v080_rc32_native_reconstruction.TestV080RC32NativeReconstruction.test_deployer_verifies_zero_runninghub_nodes",
+      "reason": "historical external-machine deployer test is opt-in"
+    }
+  ],
+  "core_pass_count": 724,
+  "creation_stage": "ENVIRONMENT_DISCOVERY_REUSE_FIX"
+}

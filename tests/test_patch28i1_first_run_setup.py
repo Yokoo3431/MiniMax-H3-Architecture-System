@@ -41,6 +41,19 @@ def _write_models(root: Path) -> Path:
 def _write_native(root: Path) -> Path:
     (root / "ComfyUI" / "custom_nodes" / "windows_safe_load").mkdir(parents=True, exist_ok=True)
     (root / "ComfyUI" / "main.py").write_text("main", encoding="utf-8")
+    h3 = root / "ComfyUI" / "custom_nodes" / "ComfyUI_RH_MinMaxH3"
+    h3.mkdir(parents=True, exist_ok=True)
+    h3.joinpath("nodes.py").write_text(
+        "\n".join((
+            "RHMiniMaxH3DecodeAV", "RHMiniMaxH3DualSigmaSampler",
+            "RHMiniMaxH3EmptyAVLatent", "RHMiniMaxH3FL2VAEncode",
+            "RHMiniMaxH3FL2VAFirstFrameCondition", "RHMiniMaxH3FL2VATarget",
+            "RHMiniMaxH3ModelLoader", "RHMiniMaxH3T2VATextEncode",
+            "RHMiniMaxH3TextEncoderLoader", "RHMiniMaxH3VAELoader",
+        )), encoding="utf-8")
+    vhs = root / "ComfyUI" / "custom_nodes" / "ComfyUI-VideoHelperSuite"
+    vhs.mkdir(parents=True, exist_ok=True)
+    vhs.joinpath("nodes.py").write_text("VHS_VideoCombine", encoding="utf-8")
     return root
 
 
@@ -54,6 +67,17 @@ class Harness:
         self.env_path = SYSTEM_ROOT / "native_env.path"
         self.env_path_backup = self.env_path.read_text(encoding="utf-8") \
             if self.env_path.is_file() else None
+        # The developer machine may already have a production native_env.path.
+        # First-run tests must exercise the clean-user state without deleting
+        # that configuration permanently; close() restores the saved content.
+        if self.env_path.exists():
+            self.env_path.unlink()
+        self.path_env_backup = {
+            key: os.environ.get(key)
+            for key in ("H3_NATIVE_ROOT", "H3_MODELS_ROOT", "H3_BASELINE", "H3_ENV_REPORT")
+        }
+        for key in self.path_env_backup:
+            os.environ.pop(key, None)
         self.pread_backup = os.environ.get("H3_WINDOWS_SAFE_LOAD")
         os.environ["H3_WINDOWS_SAFE_LOAD"] = "pread"
         self.overrides = {
@@ -64,6 +88,8 @@ class Harness:
             "frontend_version": "1.48.7",
             "gpu_name": "RTX 5070",
             "ram_gb": 64,
+            "support_dependencies_ready": True,
+            "h3_model_root_ready": True,
         }
         self.service = EnvironmentService(self.store, self.overrides)
 
@@ -77,6 +103,11 @@ class Harness:
             os.environ.pop("H3_WINDOWS_SAFE_LOAD", None)
         else:
             os.environ["H3_WINDOWS_SAFE_LOAD"] = self.pread_backup
+        for key, value in self.path_env_backup.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
         self.tmp.cleanup()
 
 

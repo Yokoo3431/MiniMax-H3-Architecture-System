@@ -9,7 +9,7 @@ import sys
 import unittest
 from pathlib import Path
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
@@ -94,12 +94,12 @@ class FakeClient:
 
 class TestWorkflowRegistry(unittest.TestCase):
     def test_all_five_workflows_registered(self):
-        mapping = yaml.safe_load(MAPPING.read_text(encoding="utf-8"))
+        mapping = safe_load(MAPPING.read_text(encoding="utf-8"))
         reg = mapping["workflow_registry"]
         self.assertEqual(set(reg), set(WORKFLOWS))
 
     def test_input_modes(self):
-        mapping = yaml.safe_load(MAPPING.read_text(encoding="utf-8"))
+        mapping = safe_load(MAPPING.read_text(encoding="utf-8"))
         reg = mapping["workflow_registry"]
         for wf in ("01_Exterior_Hero", "03_Material_Detail",
                    "04_Drone_Aerial", "05_Slow_Walkthrough"):
@@ -109,7 +109,7 @@ class TestWorkflowRegistry(unittest.TestCase):
                          ["first_frame", "last_frame"])
 
     def test_native_assets_exist(self):
-        mapping = yaml.safe_load(MAPPING.read_text(encoding="utf-8"))
+        mapping = safe_load(MAPPING.read_text(encoding="utf-8"))
         reg = mapping["workflow_registry"]
         for wf in WORKFLOWS:
             asset = SYSTEM_ROOT / reg[wf]["native_asset"]

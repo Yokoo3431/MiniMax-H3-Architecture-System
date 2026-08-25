@@ -1,0 +1,179 @@
+schema_version: 1
+manifest_id: minimax-h3-production-support-r2a
+policy: IMMUTABLE_PRODUCTION_PROVENANCE_ONLY
+
+support_layers:
+  minimax_h3_nodes:
+    package_name: comfyui-rh-minimax-h3
+    directory: ComfyUI_RH_MinMaxH3
+    repository: https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3.git
+    commit: d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad
+    source_archive_url: https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3/archive/d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad.zip
+    archive_size: 1556502
+    archive_sha256: DE36151CA3830A55EAF93FEB6E7D45950C9DA14DAA9C0BFACDCEC04BC5DA225D
+    source_tree_fingerprint:
+      algorithm: git_blob_path_v1
+      value: efd04e54b7fd66308b201805d76831c598e46da6e6a40dc53ab520d0a0426ba2
+    install_target: ComfyUI/custom_nodes/ComfyUI_RH_MinMaxH3
+    license: Apache-2.0
+    requirements_source: requirements.txt
+    required_nodes:
+      - RHMiniMaxH3DecodeAV
+      - RHMiniMaxH3DualSigmaSampler
+      - RHMiniMaxH3EmptyAVLatent
+      - RHMiniMaxH3FL2VAEncode
+      - RHMiniMaxH3FL2VAFirstFrameCondition
+      - RHMiniMaxH3FL2VATarget
+      - RHMiniMaxH3ModelLoader
+      - RHMiniMaxH3T2VATextEncode
+      - RHMiniMaxH3TextEncoderLoader
+      - RHMiniMaxH3VAELoader
+    registration_module: minimax_h3_nodes.nodes.NODE_CLASS_MAPPINGS
+    production_snapshot:
+      source: D-drive validated Native custom_nodes forensic audit
+      upstream_commit: d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad
+      source_tree_fingerprint_without_backups: 887ddf87371e703f27c52694d849171e90ef455a52a2ae811aa3b8b934c38ae0
+      local_patch:
+        path: patches/support_layers/minimax_h3_production_windows.patch
+        sha256: 488ab271e68d226a690f3c1dc322a9fc15a0eba7273045e890a871de2c0196bd
+        applies_to: d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad
+        purpose: Windows large-safetensors mmap crash mitigation, validated sampler/loader settings, and Strategy A BF16 language-static target policy
+      vae_windows_hardening:
+        path: patches/support_layers/minimax_h3_vae_offload_sync.patch
+        strategy: B
+        status: SOURCE_PATCH_PREPARED_GPU_VALIDATION_REQUIRED
+        purpose: Synchronize CUDA before the existing recursive VAE CPU release; no model, dtype, or workflow changes.
+      strategy_a:
+        status: CPU_META_CANDIDATE_IMPLEMENTED
+        target_dtype: bfloat16
+        scope: ordinary language static tensors only
+        visual_dtype: preserved_fp32
+        quantized_linear_contract: preserved_350
+        incremental_reconciliation_patch:
+          path: patches/support_layers/minimax_h3_strategy_a_incremental.patch
+          sha256: 672347927e9c4715ab74432c5c82087f68376cde10cb96143e94414e6ae3ec5d
+        import_incremental_reconciliation_patch:
+          path: patches/support_layers/minimax_h3_strategy_a_import_incremental.patch
+          sha256: 9dc0262f6ee3ee6e803d32a9502ccefac44dbf700b906fd7bc1b311c4aa4559f
+        static_transfer_margin_reconciliation_patch:
+          path: patches/support_layers/minimax_h3_static_transfer_margin_incremental.patch
+          sha256: 4c3054dfe2c0114d5a18de1078be29224627e9da414fe534cbfa6ffd2cfd95bb
+        language_boundary_instrumentation_patch:
+          path: patches/support_layers/minimax_h3_language_boundary_instrumentation_incremental.patch
+          sha256: 67ca71fd28ddedf7cad6f3bb837b6b825ee08145efe518671574e19522dad2ac
+          status: OBSERVATIONAL_CPU_VALIDATED
+          markers:
+            - LANGLOAD-01 BEFORE_LOAD_MODELS_GPU
+            - LANGLOAD-02 AFTER_LOAD_MODELS_GPU
+            - LANGLOAD-03 BEFORE_MOVE_STATIC
+            - LANGLOAD-04 AFTER_MOVE_STATIC
+          preserves_original_traceback: true
+          separates_pre_and_post_rollback_state: true
+        static_transfer_headroom_patch:
+          path: patches/support_layers/minimax_h3_static_transfer_headroom_incremental.patch
+          sha256: c6342b0417f9adb8dacfb72cdacab9a6c58500a0fb7ee27192eca098148e5aeb
+          status: CPU_STATIC_POLICY_IMPLEMENTED
+          method: ModelPatcher.partially_unload
+          target_bytes: static_storage_bytes + TE_GPU_HEADROOM
+          requested_bytes: min(loaded_size, target_bytes)
+          before_static_transfer: true
+          preserves_strategy_a: true
+        runtime_consumer_validation: pending_human_authorized_gpu_gate
+      memory_policy:
+        status: CPU_META_POLICY_IMPLEMENTED
+        name: static_transfer_safety_margin
+        formula: max(0, fp32_equivalent_static_bytes - actual_static_storage_bytes)
+        applies_when: H3_LANGUAGE_STATIC_TARGET_DTYPE == bfloat16
+        inventory_contract:
+          authority: PINNED_MATERIALIZED_DIRECT_SLOT_CONTRACT
+          direct_tensor_count: 203
+          actual_bfloat16_bytes: 1556874496
+          fp32_equivalent_bytes: 3113748992
+          generated_buffers:
+            - language_model.rotary_emb.inv_freq
+            - language_model.rotary_emb.original_inv_freq
+          removed_checkpoint_slots:
+            - language_model.norm.weight
+        preserves:
+          - 350 quantized Linears
+          - visual FP32
+          - Comfy ModelPatcher partial loading
+          - load_models_gpu before static transfer
+        gpu_validation: pending_human_authorized_gpu_gate
+      excluded_for_install:
+        - minimax_h3_nodes/api/sampling_nodes.py.bak_crashfix
+        - minimax_h3_nodes/runtime/model_loader/_impl.py.bak_crashfix
+        - minimax_h3_nodes/runtime/qwen_encoder/loading.py.bak_crashfix
+
+  video_helper_suite:
+    package_name: comfyui-videohelpersuite
+    directory: ComfyUI-VideoHelperSuite
+    repository: https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
+    commit: 4ee72c065db22c9d96c2427954dc69e7b908444b
+    source_archive_url: https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite/archive/4ee72c065db22c9d96c2427954dc69e7b908444b.zip
+    archive_size: 116396
+    archive_sha256: 34A0BDD4E35DDADD84DB7FCBF58DAF6C3EBBAB720BFF6CDB50621571279C5765
+    source_tree_fingerprint:
+      algorithm: git_blob_path_v1
+      value: 5d881ddec68ee6deec3140f58c26e6b397ae82ad6a9aaa92c933c1e770101a82
+    install_target: ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite
+    license: GPL-3.0-only
+    requirements_source: requirements.txt
+    required_nodes:
+      - VHS_VideoCombine
+    registration_module: videohelpersuite.nodes.NODE_CLASS_MAPPINGS
+    ffmpeg:
+      strategy: imageio-ffmpeg-bundled
+      package: imageio-ffmpeg
+      production_version: 0.6.0
+      system_path_dependency: false
+
+dependency_policy:
+  install_strategy: pinned_no_deps_non_core_only
+  frozen_core:
+    - torch
+    - torchvision
+    - torchaudio
+    - CUDA runtime
+    - comfy-kitchen
+  production_versions:
+    transformers: 5.8.1
+    tokenizers: 0.22.2
+    accelerate: 1.14.0
+    safetensors: 0.8.0
+    numpy: 2.4.6
+    sentencepiece: 0.2.1
+    einops: 0.8.2
+    Pillow: 12.2.0
+    opencv-python: 5.0.0.93
+    imageio-ffmpeg: 0.6.0
+    comfy-kitchen: 0.2.16
+  install_required:
+    - transformers==5.8.1
+    - accelerate==1.14.0
+    - opencv-python==5.0.0.93
+    - imageio-ffmpeg==0.6.0
+  optional_not_installed:
+    - triton
+    - cache-dit
+
+installation_order:
+  - comfyui_runtime
+  - minimax_h3_nodes
+  - video_helper_suite
+  - support_layer_dependencies
+  - pread_shim
+  - prompt_skill
+  - models
+
+security:
+  https_only: true
+  exact_commit_required: true
+  reject_branches:
+    - main
+    - master
+    - latest
+  reject_repository_substitution: true
+  reject_torch_replacement: true
+  production_runtime_target: forbidden
+  production_models_target: forbidden

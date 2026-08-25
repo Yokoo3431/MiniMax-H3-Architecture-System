@@ -1,0 +1,51 @@
+--- a/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
+@@ -266,1 +266,30 @@
++def _static_transfer_safety_margin(
++    roots: list[Any],
++    excluded_module_ids: set[int],
++    actual_static_bytes: int,
++) -> int:
++    """Derive the Strategy-A margin without a machine-tuned constant.
++
++    The validated ordinary language static inventory is compared with its
++    FP32-equivalent byte total. If the active target is not Strategy A, or
++    the actual tensors already occupy the FP32-equivalent size, no margin is
++    added. Shared direct tensors are counted once, matching the actual-byte
++    inventory.
++    """
++
++    if H3_LANGUAGE_STATIC_TARGET_DTYPE != "bfloat16":
++        return 0
++    seen: set[int] = set()
++    fp32_equivalent = 0
++    for _module, _collection, _name, tensor in _direct_tensor_slots(
++        roots, excluded_module_ids
++    ):
++        if not tensor.is_floating_point():
++            continue
++        tensor_id = id(tensor)
++        if tensor_id not in seen:
++            fp32_equivalent += int(tensor.numel()) * 4
++            seen.add(tensor_id)
++    return max(0, fp32_equivalent - int(actual_static_bytes))
+ def _move_direct_tensors(
+--- a/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
+@@ -51,1 +51,2 @@
++        self._static_transfer_safety_margin_bytes = 0
+     def _movable(self):  # 文本编码实际参与的直接子模块（可选跳过 visual 塔）
+@@ -297,4 +301,7 @@
+         self._linear_storage_bytes = linear_bytes
+         self._static_storage_bytes = _direct_tensor_bytes(roots, excluded)
++        self._static_transfer_safety_margin_bytes = _static_transfer_safety_margin(
++            roots, excluded, self._static_storage_bytes
++        )
+         LOGGER.info(
+@@ -408,5 +415,6 @@
+             reserve = (
+                 TE_GPU_HEADROOM
+                 + self._static_storage_bytes
++                + self._static_transfer_safety_margin_bytes
+                 + extra_headroom
+             )

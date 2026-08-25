@@ -15,7 +15,7 @@
         {"name": "MASK", "type": "MASK", "links": null}
       ],
       "properties": {"Node name for S&R": "LoadImage"},
-      "widgets_values": ["architectural_material_sample.png", "image"]
+      "widgets_values": ["example.png", "image"]
     },
     {
       "id": 2,
@@ -29,7 +29,7 @@
         {"name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "UNETLoader"},
-      "widgets_values": ["diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "default"]
+      "widgets_values": ["minimax_h3_fl2va_pruned_int8_convrot.safetensors", "default"]
     },
     {
       "id": 3,
@@ -43,7 +43,7 @@
         {"name": "CLIP", "type": "CLIP", "links": [2, 3], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "CLIPLoader"},
-      "widgets_values": ["text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "stable_diffusion"]
+      "widgets_values": ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "minimax"]
     },
     {
       "id": 4,
@@ -57,7 +57,7 @@
         {"name": "VAE", "type": "VAE", "links": [4], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "VAELoader"},
-      "widgets_values": ["vae/minimax_h3_video_vae_fp16.safetensors"]
+      "widgets_values": ["minimax_h3_video_vae_fp16.safetensors"]
     },
     {
       "id": 5,

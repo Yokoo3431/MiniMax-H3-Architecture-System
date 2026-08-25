@@ -1,0 +1,155 @@
+schema_version: 1
+manifest_id: minimax-h3-production-i2
+policy: PINNED_BASELINE_ONLY
+
+runtime:
+  comfyui:
+    version: "0.33.1"
+    source:
+      type: official_github_release
+      asset: ComfyUI_windows_portable_nvidia.7z
+      url: https://github.com/Comfy-Org/ComfyUI/releases/download/v0.33.1/ComfyUI_windows_portable_nvidia.7z
+      status: TRUSTED_PINNED_SOURCE
+      expected_size: 2133107036
+      sha256: 4a221588979b96b8244e0e50b2edca03af732acae1deba69d60aa3b4d60b9dba
+      platform: windows
+      gpu: nvidia
+      python: "3.13"
+      frontend: "1.48.7"
+      source_repository: Comfy-Org/ComfyUI
+      release_tag: v0.33.1
+      release_asset_digest_source: GitHub Release asset metadata
+      license: GPL-3.0
+    expected_size: 2133107036
+    checksum: 4a221588979b96b8244e0e50b2edca03af732acae1deba69d60aa3b4d60b9dba
+    install_path: runtime/native
+    expected_layout:
+      - python_embeded/python.exe
+      - ComfyUI/main.py
+  frontend:
+    version: "1.48.7"
+    source:
+      type: bundled_with_comfyui
+      status: PINNED
+  pread_shim:
+    version: project-pinned
+    source:
+      type: bundled
+      path: runtime/native_shim/windows_safe_load.py
+      status: PINNED
+    target: ComfyUI/custom_nodes/windows_safe_load/__init__.py
+
+support_layers:
+  manifest: configs/support_layer_manifest.yaml
+  policy: IMMUTABLE_PRODUCTION_PROVENANCE_ONLY
+  install_order:
+    - comfyui_runtime
+    - minimax_h3_nodes
+    - video_helper_suite
+    - support_layer_dependencies
+    - pread_shim
+    - prompt_skill
+    - models
+  production_runtime_target: forbidden
+  production_models_target: forbidden
+  promotion_policy:
+    validation_to_active: explicit_after_validation
+    active_role: ACTIVE_PRODUCTION_NATIVE
+    requires_support_lock: true
+    requires_capability_validation: true
+
+models:
+  source_repository: MiniMaxAI/MiniMax-H3
+  source_revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+  dit:
+    filename: minimax_h3_fl2va_pruned_int8_convrot.safetensors
+    target_subdir: diffusion_models
+    expected_size: 20970379616
+    sha256: E889202C41DAFB67B10D67B97F0D8541508036A6090AF23425A5C2615D03C47A
+    source:
+      type: official
+      url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/transformer/minimax_h3_fl2va_pruned_int8_convrot.safetensors
+      license: MiniMax-AI Model License
+  text_encoder:
+    filename: qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+    target_subdir: text_encoders
+    expected_size: 15687142551
+    sha256: 35A88D51044231FE332301D7A62AA81E3F2CBA62FEBEB446E2C1E3E0EF76F2C6
+    source:
+      type: official
+      url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/text_encoder/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+      license: MiniMax-AI Model License
+  video_vae:
+    filename: minimax_h3_video_vae_fp16.safetensors
+    target_subdir: vae
+    expected_size: 5207808496
+    sha256: 7C1F131492E7EDDACAAC9069A61B81BDD39DE5CC96561E677C5EAB1CDCE5E522
+    source:
+      type: official
+      url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/video_vae/minimax_h3_video_vae_fp16.safetensors
+      license: MiniMax-AI Model License
+  audio_vae:
+    filename: minimax_h3_audio_vae_fp32.safetensors
+    target_subdir: vae
+    expected_size: 605254808
+    sha256: 8E505D95DD1561D47ABD43D4238FD40D9BB1AE9E147ED0A4CBA778D76AE4DB48
+    source:
+      type: official
+      url: https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/audio_vae/minimax_h3_audio_vae_fp32.safetensors
+      license: MiniMax-AI Model License
+
+prompt_skill:
+  pinned_revision: 2026-07-29-main-reviewed
+  source: bundled
+  install_strategy: bundled_or_pinned_copy
+  path: references/known_good_h3/comfy_official/skill_check
+  files:
+    SKILL.md: 3411537CB4FC9B580AE4137DE683948952331D4A862DE0C1CA183D9BC1AA60CE
+    references/base-en.txt: AEFB0DA9FBE3E9F69AB52A2DBEEB7D8610C811D680F3D415DA7596BBB5AB2B0C
+
+installation:
+  default_runtime_root: ArchitectVideoStudio_Runtime
+  default_models_root: Models
+  h3_model_sidecar: configs/h3_sidecar_manifest.yaml
+  h3_runtime_asset_contract: configs/h3_sidecar_manifest.yaml#runtime_asset_contract
+  h3_model_root:
+    directory_name: MiniMax-H3
+    relative_to_models_root: MiniMax-H3
+    release_root_relative_to_models_root: diffusers/MiniMax-H3
+    sidecar_manifest: configs/h3_sidecar_manifest.yaml
+    resolver_environment:
+      model_roots: MINIMAX_H3_MODEL_ROOTS
+      weights_roots: MINIMAX_H3_WEIGHTS_ROOTS
+    resolution: pinned_HM-RunningHub_ComfyUI_RH_MinMaxH3_contract
+    required_layout:
+      - diffusers/MiniMax-H3/FL2VA/model_index.json
+      - diffusers/MiniMax-H3/FL2VA/transformer/config.json
+      - diffusers/MiniMax-H3/FL2VA/text_encoder/config.json
+      - diffusers/MiniMax-H3/FL2VA/processor/tokenizer_config.json
+      - diffusers/MiniMax-H3/FL2VA/processor/tokenizer.json
+      - diffusers/MiniMax-H3/FL2VA/processor/vocab.json
+      - diffusers/MiniMax-H3/FL2VA/processor/preprocessor_config.json
+      - diffusers/MiniMax-H3/FL2VA/video_vae/config.json
+      - diffusers/MiniMax-H3/FL2VA/audio_vae/config.json
+    existing_compatible_layout:
+      - MiniMax-H3/FL2VA/transformer/config.json
+      - MiniMax-H3/FL2VA/text_encoder/config.json
+      - MiniMax-H3/FL2VA/text_encoder/tokenizer.json
+      - MiniMax-H3/FL2VA/text_encoder/tokenizer_config.json
+      - MiniMax-H3/FL2VA/text_encoder/vocab.json
+      - MiniMax-H3/FL2VA/text_encoder/merges.txt
+      - MiniMax-H3/FL2VA/text_encoder/preprocessor_config.json
+      - MiniMax-H3/FL2VA/video_vae/config.json
+      - MiniMax-H3/FL2VA/audio_vae/config.json
+    sidecar_source_status: TRUSTED_IMMUTABLE_SOURCE
+    sidecar_source: MiniMaxAI/MiniMax-H3@42ed227ee7df40d41602854ae760620d6eb651fe
+    sidecar_component: h3_model_configuration
+    sidecar_policy: non_weight_files_only
+    weight_policy: reuse_existing_shared_weights_without_copy
+  download_cache: userdata/cache/downloads
+  job_state: userdata/system/install_jobs
+  log_file: logs/installer.log
+  safety_margin_gb: 10
+  max_retries: 3
+  allowed_protocols:
+    - https

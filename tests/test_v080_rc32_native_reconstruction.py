@@ -3,6 +3,7 @@
 
 import sys
 import json
+import os
 import unittest
 from pathlib import Path
 
@@ -54,6 +55,8 @@ class TestV080RC32NativeReconstruction(unittest.TestCase):
             self.assertIn("VAELoader", node_types)
             self.assertIn("KSampler", node_types)
 
+    @unittest.skipUnless(os.environ.get("H3_RUN_EXTERNAL_INTEGRATION_TESTS") == "1",
+                         "historical external-machine deployer test is opt-in")
     def test_deployer_verifies_zero_runninghub_nodes(self):
         res = deploy_and_validate_workflows()
         self.assertEqual(res["status"], "PASS")

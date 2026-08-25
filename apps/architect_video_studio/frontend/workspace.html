@@ -22,7 +22,7 @@
       </div>
       <div style="text-align:right;">
         <span id="task-state" class="badge state"></span>
-        <div id="steps" class="steps" style="justify-content:flex-end;"></div>
+        <div id="steps" class="steps hidden" style="justify-content:flex-end;"></div>
       </div>
     </div>
     <div id="err" class="error-banner" style="display:none;"></div>
@@ -38,7 +38,7 @@
         <div class="v-body" id="v-body">
           <div class="v-empty" id="v-empty">
             参考图将在此渲染预览<br>
-            <span class="small">PATCH2.6-D.2 · Mock 视口（无真实生成）</span>
+            <span class="small">Interactive architectural preview</span>
           </div>
         </div>
         <div class="v-chip" id="v-mode-chip">—</div>
@@ -90,32 +90,36 @@
             <div id="param-shelf" class="mt" style="display:none;">
               <!-- Camera -->
               <div class="ctl-group">
-                <h4>Camera</h4>
-                <div class="seg" id="camera-seg">
+                <h4 class="hidden">Camera</h4>
+                <div class="seg hidden" id="camera-seg">
                   <button data-cam="static">Static</button>
                   <button data-cam="push">Push</button>
                   <button data-cam="reveal">Reveal</button>
                   <button data-cam="walkthrough">Walkthrough</button>
                   <button data-cam="aerial">Aerial</button>
                 </div>
-                <div id="cam-hint" class="small muted mt"></div>
+                <div id="cam-hint" class="small muted mt hidden"></div>
               </div>
 
               <!-- Output parameters (bound to VideoGenerationRequest) -->
               <div class="ctl-group">
-                <h4>Output Parameters</h4>
+                <h4>生成设置</h4>
                 <div class="param-grid">
-                  <div><label>Duration</label><select id="param-duration"><option>4s</option></select></div>
-                  <div><label>Resolution</label><select id="param-resolution"><option>1344×768</option><option>1280×720</option></select></div>
-                  <div><label>FPS</label><select id="param-fps"><option>24</option></select></div>
-                  <div><label>Quality</label><select id="param-quality"><option>Diagnostic</option><option>Production (future)</option></select></div>
-                  <div class="wide"><label>Seed（可选，留空=随机）</label><input type="text" id="param-seed" placeholder="例如 777888999"></div>
+                  <div><label>时长</label><select id="param-duration"><option>4s</option></select></div>
+                  <div><label>质量</label><select id="param-quality"><option>Diagnostic</option><option>Production</option></select></div>
                 </div>
+                <details class="advanced-settings mt"><summary>高级设置</summary>
+                  <div class="param-grid mt">
+                    <div><label>Resolution</label><select id="param-resolution"><option>1344×768</option><option>1280×720</option></select></div>
+                    <div><label>FPS</label><select id="param-fps"><option>24</option></select></div>
+                    <div class="wide"><label>Seed（可选，留空=随机）</label><input type="text" id="param-seed" placeholder="例如 777888999"></div>
+                  </div>
+                </details>
               </div>
 
               <!-- Workflow -->
               <div class="ctl-group">
-                <h4>Workflow</h4>
+                <h4>视频类型</h4>
                 <select id="wf-select"></select>
                 <div id="wf-meta" class="small muted mt"></div>
               </div>
@@ -136,8 +140,8 @@
               </div>
               <label class="mt"><input type="checkbox" id="risk-check"> 我已审阅风险提示</label>
               <div class="mt" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <button class="btn" id="preview-btn" disabled>生成 Prompt 预览</button>
-                <button class="btn primary" id="generate-btn" disabled>Generate</button>
+                <button class="btn" id="preview-btn" disabled>生成提示词</button>
+                <button class="btn primary" id="generate-btn" disabled>开始生成</button>
                 <span id="gate-note" class="gate-note"></span>
               </div>
             </div>
@@ -151,7 +155,7 @@
             </div>
 
             <!-- Workflow Controller -->
-            <div class="adv-card mt">
+            <div class="adv-card mt hidden">
               <h3 style="margin-top:0;">Workflow Controller</h3>
               <div class="strategy-grid">
                 <div class="strategy"><div class="s-name">Single Image <span class="badge done">当前</span></div><div class="s-note">I2VA · 01/03/04/05</div></div>
@@ -166,6 +170,7 @@
     </div>
   </div>
   <script src="js/api.js"></script>
+  <script src="js/engine_status.js"></script>
   <script src="js/workspace.js"></script>
 </body>
 </html>

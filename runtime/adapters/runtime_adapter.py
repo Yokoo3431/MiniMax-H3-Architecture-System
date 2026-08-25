@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONTRACT = REPO_ROOT / "runtime" / "contracts" / "video_generation_request.yaml"
@@ -34,7 +34,7 @@ TERMINAL_RUNTIME_STATUSES = {"COMPLETED", "FAILED", "CANCELLED"}
 def load_contract(path: Path = DEFAULT_CONTRACT) -> dict:
     if not Path(path).is_file():
         raise FileNotFoundError(f"runtime contract missing: {path}")
-    return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    return safe_load(Path(path).read_text(encoding="utf-8"))
 
 
 def _allowed(node: Any) -> List[str]:

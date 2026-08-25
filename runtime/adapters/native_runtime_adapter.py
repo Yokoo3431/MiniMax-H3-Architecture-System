@@ -19,12 +19,13 @@ for it. No workflow JSON is modified.
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 from runtime.adapters.comfyui_client import (
     ComfyUIClient,
@@ -42,6 +43,13 @@ from runtime.adapters.runtime_adapter import (
     map_runtime_status,
     validate_request,
 )
+from runtime.adapters.production_workflow_binding import (
+    build_production_payload, load_registry, production_model_contract,
+    validate_all_ui_workflow_model_bindings,
+)
+from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
+from runtime.h3_model_root import validate_h3_model_contract
+from runtime.product_hardening import map_comfy_event
 
 WORKFLOW_MAPPING = REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml"
 
@@ -105,19 +113,53 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                  contract_path: Path = DEFAULT_CONTRACT,
                  workflow_mapping_path: Path = WORKFLOW_MAPPING,
                  clock: Optional[Callable[[], float]] = None,
-                 comfy_input_dir: Optional[str] = None) -> None:
+                 comfy_input_dir: Optional[str] = None,
+                 production_binding: bool = False,
+                 runtime_paths: Optional[RuntimePathContract] = None) -> None:
         super().__init__(contract_path)
         self.client = client or ComfyUIClient()
-        self.workflow_mapping = yaml.safe_load(
+        self.workflow_mapping = safe_load(
             Path(workflow_mapping_path).read_text(encoding="utf-8"))
         self.clock = clock or time.time
         self.comfy_input_dir = Path(comfy_input_dir) if comfy_input_dir else None
+        self.production_binding = bool(production_binding)
+        self.runtime_paths = runtime_paths
         self.jobs: Dict[str, Dict[str, Any]] = {}
 
     # ------------------------------------------------------------------ #
     # prepare
     # ------------------------------------------------------------------ #
+    def preflight(self) -> Dict[str, Any]:
+        """Validate live ComfyUI capability and all five model bindings.
+
+        This is intentionally read-only: it uses health and object metadata,
+        never ``/prompt`` and never loads a model.
+        """
+        if self.runtime_paths is not None:
+            self.runtime_paths.validate_for_job()
+            h3_root = validate_h3_model_contract(
+                self.runtime_paths.runtime_root,
+                self.runtime_paths.models_root,
+            )
+            if not h3_root.get("ready"):
+                raise ComfyUIExecutionError(
+                    "MODEL_PATH_ERROR: MiniMax-H3 model root is not visible to the "
+                    "pinned loader: " + json.dumps(h3_root, ensure_ascii=False)
+                )
+        health = self.client.health_check()
+        object_info = self.client.object_info()
+        binding = validate_all_ui_workflow_model_bindings(object_info)
+        if not binding["ready"]:
+            raise ComfyUIExecutionError(
+                "WORKFLOW_BINDING_ERROR: " + json.dumps(binding, ensure_ascii=False))
+        return {"ready": True, "health": health, "object_info": object_info,
+                "model_bindings": binding}
+
     def prepare(self, request: Any) -> Dict[str, Any]:
+        if self.runtime_paths is not None:
+            self.runtime_paths.validate_for_job()
+        if self.production_binding and hasattr(self.client, "object_info"):
+            self.preflight()
         data = request.to_dict() if isinstance(request, VideoGenerationRequest) else dict(request)
         errors = validate_request(data, self.contract)
         if errors:
@@ -142,6 +184,32 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             raise ValueError(
                 f"camera_motion {data.get('camera_motion')!r} not supported by "
                 f"{workflow_id}: {sorted(supported_cameras)}")
+        if self.production_binding:
+            production_entry = load_registry()["workflows"][workflow_id]
+            asset_rel = production_entry["canonical_source"]
+            asset_path = REPO_ROOT / asset_rel
+            if not asset_path.is_file():
+                raise WorkflowNotFoundError(f"production workflow asset missing: {asset_path}")
+            payload = build_production_payload(data, workflow_id)
+            return {
+                "job_id": f"native-{uuid.uuid4().hex[:12]}",
+                "study_id": data["study_id"],
+                "workflow_id": workflow_id,
+                "workflow_asset": asset_rel,
+                "translated_payload": payload,
+                "binding": {
+                    "source_of_truth": "configs/production_workflow_registry.json",
+                    "canonical_source": asset_rel,
+                    "payload_template": production_entry["payload_template"],
+                    "model_bindings": production_model_contract(),
+                    "browser_state_ignored": True,
+                },
+                "control": {
+                    "submit_timeout_seconds": 60.0,
+                    "poll_interval_seconds": 5.0,
+                    "history_timeout_seconds": 1800.0,
+                },
+            }
         asset_rel = registry[workflow_id]["native_asset"]
         asset_path = REPO_ROOT / asset_rel
         if not asset_path.is_file():
@@ -232,8 +300,16 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         return result["prompt_id"]
 
     def poll(self, prompt_id: str, timeout_seconds: float = 1800.0,
-             poll_interval: float = 5.0) -> Dict[str, Any]:
-        return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval)
+             poll_interval: float = 5.0, on_event=None) -> Dict[str, Any]:
+        if on_event is None:
+            return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval)
+        try:
+            return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval,
+                                               on_event=lambda event: on_event(map_comfy_event(event)))
+        except TypeError:
+            # Preserve compatibility with the existing CPU fake clients and
+            # older third-party Comfy clients which predate the callback.
+            return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval)
 
     def collect(self, history_result: Dict[str, Any], job_id: str,
                 workflow_id: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -268,6 +344,7 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 prompt_id,
                 timeout_seconds=native_req["control"]["history_timeout_seconds"],
                 poll_interval=native_req["control"]["poll_interval_seconds"],
+                on_event=getattr(self, "progress_callback", None),
             )
             if state["status"] != "COMPLETED":
                 raise ComfyUIExecutionError(
@@ -322,6 +399,11 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             "failure_reason": job["failure_reason"],
             "error_code": job["error_code"],
             "has_output": job["status"] == "COMPLETED",
+            "progress": job.get("progress"),
+            "current_stage": job.get("current_stage", "执行工作流"),
+            "step": job.get("step"),
+            "total_steps": job.get("total_steps"),
+            "eta_seconds": job.get("eta_seconds"),
         }
 
     def cancel(self, job_id: str) -> Dict[str, Any]:
@@ -352,7 +434,9 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             return "GPU_FAILED"
         if status == "FAILED":
             fail_codes = ("WORKFLOW_NOT_FOUND", "TIMEOUT_ERROR",
-                          "OUTPUT_ERROR", "INVALID_REQUEST", "ASSET_NOT_FOUND")
+                          "MISSING_RUNTIME_NODE", "WORKFLOW_RUNTIME_MISMATCH",
+                          "OUTPUT_ERROR", "INVALID_REQUEST", "ASSET_NOT_FOUND",
+                          "COMFYUI_CRASHED")
             return "FAILED" if job.get("error_code") in fail_codes else "GPU_FAILED"
         if status in ("QUEUED", "PREPARING"):
             return "PREPARING"
@@ -369,6 +453,8 @@ class NativeRuntimeAdapter(RuntimeAdapter):
     @staticmethod
     def _execution_error_code(message: str) -> str:
         low = message.lower()
+        if "missing_node_type" in low or ("node type" in low and "not found" in low):
+            return "MISSING_RUNTIME_NODE"
         if "out of memory" in low or "cuda out of memory" in low or "oom" in low:
             return "RESOURCE_ERROR"
         if "node error" in low or "execution failed" in low:

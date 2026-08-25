@@ -23,7 +23,7 @@ This module is a minimal, reversible, Native-only compatibility layer:
   - All other loads delegate to the original ComfyUI implementation.
 
 Install location (Native production candidate only):
-  D:\\ProgramFilesNormal\\ComfyUI\\ComfyUI_H3_NATIVE_TEST\\ComfyUI\\custom_nodes\\windows_safe_load\\__init__.py
+  <active Native Runtime>/ComfyUI/custom_nodes/windows_safe_load/__init__.py
 
 Legacy RH environment and ComfyUI core are NOT modified.
 """

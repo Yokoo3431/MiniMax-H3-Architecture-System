@@ -56,6 +56,7 @@ class ReferenceAPI:
             "state": "PENDING",
             "quality_card": quality_card,
             "sha256": sha256,
+            "version": 1,
             "created_at": self.store.timestamp(),
             "approved_at": None,
             "rejected_at": None,
@@ -79,7 +80,7 @@ class ReferenceAPI:
         self.store.save_project(project)
         self._audit(project_id, "upload_reference", machine.state,
                     {"filename": filename, "role": role, "reference_id": ref_id})
-        return ref
+        return self._public_ref(ref)
 
     def approve_reference(self, project_id: str, reference_id: str) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
@@ -103,7 +104,7 @@ class ReferenceAPI:
             self.store.save_project(project)
         self._audit(project_id, "approve_reference", project["state"],
                     {"reference_id": reference_id, "filename": ref["filename"]})
-        return ref
+        return self._public_ref(ref)
 
     def reject_reference(self, project_id: str, reference_id: str,
                          reason: str = "") -> Dict[str, Any]:
@@ -127,13 +128,25 @@ class ReferenceAPI:
             self.store.save_project(project)
         self._audit(project_id, "reject_reference", project["state"],
                     {"reference_id": reference_id, "reason": reason})
-        return ref
+        return self._public_ref(ref)
 
     def list_references(self, project_id: str) -> List[Dict[str, Any]]:
-        return list(self.store.load_references(project_id).values())
+        return [self._public_ref(ref)
+                for ref in self.store.load_references(project_id).values()]
 
     def get_approved_references(self, project_id: str) -> List[Dict[str, Any]]:
         return [r for r in self.list_references(project_id) if r["state"] == "APPROVED"]
+
+    def _public_ref(self, ref: Dict[str, Any]) -> Dict[str, Any]:
+        """Return browser-safe metadata; never expose the stored filesystem path."""
+        public = dict(ref)
+        stored = public.pop("stored_path", None)
+        public["preview_ready"] = bool(stored and Path(stored).is_file())
+        public["preview_url"] = (
+            f"/api/assets/{public['id']}/content?v={public.get('sha256') or public.get('version', 1)}"
+            if public["preview_ready"] else None
+        )
+        return public
 
     # ------------------------------------------------------------------ #
     def _assess_quality(self, path: Optional[Path], filename: str) -> Dict[str, Any]:

@@ -1,0 +1,7 @@
+--- a/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
+@@ -30,3 +30,4 @@
+ from ..h3_settings import (
+     ALLOW_PARTIAL_OFFLOAD_INT8,
++    H3_LANGUAGE_STATIC_TARGET_DTYPE,
+     INT8_FORMAT,

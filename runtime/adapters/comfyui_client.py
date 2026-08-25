@@ -12,10 +12,14 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 
 class ComfyUIOfflineError(RuntimeError):
@@ -39,11 +43,14 @@ class ComfyUIClient:
 
     def __init__(self, base_url: str = "http://127.0.0.1:8189",
                  timeout: float = 30.0,
-                 output_root: Optional[str] = None) -> None:
+                 output_root: Optional[str] = None,
+                 *, strict_output: bool = False,
+                 ffmpeg_path: Optional[str] = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.output_root = output_root or os.environ.get(
-            "H3_COMFY_OUTPUT", "<NATIVE_ROOT>/ComfyUI/output")
+        self.output_root = output_root or os.environ.get("H3_COMFY_OUTPUT", "")
+        self.strict_output = bool(strict_output)
+        self.ffmpeg_path = str(ffmpeg_path) if ffmpeg_path else None
 
     # ------------------------------------------------------------------ #
     def _request(self, method: str, path: str,
@@ -77,6 +84,35 @@ class ComfyUIClient:
             "ram_free": system.get("ram_free"),
         }
 
+    def object_info(self) -> Dict[str, Any]:
+        """Return ComfyUI's live node/input registry without submitting work."""
+        result = self._request("GET", "/object_info")
+        if not isinstance(result, dict):
+            raise ComfyUIExecutionError("ComfyUI /object_info returned a non-object response")
+        return result
+
+    def input_file_available(self, filename: str) -> bool:
+        """Verify that the active ComfyUI process can read an input file.
+
+        This is deliberately a lightweight read-only check.  It proves the
+        same server that will receive ``/prompt`` can resolve the staged
+        filename, instead of relying only on the Studio filesystem path.
+        """
+        query = urlencode({"filename": str(filename), "type": "input"})
+        url = f"{self.base_url}/view?{query}"
+        try:
+            with urllib.request.urlopen(url, timeout=self.timeout) as resp:
+                return int(getattr(resp, "status", 200)) == 200
+        except urllib.error.HTTPError as exc:
+            if exc.code in (400, 404):
+                return False
+            body = exc.read().decode("utf-8", errors="replace")
+            raise ComfyUIExecutionError(
+                f"ComfyUI input verification HTTP {exc.code}: {body[:300]}") from exc
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as exc:
+            raise ComfyUIOfflineError(
+                f"ComfyUI offline at {self.base_url}: {exc}") from exc
+
     def submit_workflow(self, workflow_payload: Dict[str, Any],
                         client_id: Optional[str] = None) -> Dict[str, Any]:
         """POST /prompt -> prompt_id (raises ComfyUIExecutionError on node errors)."""
@@ -97,7 +133,8 @@ class ComfyUIClient:
         """GET /history/<prompt_id> -> runtime status (RUNNING/COMPLETED/ERROR)."""
         history = self._request("GET", f"/history/{prompt_id}")
         if prompt_id not in history:
-            return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False}
+            return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False,
+                    "event": {"type": "executing"}}
         entry = history[prompt_id]
         status = entry.get("status", {})
         status_str = status.get("status_str", "unknown")
@@ -107,12 +144,17 @@ class ComfyUIClient:
         for msg in messages:
             if msg and isinstance(msg, list) and msg[0] in ("execution_error", "execution_interrupted"):
                 errors.append(msg)
+        event = {"type": "execution_success" if status_str == "success" and completed else "executing"}
+        progress = status.get("progress")
+        if progress is not None:
+            event = {"type": "progress", "data": progress if isinstance(progress, dict) else {"progress": progress}}
         if status_str == "success" and completed:
-            return {"status": "COMPLETED", "prompt_id": prompt_id, "completed": True}
+            return {"status": "COMPLETED", "prompt_id": prompt_id, "completed": True, "event": event}
         if status_str == "error" or errors:
             return {"status": "ERROR", "prompt_id": prompt_id,
-                    "completed": False, "messages": messages}
-        return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False}
+                    "completed": False, "messages": messages,
+                    "event": {"type": "execution_error", "data": {"message": str(messages)}}}
+        return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False, "event": event}
 
     def get_history(self, prompt_id: str) -> Dict[str, Any]:
         """GET /history/<prompt_id> -> full execution result."""
@@ -148,12 +190,15 @@ class ComfyUIClient:
         filename = video_info.get("filename", "output.mp4")
         rel = f"{subfolder}/{filename}".lstrip("/")
         video_path = f"{self.output_root.rstrip('/')}/{rel}".replace("\\", "/")
+        if self.strict_output:
+            self._validate_real_video(video_path)
         runtime_info = {
             "adapter": "native",
             "gpu_invoked": True,
             "comfyui_invoked": True,
             "native_runtime_invoked": True,
             "prompt_id": history_result.get("prompt_id", ""),
+            "output_validation": "PASS" if self.strict_output else "NOT_REQUESTED",
         }
         return {
             "job_id": job_id,
@@ -164,12 +209,45 @@ class ComfyUIClient:
             "workflow_id": workflow_id,
         }
 
+    def _validate_real_video(self, video_path: str) -> None:
+        """Verify the actual output file before a job can become complete."""
+        path = Path(video_path)
+        if not path.is_file():
+            raise ComfyUIExecutionError(f"output video was not written: {path}")
+        if path.stat().st_size <= 0:
+            raise ComfyUIExecutionError(f"output video is empty: {path}")
+        ffmpeg = self.ffmpeg_path or shutil.which("ffmpeg")
+        if not ffmpeg:
+            try:
+                import imageio_ffmpeg
+                ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+            except Exception:  # optional fallback; the error below is clearer
+                ffmpeg = None
+        if not ffmpeg or not Path(ffmpeg).is_file():
+            raise ComfyUIExecutionError(
+                "ffmpeg is unavailable; cannot validate the generated video")
+        try:
+            result = subprocess.run(
+                [ffmpeg, "-v", "error", "-i", str(path), "-f", "null", "-"],
+                capture_output=True, text=True, timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ComfyUIExecutionError(
+                f"video validation could not run for {path}: {exc}") from exc
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "ffmpeg rejected the file").strip()
+            raise ComfyUIExecutionError(
+                f"generated video is not decodable: {path}: {detail[:500]}")
+
     def wait_completion(self, prompt_id: str, timeout_seconds: float = 1500.0,
-                        poll_interval: float = 5.0) -> Dict[str, Any]:
+                        poll_interval: float = 5.0, on_event=None) -> Dict[str, Any]:
         """Poll until COMPLETED/ERROR; raises GenerationTimeoutError."""
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
             state = self.get_status(prompt_id)
+            if on_event is not None:
+                on_event(state.get("event") or {"type": "executing"})
             if state["status"] in ("COMPLETED", "ERROR"):
                 return state
             time.sleep(min(poll_interval, max(1.0, deadline - time.time())))

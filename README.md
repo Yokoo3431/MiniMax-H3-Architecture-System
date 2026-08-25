@@ -32,19 +32,16 @@
 
 ## Quick Start（Windows）
 
-1. **下载**：获取仓库/Release 压缩包并解压。
-2. **双击启动**：双击仓库根目录的 **`Start_ArchitectVideoStudio.bat`**
-   （无需打开终端、无需 cd、无需手动运行 Python、无需进入 `launcher/` 子目录）。
-3. **完成首次配置**：首次运行自动打开 System Setup / Environment Center——
-   在页面中选择 Native Runtime 文件夹与 Models 文件夹（或自动检测标准相对位置），
-   点击 **Save Configuration** → **Re-check Environment**。
-4. **System Ready**：检查项全部通过后点击 **Continue to Studio**，
-   浏览器自动打开 `http://127.0.0.1:8788`（Native ComfyUI 8189 + Studio 8788）。
-5. **生成视频**：新建 Study → 上传参考图 → 批准 → 输入意图 → 确认 → Generate
-   → 任务中心查看输出。
+1. **下载并运行**：运行 `ArchitectVideoStudio-Setup.exe`，选择安装目录。
+   安装器自动取得嵌入式 Runtime；用户不需要安装 Python、Git 或 ComfyUI。
+2. **完成首次配置**：Environment Center 会展示硬件、Runtime、模型、PREAD、Skill、磁盘需求与安装来源。
+   审阅安装计划和上游许可提示后，点击 **Install / Repair Everything**；已有可验证的 Runtime / Models 也可以选择复用。
+3. **System Ready**：所有检查项通过后点击 **Continue to Studio**，浏览器自动打开 Architect Video Studio `http://127.0.0.1:8788`。也可直接运行安装目录中的 `Start_ArchitectVideoStudio.bat`。
+4. **生成视频**：新建 Study → 上传参考图 → 批准 → 选择五个工作流之一 → 输入意图 → 审阅 Prompt → Generate → 任务中心查看输出。
 
-启动失败时窗口会显示简单错误（MODEL MISSING / CUDA NOT AVAILABLE /
-FREE COMMIT TOO LOW / PORT 8189 OCCUPIED），详细日志见 `logs\launcher.log`。
+模型权重不会随 GitHub 仓库分发；首次安装会在用户明确确认后，按上游许可从清单中的官方来源下载并校验 SHA-256。
+
+启动失败时窗口会保持可见并显示原因和日志路径，详细日志见 `Logs\launcher.log`。
 
 ### Advanced Users（高级/开发者）
 
@@ -62,11 +59,12 @@ FREE COMMIT TOO LOW / PORT 8189 OCCUPIED），详细日志见 `logs\launcher.log
 
 | | 最低 | 推荐 |
 | --- | --- | --- |
-| GPU | NVIDIA CUDA 12GB VRAM | RTX 5070 12.8GB（已验证基线） |
-| 内存 | 32GB RAM | 64GB RAM |
-| 磁盘 | 100GB 可用 | 200GB+ SSD |
+| GPU | NVIDIA CUDA 24GB VRAM（支持基线） | RTX 4090/5090-class 或更高 |
+| 低显存 | 12–23GB：实验状态，不保证生成 | — |
+| 内存 | 64GB RAM（开发证据基线） | 96GB+ RAM |
+| 磁盘 | 模型下载前至少 100GB 可用 | 200GB+ SSD |
 | 系统 | Windows 10/11 64-bit | Windows 11 |
-| 页面文件（Free Commit） | ≥ 50GB | ≥ 80GB |
+| 页面文件（Free Commit） | 由 Environment Center 按机器状态检查 | 由 Environment Center 按机器状态检查 |
 
 ## Architecture
 

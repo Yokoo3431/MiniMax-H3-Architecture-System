@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 from runtime.prompt_bridge.architect_h3_prompt_bridge import H3PromptBridge
 from runtime.prompt_bridge.skill_version import check_skill_version, require_generation_allowed
@@ -139,7 +139,7 @@ class OfficialSkillAdapter:
     def _load_yaml(path: Path) -> dict:
         if not path.is_file():
             raise FileNotFoundError(f"Missing config: {path}")
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
+        return safe_load(path.read_text(encoding="utf-8"))
 
     def _validate_intent(self, intent: ArchitectIntent) -> None:
         allowed_project = set(self.intent_schema["intent"]["project_type"])

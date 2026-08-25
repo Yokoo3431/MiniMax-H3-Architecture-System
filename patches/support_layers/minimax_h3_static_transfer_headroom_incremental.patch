@@ -1,0 +1,51 @@
+--- a/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
+@@ -312,5 +312,38 @@
+     def _move_static_tensors(self, device: Any) -> None:
+         excluded = {id(module) for module in self._streaming_linears}
+         _move_direct_tensors(self._movable(), excluded, device)
+ 
++    def _prepare_static_transfer_headroom(self, patcher: Any) -> int:
++        """Release current Linear residency before persistent static transfer."""
++
++        target = int(self._static_storage_bytes + TE_GPU_HEADROOM)
++        loaded = int(getattr(patcher, "loaded_size", lambda: 0)())
++        if loaded <= 0 or target <= 0:
++            return 0
++        partial_unload = getattr(patcher, "partially_unload", None)
++        if not callable(partial_unload):
++            raise H3ComponentError(
++                "Comfy ModelPatcher lacks partially_unload required for "
++                "H3 static-transfer headroom"
++            )
++        requested = min(loaded, target)
++        freed = int(
++            partial_unload(
++                self.offload_device,
++                memory_to_free=requested,
++            )
++        )
++        if freed < requested:
++            raise H3ComponentError(
++                "H3 static-transfer headroom incomplete: "
++                f"requested {requested} bytes, freed {freed} bytes"
++            )
++        LOGGER.info(
++            "H3 static-transfer headroom: requested %.2fGB, freed %.2fGB, "
++            "Linear residency %.2fGB",
++            requested / 2**30,
++            freed / 2**30,
++            int(getattr(patcher, "loaded_size", lambda: 0)()) / 2**30,
++        )
++        return freed
+
+     def _unload_linear_patcher(self) -> None:
+@@ -427,7 +427,8 @@
+                 # INT8 Linears and streams all others on Comfy's CUDA streams.
+                 mm.load_models_gpu([patcher], memory_required=reserve)
+                 _emit_language_load_boundary(self, mm, "LANGLOAD-02 AFTER_LOAD_MODELS_GPU")
+                 last_marker = "LANGLOAD-02 AFTER_LOAD_MODELS_GPU"
++                self._prepare_static_transfer_headroom(patcher)
+                 _emit_language_load_boundary(self, mm, "LANGLOAD-03 BEFORE_MOVE_STATIC")
+                 last_marker = "LANGLOAD-03 BEFORE_MOVE_STATIC"
+                 self._move_static_tensors(self.load_device)

@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from apps.architect_video_studio.mock_api.environment_resolution import pread_compatible
+
 
 @dataclass
 class EnvPaths:
@@ -185,8 +187,8 @@ class EnvChecker:
     def check_pread(self) -> dict:
         env_ok = os.environ.get("H3_WINDOWS_SAFE_LOAD", "").lower() == "pread"
         shim_ok = self.paths.shim_dir.is_dir()
-        if env_ok and shim_ok:
-            return {"status": "PASS", "detail": "H3_WINDOWS_SAFE_LOAD=pread + shim present"}
+        if pread_compatible(self.paths.native_root, os.environ):
+            return {"status": "PASS", "detail": "H3_WINDOWS_SAFE_LOAD=pread + validated safe-load implementation present"}
         missing = []
         if not env_ok:
             missing.append("H3_WINDOWS_SAFE_LOAD=pread env var")
@@ -236,9 +238,10 @@ class EnvChecker:
         }
         if light:
             checks["light"] = True
-        if any(c.get("status") == "BLOCK" for c in checks.values()):
+        check_results = [c for c in checks.values() if isinstance(c, dict)]
+        if any(c.get("status") == "BLOCK" for c in check_results):
             overall = "BLOCK"
-        elif any(c.get("status") == "WARNING" for c in checks.values()):
+        elif any(c.get("status") == "WARNING" for c in check_results):
             overall = "WARNING"
         else:
             overall = "PASS"

@@ -23,8 +23,10 @@ WORKFLOW_FILE_MAP = {
 
 
 class OutputAPI:
-    def __init__(self, store: StudioStore) -> None:
+    def __init__(self, store: StudioStore,
+                 allow_mock_outputs: bool = True) -> None:
         self.store = store
+        self.allow_mock_outputs = bool(allow_mock_outputs)
 
     def build_output_package(self, project_id: str,
                              job: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,8 +136,8 @@ class OutputAPI:
             json.dumps(refs, indent=2, ensure_ascii=False), encoding="utf-8")
 
         # workflow/ — frozen asset copy (from workflow mapping YAML, read-only)
-        import yaml
-        mapping = yaml.safe_load(
+        from runtime.yaml_compat import safe_load
+        mapping = safe_load(
             (REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml")
             .read_text(encoding="utf-8"))
         asset_rel = mapping["workflow_registry"][job.get("workflow")]["native_asset"]
@@ -157,11 +159,10 @@ class OutputAPI:
 
         # output/
         video_path = Path(output["video_path"])
-        if video_path.is_file():
-            shutil.copy2(video_path, package / "output" / "video.mp4")
-        else:
-            (package / "output" / "video.mp4").write_text(
-                f"MISSING REAL VIDEO: {video_path}", encoding="utf-8")
+        if not video_path.is_file() or video_path.stat().st_size <= 0:
+            raise ValueError(
+                f"OUTPUT_ERROR: real video output is missing or empty: {video_path}")
+        shutil.copy2(video_path, package / "output" / "video.mp4")
 
         # report/
         runtime_info = dict(output.get("runtime_info") or {})
@@ -205,8 +206,17 @@ class OutputAPI:
 
     def get_result(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
+        if job.get("runtime") == "mock" and not self.allow_mock_outputs:
+            raise ValueError(
+                "REAL_RUNTIME_REQUIRED: 此任务是在设置/演示模式创建的，未生成真实视频。")
         if job["state"] != "COMPLETED":
             raise ValueError(f"job {job_id} is {job['state']}; result available only when COMPLETED")
+        if job.get("runtime") == "native":
+            video_path = Path(job.get("output_path") or (
+                self.store.package_dir(project_id) / "output" / "video.mp4"))
+            if not video_path.is_file() or video_path.stat().st_size <= 0:
+                raise ValueError(
+                    f"OUTPUT_ERROR: completed job has no real MP4 output: {video_path}")
         return self.manifest(project_id, job)
 
     def get_report(self, job_id: str) -> Dict[str, Any]:
@@ -219,7 +229,13 @@ class OutputAPI:
     def list_outputs(self, project_id: str) -> List[Dict[str, Any]]:
         out = []
         for job in self.store.load_jobs(project_id).values():
-            if job["state"] == "COMPLETED":
+            if (job["state"] == "COMPLETED"
+                    and (self.allow_mock_outputs or job.get("runtime") != "mock")
+                    and (job.get("runtime") == "mock" or Path(
+                        job.get("output_path") or (
+                            self.store.package_dir(project_id) / "output" / "video.mp4"
+                        )
+                    ).is_file())):
                 out.append(self.manifest(project_id, job))
         return out
 
@@ -243,6 +259,9 @@ class OutputAPI:
                 "provenance_json": str(package / "report" / "provenance.json"),
                 "runtime_info_json": str(package / "report" / "runtime_info.json"),
                 "report_json": str(package / "report" / "report.json"),
+                "video_mp4": str(package / "output" / "video.mp4"),
+                # Kept for backwards-compatible mock fixtures only. Production
+                # jobs never expose this as a successful output.
                 "output_mp4_placeholder": str(package / "output" / "output.mp4"),
             },
         }

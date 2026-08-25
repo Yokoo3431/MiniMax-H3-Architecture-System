@@ -9,14 +9,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 
 class DistributionConfig:
     def __init__(self, config_path: Path) -> None:
         self.config_path = Path(config_path).resolve()
         self.root = self.config_path.parent
-        data = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
+        data = safe_load(self.config_path.read_text(encoding="utf-8"))
         self.data = data
 
     def resolve(self, rel: str) -> Path:

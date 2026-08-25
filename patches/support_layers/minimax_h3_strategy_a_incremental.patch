@@ -1,0 +1,30 @@
+--- a/minimax_h3_nodes/runtime/h3_settings.py
++++ b/minimax_h3_nodes/runtime/h3_settings.py
+@@ -59,2 +59,3 @@
+ TE_GPU_HEADROOM = 3 << 30  # TE 上卡前额外预留的 encode 工作区显存（字节）
++H3_LANGUAGE_STATIC_TARGET_DTYPE = "bfloat16"  # Strategy A: preserve checkpoint BF16 for ordinary language statics
+ TE_VISUAL_ON_CPU = True  # 纯文本编码不搬 visual 塔，常驻 CPU 省 ~7GB 显存
+
+--- a/minimax_h3_nodes/runtime/qwen_encoder/loading.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/loading.py
+@@ -657,7 +657,12 @@
+     language_model = getattr(model, "language_model", None)
++    if language_model is None:
++        raise H3ComponentError("Qwen3VL language_model missing")
++    if H3_LANGUAGE_STATIC_TARGET_DTYPE != "bfloat16":
++        raise H3ComponentError(
++            "Unsupported H3 language static target dtype: "
++            f"{H3_LANGUAGE_STATIC_TARGET_DTYPE!r}"
++        )
++    # Strategy A is deliberately scoped to the language subtree. The visual
++    # tower remains on the constructor's FP32 target dtype and is not cast.
++    language_model.to(dtype=torch.bfloat16)
+     layers = getattr(language_model, "layers", None) if language_model is not None else None
+
+--- a/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
+@@ -30,3 +30,4 @@
+ from ..h3_settings import (
+     ALLOW_PARTIAL_OFFLOAD_INT8,
++    H3_LANGUAGE_STATIC_TARGET_DTYPE,
+     INT8_FORMAT,

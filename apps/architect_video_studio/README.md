@@ -1,24 +1,24 @@
-# Architect Video Studio — Local UI Prototype (PATCH2.6-B)
+# Architect Video Studio — Local Desktop Service
 
-合同优先的本地 UI 原型，验证建筑师完整生产流程：
+Architect Video Studio 的本地服务层，供桌面壳承载 Studio、环境中心和项目工作区：
 
 ```
 Reference → Intent → Workflow Selection → Official Skill Prompt Preview
 → User Confirmation → Job State Simulation → Output Review
 ```
 
-**Mock 模式**：不调用 ComfyUI / GPU / Native Runtime，不加载模型。Prompt 生成复用
-冻结的 `OfficialSkillAdapter` / `H3PromptBridge`（纯 Python、只读调用、官方结构验证 + provenance）。
+`--runtime mock` 仅用于离线 UI/契约测试；正常桌面启动使用 `--runtime real`，连接托管
+Native ComfyUI。Prompt 生成复用冻结的 `OfficialSkillAdapter` / `H3PromptBridge`。
 
 ## 运行
 
 ```bash
-python run_prototype.py --port 8788
+python run_architect_video_studio.py --port 8788
 ```
 
 打开 `http://127.0.0.1:8788`。
 
-演示数据（页面截图用）：
+开发/离线数据种子：
 
 ```bash
 python -c "from mock_api.seed_demo import seed_demo; print(seed_demo())"
@@ -29,13 +29,13 @@ python -c "from mock_api.seed_demo import seed_demo; print(seed_demo())"
 ```
 apps/architect_video_studio/
 ├── frontend/         原生 HTML/CSS/JS（Home / Workspace / Job Center / Output Review）
-├── mock_api/         Mock API 契约 + stdlib HTTP server
+├── mock_api/         Local API contract + stdlib HTTP server
 ├── state_machine/    PATCH2.6A 状态机（项目 + 作业）
 ├── data/             运行时持久化（projects/…/provenance.json, audit_log.jsonl…）
-└── run_prototype.py  启动入口
+└── run_architect_video_studio.py  Production service entry
 ```
 
-## Mock API 契约
+## Local API 契约
 
 | API | 端点 | 说明 |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ apps/architect_video_studio/
 | Reference | `POST /api/projects/<id>/references`, `…/approve`, `…/reject` | 上传/批准/拒绝（质量卡咨询性） |
 | Intent | `POST /api/projects/<id>/intent` | 冻结分类器 `classify_intent` |
 | Prompt | `POST /api/projects/<id>/prompt` | 冻结 `build_prompt`（只读） |
-| Job | `POST /api/projects/<id>/jobs`, `GET /api/jobs/<id>` | Mock 进度模拟 |
+| Job | `POST /api/projects/<id>/jobs`, `GET /api/jobs/<id>` | 作业状态与进度 |
 | Output | `GET /api/jobs/<id>/result` | Output Package manifest |
 
 ## 安全门禁（服务端强制，UI 只是第一层）
@@ -51,10 +51,10 @@ apps/architect_video_studio/
 1. 未批准参考图 → `generate_prompt` / `submit_job` 抛错
 2. Prompt 只读（无编辑端点）
 3. Workflow 只允许冻结 01–05，无编辑能力
-4. 每个 Mock Job 保存 `provenance.json`
+4. 每个 Job 保存 `provenance.json`
 5. 审计日志 `audit_log.jsonl`（谁 / 何时 / 什么状态迁移）
 
-## 已知边界
+## 运行边界
 
-- `output.mp4` 是占位文本，非真实视频（PATCH2.6-C 接 Native）
-- 质量卡在无 cv2 或文件缺失时降级为确定性 Mock 卡
+- 真实视频生成由 Native ComfyUI 后端负责；桌面服务只负责项目、提示词、工作流和作业状态。
+- 缺少可选图像质量依赖时，环境中心会显示可解释的降级状态，不会伪报 GPU 或 H3 支持故障。

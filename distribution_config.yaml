@@ -1,0 +1,28 @@
+# Architect Video Studio shareable distribution configuration.
+# All paths are relative to this file; no developer-machine paths are allowed.
+
+distribution:
+  version: "1.0.0"
+  root: "."
+  launcher: "launcher"
+  studio_app: "apps/architect_video_studio"
+  studio_workdir: "."
+  configs: "configs"
+  workflows: "workflows"
+  runtime: "runtime"
+  userdata: "userdata"
+  logs: "Logs"
+  samples: "samples"
+
+native_runtime:
+  comfyui_root: "ArchitectVideoStudio_Runtime"
+  models_root: "Models"
+  comfy_input: "ArchitectVideoStudio_Runtime/ComfyUI/input"
+  comfy_output: "ArchitectVideoStudio_Runtime/ComfyUI/output"
+  port: 8189
+  args: ["--port", "8189", "--disable-dynamic-vram", "--disable-async-offload", "--disable-pinned-memory"]
+  safe_load: "pread"
+
+studio:
+  port: 8788
+  runtime_mode: "real"

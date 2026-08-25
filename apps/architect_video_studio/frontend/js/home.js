@@ -13,10 +13,14 @@ const WF_LABEL = {
 };
 
 function stateBadge(state) {
-  const cls = ['COMPLETED'].includes(state) ? 'done'
-    : ['GPU_FAILED', 'QUALITY_FAILED', 'REFERENCE_REJECTED'].includes(state) ? 'err'
-    : ['GPU_RUNNING', 'QUALITY_CHECK'].includes(state) ? 'warn' : 'state';
-  return `<span class="badge ${cls}">${esc(state)}</span>`;
+  const labels = {
+    READY_TO_GENERATE: '可以生成', GENERATING: '正在生成', COMPLETED: '已完成',
+    REFERENCE_PENDING: '等待参考图', PROMPT_REVIEW: '准备 Prompt', FAILED: '生成失败',
+  };
+  const cls = ['COMPLETED', 'READY_TO_GENERATE'].includes(state) ? 'done'
+    : ['FAILED', 'REFERENCE_REJECTED'].includes(state) ? 'err'
+    : ['GENERATING', 'PROMPT_REVIEW'].includes(state) ? 'warn' : 'state';
+  return `<span class="badge ${cls}">${esc(labels[state] || state)}</span>`;
 }
 
 async function loadTasks() {
@@ -26,19 +30,22 @@ async function loadTasks() {
     for (const p of projects) {
       let intent = null;
       let prompt = null;
+      let study = null;
       try { intent = await get(`/api/projects/${p.id}/intent`); } catch (_) {}
       try { prompt = await get(`/api/projects/${p.id}/prompt`); } catch (_) {}
-      rows.push({ p, intent, prompt });
+      try { study = await get(`/api/projects/${p.id}/study`); } catch (_) {}
+      rows.push({ p, intent, prompt, study });
     }
     rows.sort((a, b) => (b.p.updated_at || '').localeCompare(a.p.updated_at || ''));
     tasksEl.innerHTML = rows.length
-      ? rows.map(({ p, intent, prompt }) => {
+      ? rows.map(({ p, intent, prompt, study }) => {
           const wf = (intent && intent.selected_workflow) || (prompt && prompt.workflow) || null;
+          const displayState = study && study.current_state || p.state;
           return `
           <div class="task-card" onclick="location.href='workspace.html?project=${esc(p.id)}'">
             <div class="ttl">
               <span>${esc(p.name)}</span>
-              ${stateBadge(p.state)}
+              ${stateBadge(displayState)}
             </div>
             <div class="tags">
               ${wf ? `<span class="tag">${esc(WF_LABEL[wf] || wf)}</span>` : '<span class="tag">未选工作流</span>'}
@@ -86,3 +93,7 @@ document.getElementById('task-create-btn').addEventListener('click', async () =>
 
 loadTasks();
 checkSystem();
+if (qs('new') === '1') {
+  document.getElementById('new-task-box').style.display = 'block';
+  window.setTimeout(() => document.getElementById('task-title').focus(), 0);
+}

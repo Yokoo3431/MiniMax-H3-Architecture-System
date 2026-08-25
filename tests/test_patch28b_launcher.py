@@ -11,6 +11,7 @@ import socket
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
@@ -144,6 +145,28 @@ class TestPortDetection(unittest.TestCase):
         self.assertEqual(PortManager.find_pid(8189, netstat_output=canned), 4242)
         self.assertEqual(PortManager.find_pid(8788, netstat_output=canned), 5151)
         self.assertIsNone(PortManager.find_pid(9999, netstat_output=canned))
+
+    def test_only_known_service_command_lines_are_restartable(self):
+        self.assertTrue(PortManager.is_managed_commandline(
+            r"python.exe ComfyUI\\main.py --windows-standalone-build --port 8189",
+            "comfyui"))
+        self.assertTrue(PortManager.is_managed_commandline(
+            r"python.exe apps\\architect_video_studio\\run_prototype.py --port 8788",
+            "studio"))
+        self.assertFalse(PortManager.is_managed_commandline(
+            r"python.exe unrelated_server.py --port 8788", "studio"))
+        self.assertFalse(PortManager.is_managed_commandline(
+            r"unknown.exe --port 8189", "comfyui"))
+
+    def test_unknown_port_owner_is_not_terminated(self):
+        with mock.patch.object(PortManager, "port_in_use", return_value=True), \
+             mock.patch.object(PortManager, "find_pid", return_value=5151), \
+             mock.patch.object(PortManager, "process_commandline",
+                               return_value=r"python.exe unrelated_server.py --port 8788"), \
+             mock.patch.object(PortManager, "terminate_pid") as terminate:
+            result = PortManager.restart_managed_conflict(8788, "studio")
+        self.assertEqual(result["status"], "unknown")
+        terminate.assert_not_called()
 
 
 class TestLockProtection(unittest.TestCase):

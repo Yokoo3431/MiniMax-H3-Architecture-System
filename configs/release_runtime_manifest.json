@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "release": "v0.8.0-rc1-shareable",
+  "runtime": {
+    "comfyui_version": "0.33.1",
+    "frontend_version": "1.48.7",
+    "pread": "H3_WINDOWS_SAFE_LOAD=pread"
+  },
+  "h3": {
+    "repository": "https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3.git",
+    "upstream_commit": "d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad",
+    "project_patch_sha256": "488ab271e68d226a690f3c1dc322a9fc15a0eba7273045e890a871de2c0196bd",
+    "managed_runtime_fingerprint": "887ddf87371e703f27c52694d849171e90ef455a52a2ae811aa3b8b934c38ae0",
+    "vae_windows_hardening": {
+      "strategy": "B",
+      "status": "SOURCE_PATCH_PREPARED_GPU_VALIDATION_REQUIRED",
+      "reason": "The current H3 adapter recursively moves the complete VAE with Module.to(cpu) during session teardown; this has direct Windows 0xC0000005 evidence.",
+      "public_reference": "https://github.com/Comfy-Org/ComfyUI/issues/15337"
+    },
+    "strategy_a": {
+      "target_dtype": "bfloat16",
+      "visual_dtype": "preserved_fp32",
+      "quantized_linear_contract": "preserved_350"
+    }
+  },
+  "video_support": {
+    "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+    "upstream_commit": "4ee72c065db22c9d96c2427954dc69e7b908444b",
+    "managed_runtime_fingerprint": "5d881ddec68ee6deec3140f58c26e6b397ae82ad6a9aaa92c933c1e770101a82"
+  }
+}

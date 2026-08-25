@@ -8,6 +8,7 @@ let catalog = null;
 let intent = null;
 let prompt = null;
 let selectedRef = null;
+let study = null;
 
 const WF_LABEL = {
   '01_Exterior_Hero': 'Architecture Presentation',
@@ -43,6 +44,11 @@ const PROJECT_STEPS = [
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
 function clearErr() { errEl.style.display = 'none'; }
 
+async function refreshStudy() {
+  study = await get(`/api/projects/${projectId}/study`);
+  return study;
+}
+
 async function loadAll() {
   try {
     const env = await get('/api/system/environment');
@@ -57,10 +63,12 @@ async function loadAll() {
   ]);
   project = p;
   catalog = c;
+  await refreshStudy();
   renderHeader();
-  renderRefs();
+  await renderRefs();
   try { intent = await get(`/api/projects/${projectId}/intent`); } catch (_) { intent = null; }
   try { prompt = await get(`/api/projects/${projectId}/prompt`); } catch (_) { prompt = null; }
+  await refreshStudy();
   renderHeader();  // refresh viewport chip once intent/prompt are known
   renderIntent();
   renderParams();
@@ -75,12 +83,22 @@ function renderHeader() {
   document.getElementById('task-meta').textContent =
     `项目标签: ${project.project_type} · ${project.building_stage} · 更新 ${project.updated_at}`;
   const badge = document.getElementById('task-state');
-  badge.textContent = project.state;
+  const currentState = (study && study.current_state) || project.state;
+  const stateLabel = {
+    REFERENCE_PENDING: '等待参考图',
+    REFERENCE_APPROVED: '参考图已批准',
+    PROMPT_REVIEW: '正在准备 Prompt',
+    READY_TO_GENERATE: '可以生成',
+    GENERATING: '正在生成',
+    COMPLETED: '已完成',
+    FAILED: '生成失败',
+  }[currentState] || currentState;
+  badge.textContent = stateLabel;
   badge.className = 'badge ' + (
-    ['COMPLETED'].includes(project.state) ? 'done'
-    : ['GPU_FAILED','QUALITY_FAILED','REFERENCE_REJECTED'].includes(project.state) ? 'err'
-    : ['GPU_RUNNING','QUALITY_CHECK'].includes(project.state) ? 'warn' : 'state');
-  const idx = PROJECT_STEPS.indexOf(project.state);
+    ['COMPLETED','READY_TO_GENERATE','REFERENCE_APPROVED'].includes(currentState) ? 'done'
+    : ['FAILED','REFERENCE_REJECTED'].includes(currentState) ? 'err'
+    : ['GENERATING','PROMPT_REVIEW'].includes(currentState) ? 'warn' : 'state');
+  const idx = PROJECT_STEPS.indexOf((study && study.internal_project_state) || project.state);
   document.getElementById('steps').innerHTML = PROJECT_STEPS
     .map((s, i) => `<span class="step ${i < idx ? 'done' : i === idx ? 'active' : ''}">${s}</span>`).join('');
   document.getElementById('v-wf').textContent =
@@ -89,7 +107,7 @@ function renderHeader() {
   if (intent && intent.selected_workflow) {
     chip.textContent = `${WF_LABEL[intent.selected_workflow]} · ${intent.selected_workflow}`;
   } else {
-    chip.textContent = project.state === 'CREATED' ? 'CREATED · 等待参考图' : project.state;
+    chip.textContent = currentState === 'REFERENCE_PENDING' ? '等待参考图' : currentState;
   }
 }
 
@@ -97,14 +115,17 @@ function renderHeader() {
 // Reference
 // ------------------------------------------------------------------ //
 function refImageUrl(r) {
-  return r.stored_path ? `/files/${projectId}/${encodeURIComponent(r.filename)}` : null;
+  return r && r.preview_ready && r.preview_url
+    ? r.preview_url : null;
 }
 
-function renderRefs() {
+async function renderRefs() {
   const box = document.getElementById('refs');
   box.innerHTML = '<div class="small muted">加载中…</div>';
-  get(`/api/projects/${projectId}/references`).then((refs) => {
+  try {
+    const refs = await get(`/api/projects/${projectId}/references`);
     if (!refs.length) { box.innerHTML = '<div class="muted small">尚未上传参考图</div>'; return; }
+    selectedRef = refs[refs.length - 1] || refs.find((r) => r.state === 'APPROVED');
     box.innerHTML = refs.map((r) => {
       const qq = (r.quality_card || {}).reference_quality || {};
       const img = refImageUrl(r);
@@ -137,7 +158,8 @@ function renderRefs() {
         selectedRef = refs.find((x) => x.id === id);
         showViewportRef(selectedRef);
       }));
-  }).catch(showErr);
+    if (selectedRef) showViewportRef(selectedRef);
+  } catch (e) { showErr(e.message); }
 }
 
 function showViewportRef(r) {
@@ -157,8 +179,9 @@ async function actRef(btn, action) {
   try {
     await post(`/api/projects/${projectId}/references/${refId}/${action}`, { reason: '' });
     project = await get(`/api/projects/${projectId}`);
+    await refreshStudy();
     renderHeader();
-    renderRefs();
+    await renderRefs();
     updateGate();
   } catch (e) { showErr(e.message); }
 }
@@ -175,8 +198,9 @@ document.getElementById('upload-btn').addEventListener('click', () => {
       });
       clearErr();
       project = await get(`/api/projects/${projectId}`);
+      await refreshStudy();
       renderHeader();
-      renderRefs();
+      await renderRefs();
       updateGate();
     } catch (e) { showErr(e.message); }
   };
@@ -192,6 +216,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   try {
     intent = await post(`/api/projects/${projectId}/intent`, { natural_language: text });
     project = await get(`/api/projects/${projectId}`);
+    await refreshStudy();
     renderHeader();
     renderIntent();
     renderParams();
@@ -225,6 +250,7 @@ document.getElementById('confirm-btn').addEventListener('click', async () => {
       workflow: document.getElementById('wf-candidates').value,
     });
     project = await get(`/api/projects/${projectId}`);
+    await refreshStudy();
     renderHeader();
     renderIntent();
     renderParams();
@@ -278,10 +304,20 @@ function renderWorkflowMeta(name) {
     `mode: ${wf.official_skill_mode || '—'} · 冻结工作流，不可编辑`;
 }
 
-document.getElementById('wf-select').addEventListener('change', (e) => {
-  renderWorkflowMeta(e.target.value);
-  document.getElementById('prompt-preview').textContent = '工作流已变更，需重新生成 Prompt 预览。';
-  updateGate();
+document.getElementById('wf-select').addEventListener('change', async (e) => {
+  try {
+    intent = await post(`/api/projects/${projectId}/workflow/select`, {
+      workflow: e.target.value,
+    });
+    prompt = null;
+    project = await get(`/api/projects/${projectId}`);
+    await refreshStudy();
+    renderHeader();
+    renderIntent();
+    renderParams();
+    renderAdvanced();
+    updateGate();
+  } catch (err) { showErr(err.message); }
 });
 
 document.querySelectorAll('#camera-seg button').forEach((b) =>
@@ -312,26 +348,30 @@ function updateCameraHint(cam) {
 // Gate + generate
 // ------------------------------------------------------------------ //
 function updateGate() {
-  const approved = ['REFERENCE_APPROVED','INTENT_ANALYSIS','PROMPT_NEEDS_CONFIRMATION',
-    'PROMPT_REVIEW','USER_CONFIRM','GPU_RUNNING','QUALITY_CHECK','COMPLETED'].includes(project.state);
-  const intentConfirmed = intent && !intent.requires_user_confirmation;
-  const promptReady = !!prompt && prompt.workflow === document.getElementById('wf-select').value;
-  const atGate = ['USER_CONFIRM'].includes(project.state);
+  const approved = !!(study && study.reference_approved);
+  const intentConfirmed = !!(study && study.intent_analysis &&
+    !study.intent_analysis.requires_user_confirmation);
+  const promptReady = !!(study && study.prompt_ready && prompt &&
+    prompt.workflow === document.getElementById('wf-select').value);
   const riskChecked = document.getElementById('risk-check').checked;
 
   const previewBtn = document.getElementById('preview-btn');
   previewBtn.disabled = !(approved && intentConfirmed && !promptReady);
   previewBtn.textContent = promptReady ? 'Prompt 已生成' : '生成 Prompt 预览';
   const generateBtn = document.getElementById('generate-btn');
-  generateBtn.disabled = !(approved && intentConfirmed && promptReady && atGate && riskChecked);
+  generateBtn.disabled = !(study && study.generate_allowed && intentConfirmed &&
+    promptReady && riskChecked);
 
   const note = document.getElementById('gate-note');
-  if (!approved) note.textContent = '等待参考图批准（Rule 1）';
+  if (study && study.current_state === 'GENERATING') note.textContent = '当前任务正在生成';
+  else if (!approved) note.textContent = '等待参考图批准（Rule 1）';
   else if (!intentConfirmed) note.textContent = '等待意图确认';
   else if (!promptReady) note.textContent = '先点击“生成 Prompt 预览”（官方 Skill 只读生成）';
-  else if (!atGate) note.textContent = project.state === 'COMPLETED' ? '本任务已完成' : '等待确认';
+  else if (study && study.current_state === 'COMPLETED') note.textContent = '本任务已完成';
   else if (!riskChecked) note.textContent = '请先勾选已审阅风险';
-  else note.textContent = '';
+  else if (study && study.gate_reasons && study.gate_reasons.length) {
+    note.textContent = study.gate_reasons[0];
+  } else note.textContent = '';
 }
 
 document.getElementById('risk-check').addEventListener('change', updateGate);
@@ -343,6 +383,7 @@ document.getElementById('preview-btn').addEventListener('click', async () => {
     });
     prompt = rec;
     project = await get(`/api/projects/${projectId}`);
+    await refreshStudy();
     renderHeader();
     document.getElementById('prompt-preview').textContent = rec.prompt;
     renderAdvanced();
@@ -396,18 +437,18 @@ document.getElementById('open-comfy-btn').addEventListener('click', () => {
   const box = document.getElementById('adv-contract');
   if (!prompt) return;
   const wfFile = {
-    '01_Exterior_Hero': 'workflows/01_Exterior_Hero_NATIVE.json',
-    '02_Day_Night_Transition': 'workflows/02_Day_Night_Transition_NATIVE.json',
-    '03_Material_Detail': 'workflows/03_Material_Detail_NATIVE.json',
-    '04_Drone_Aerial': 'workflows/04_Drone_Aerial_NATIVE_GOLDEN.json',
-    '05_Slow_Walkthrough': 'workflows/05_Slow_Walkthrough_NATIVE.json',
+    '01_Exterior_Hero': 'workflows/1_建筑效果图_ImageToVideo.json',
+    '02_Day_Night_Transition': 'workflows/3_建筑夜景灯光变化_NightTransition.json',
+    '03_Material_Detail': 'workflows/1_建筑效果图_ImageToVideo.json',
+    '04_Drone_Aerial': 'workflows/04_Drone_Aerial_GOLDEN.json',
+    '05_Slow_Walkthrough': 'workflows/2_建筑鸟瞰动画_AerialView.json',
   }[prompt.workflow] || '—';
   box.style.display = 'block';
   box.innerHTML =
     `接口设计（不真实打开）:<br>
      GET http://127.0.0.1:8189/?workflow=${esc(wfFile)}<br>
      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;prompt_hash=${esc(prompt.prompt_hash)}<br>
-     <span class="muted">PATCH2.6-C 后由 launcher 注入参考图与官方 prompt（冻结 workflow 只读加载）。</span>`;
+     <span class="muted">The launcher binds references and the Official Skill prompt to the selected workflow.</span>`;
 });
 
 // ------------------------------------------------------------------ //
@@ -429,7 +470,8 @@ document.getElementById('prompt-toggle').addEventListener('click', () => {
 async function pollJobs() {
   try {
     const jobs = await get(`/api/projects/${projectId}/jobs`);
-    const running = jobs.find((j) => !['COMPLETED','GPU_FAILED'].includes(j.state));
+    await refreshStudy();
+    const running = jobs.find((j) => !['COMPLETED','FAILED','GPU_FAILED','CANCELLED'].includes(j.state));
     if (running) {
       const stageIdx = ['PREPARING','LOADING_MODEL','SAMPLING','ENCODING','EXPORTING','COMPLETED'].indexOf(running.state);
       const pct = Math.min(100, Math.round((Math.max(0, stageIdx) / 5) * 100));
@@ -439,9 +481,12 @@ async function pollJobs() {
       setTimeout(pollJobs, 2000);
     } else if (jobs.some((j) => j.state === 'COMPLETED')) {
       document.getElementById('v-progress').style.width = '100%';
-      document.getElementById('v-status').textContent = 'status: 最近任务 COMPLETED（Mock）';
+      document.getElementById('v-status').textContent = 'status: recent task COMPLETED';
     } else {
-      document.getElementById('v-status').textContent = 'status: ' + project.state;
+      document.getElementById('v-status').textContent =
+        study && study.last_job_status === 'GPU_FAILED'
+          ? '上次任务失败；当前 Study 已恢复为可重新生成'
+          : 'status: ' + ((study && study.current_state) || project.state);
     }
   } catch (_) { /* poll quietly */ }
 }

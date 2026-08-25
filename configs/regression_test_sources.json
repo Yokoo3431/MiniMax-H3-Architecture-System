@@ -1,0 +1,740 @@
+{
+  "schema_version": 1,
+  "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
+  "files": [
+    {
+      "path": "tests/test_final_model_path_workflow_binding.py",
+      "tracked_status": "untracked",
+      "sha256": "FAE12210B2972F466C767673FFDEE33C70352622B2DF6EF301C67780FBBEB7D4",
+      "discovered_test_count": 4,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_product_job_path_and_ux.py",
+      "tracked_status": "untracked",
+      "sha256": "B8D81BDA736E45023BD3CF4E3858479DBC631E14FB374B757D082D36F023F492",
+      "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_reference_staging.py",
+      "tracked_status": "untracked",
+      "sha256": "9CAF17CA3663E2C3C4FA48C6D953694E13D69011B1E421CFB1E47132874DBFEE",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_study_flow_repair.py",
+      "tracked_status": "untracked",
+      "sha256": "69177CDCE4D426948D77F7D1C3F7BEF295A4095AFB957249CFE7D9CF2FCB8D71",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_acceleration_profile.py",
+      "tracked_status": "tracked",
+      "sha256": "5425BAB940EDBAEAB0FE684DB6AD9C322B6BFDC088556B3007495FE5B3DF2715",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_agent_router.py",
+      "tracked_status": "tracked",
+      "sha256": "8C91D600A8E8ACF6E7224A21E271AC45152549FA357A9659913552A3438C1355",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_agent_video_generation.py",
+      "tracked_status": "tracked",
+      "sha256": "6896F185317D116C1338801B6EDDB7BFCBF0013E05FF25BD965A8F42E30CB8B1",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_architect_acceptance.py",
+      "tracked_status": "tracked",
+      "sha256": "B014454FFC98AE4667DD4CB5A43EE41B0476AEF7A670B446960D450300DABF77",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_architect_daily_usage.py",
+      "tracked_status": "tracked",
+      "sha256": "34801DF07BEF47F84F8361EF3BDE284DDDFCC2A8DA682BD72452BD5CF190B5AC",
+      "discovered_test_count": 5,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_architect_production_layer.py",
+      "tracked_status": "tracked",
+      "sha256": "83E287D6B4E247936210D5A4DB05394BE9A8EBDC5BF028C70CD5A7E63AE7AEB1",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_architect_request.py",
+      "tracked_status": "tracked",
+      "sha256": "FC857973CB85658821F24CA87D64CD6981C7830AE8DEBCF088443A98AF43EF9D",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_architecture_knowledge.py",
+      "tracked_status": "tracked",
+      "sha256": "49F676CEAD7B7F319FF1EC02545B109A0AEB0E52A5770721A3F575C69384EAEB",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_closed_loop_pipeline.py",
+      "tracked_status": "tracked",
+      "sha256": "D109BF81A7558F25E9125DDF0D07032E5A994BDF56038269636847563DC4953C",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_comfy_adapter.py",
+      "tracked_status": "tracked",
+      "sha256": "916F73AB09B90CF46720E78DD5D5AAF105FD3EEA005E8017819BF44AA889F139",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_comfy_execution.py",
+      "tracked_status": "tracked",
+      "sha256": "2BEF5677015329429361C24599BEE79A93A1C49818452932FD32240DE4B479ED",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_comparison_engine.py",
+      "tracked_status": "tracked",
+      "sha256": "613C2C621D14D634B4D53CE93FB39932132BF50CB7E618007E119C82582ED226",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_critic_pipeline.py",
+      "tracked_status": "tracked",
+      "sha256": "2412C0DE511E24E76CA4CCB53148BD12FC9DA3A658E45B269B8F1C477DF0D995",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_critic_schema.py",
+      "tracked_status": "tracked",
+      "sha256": "95F45EDAE0A8B494AF035943B50A5FD072F50E704A34666941217FCABDECBBE0",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_environment_discovery_reuse.py",
+      "tracked_status": "untracked",
+      "sha256": "7FCBDAB0EA2450BB6D7921F3B286517AE19CA7CE838F0B01CDABE65DD966ACD6",
+      "discovered_test_count": 4,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_environment_probe.py",
+      "tracked_status": "untracked",
+      "sha256": "5810FFF6676C0BA671D88A0E3E0FD931CA58CF7BA879A83EC76709B4FD68B45D",
+      "discovered_test_count": 9,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_environment_state_unification.py",
+      "tracked_status": "untracked",
+      "sha256": "68E3E6EFC23B5E268B5D3729C0DCCD522D929781FDA95EAEFCB05CC606EBBFA9",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_execution_package.py",
+      "tracked_status": "tracked",
+      "sha256": "2EB5505C354F09ED0864B5D5D0F4D30FEE9E61C659793119C51B4A2A91D4953D",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_failure_classifier.py",
+      "tracked_status": "tracked",
+      "sha256": "ED4A580D3EC603F308ACF75A515D2A97EB325EE02F994FF1AFFCC154C3AC4CB0",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_feedback_controller.py",
+      "tracked_status": "tracked",
+      "sha256": "E2EF3158F375CFB387C0A2C79EF5AA1E06EFBC5740D3A1D8AD942D1F1BCF2636",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_feedback_interface.py",
+      "tracked_status": "tracked",
+      "sha256": "063A64B638A4AB9BE5605E3878BCBC662F9A7916A0B9D31AA7B3496655E4931C",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_production_gates.py",
+      "tracked_status": "tracked",
+      "sha256": "AF73336DCAC153D304299B3EFF0B1DF1B2AC9B5B3AD7497D729C860E1B3DEC66",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_generation_api.py",
+      "tracked_status": "tracked",
+      "sha256": "0B472C3AD44A38F16A06A56F0A4FD01DAE6C77335BC33172180B6CCD2FEDA04C",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_generation_strategy.py",
+      "tracked_status": "tracked",
+      "sha256": "227A130E868172D150E5D90F38B735FF9B1CF7E73633E9B87857BF682953D10C",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_h3_rules.py",
+      "tracked_status": "tracked",
+      "sha256": "D5659C6E616C48FE28061834F56E1EADF11A61F8B8ED96A19203219DE5088D44",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_hardware_adapter.py",
+      "tracked_status": "tracked",
+      "sha256": "6569B5987528B693AB94F4FFD61A7FD3F6F35EDFAA2684B9977A3F1B936C8BF0",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_image_analysis.py",
+      "tracked_status": "tracked",
+      "sha256": "EA794416DFD2403A74B13975E1FBD4EF9BA5F76E43523E6ED3E78666C0BB49C7",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_install.py",
+      "tracked_status": "tracked",
+      "sha256": "AE3D2E6D06858AA2E9D7F9A5B8F082F8DC783B86655AF3D8A45EFCB4D78F12EE",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_intent_parser.py",
+      "tracked_status": "tracked",
+      "sha256": "0692EFBC89E0B357EC71DAED47CD4FD9F12DE63FEAB161EA14F655B9474E9F42",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_intent_reasoning.py",
+      "tracked_status": "tracked",
+      "sha256": "6BE8375FE026739006A8490493B814EF0ACD3639F1FC26A0C5150B141BDB85C2",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_memory_retrieval.py",
+      "tracked_status": "tracked",
+      "sha256": "71EEDE22C01036109D296B2DA5B688C16BC796790A72C7BB3847B0FF54A8A5A0",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_memory_schema.py",
+      "tracked_status": "tracked",
+      "sha256": "48032E2CD7D63DCF42E52FD679FF60457FDB032632A78F9F6537A30902C4BE77",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_model_registry.py",
+      "tracked_status": "tracked",
+      "sha256": "CF95419ECA1A4468FF84ED4408D5E53FA4F4B5E3B14BF81C36BF69E265FAEB67",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_native_crash_service_recovery.py",
+      "tracked_status": "untracked",
+      "sha256": "108B43D899A099A808E0E0FE605372ACD14E041881728D87760442B6AE606CEA",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_official_prompt_pipeline.py",
+      "tracked_status": "tracked",
+      "sha256": "90E953E00C69D08F5A05544B7CEAF9AC1C908035039522BB9EE411E3E7C6AD2A",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_official_skill_pipeline.py",
+      "tracked_status": "tracked",
+      "sha256": "448C2DF4B6A3AD0B16BC68D24B68CE06FC8587350CB5413D990152D06709DC48",
+      "discovered_test_count": 8,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch25a_hardening.py",
+      "tracked_status": "tracked",
+      "sha256": "FE215E8D581CB0A533C8AE58D8930BD528A619684E681E5D073495F004D912E7",
+      "discovered_test_count": 28,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch26b_ui_prototype.py",
+      "tracked_status": "tracked",
+      "sha256": "5BBBAE0210DA5496E1386E6F87C6638C925E59E2ED6EB95BF72FAD6BB0696EC3",
+      "discovered_test_count": 20,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch27a_runtime_boundary.py",
+      "tracked_status": "tracked",
+      "sha256": "CD0009DFAF15C125C5AB2ED7336BE033FC043F18B26226D71029808DE281A2B0",
+      "discovered_test_count": 18,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch27b_runtime_mapping.py",
+      "tracked_status": "tracked",
+      "sha256": "CF2D732254EE247B4307392CA3F80F935438AEF78407FADDE43D68A62C8B8C17",
+      "discovered_test_count": 14,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch27c1_native_runtime_contract.py",
+      "tracked_status": "tracked",
+      "sha256": "0706B8A0E330BEFBE5D9CE2D69BA177C7E2138259A9E7530442D6CFE1AB1F972",
+      "discovered_test_count": 14,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch27c2a_native_runtime.py",
+      "tracked_status": "tracked",
+      "sha256": "F9DD15E30CA5C876C6D30B5FD1560898B3D458D881A18DFFFD2258569C3D17DF",
+      "discovered_test_count": 16,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch27c2b_multi_workflow_runtime.py",
+      "tracked_status": "tracked",
+      "sha256": "9339BF9E11FB282423FFCF7EF268816DB7ECDE4286FA2CC19994D90E5EAD15CF",
+      "discovered_test_count": 15,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch27d_ui_runtime_binding.py",
+      "tracked_status": "tracked",
+      "sha256": "5B65F6776F40AD646CD2DC509906A0015C6A6299D4162C4FB8802C343C2BE5A4",
+      "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28b_launcher.py",
+      "tracked_status": "tracked",
+      "sha256": "ED3CCC6D919625564D3A11DD467F47C1F056BB5FDB155BB92D2CFF59B8DBB1EC",
+      "discovered_test_count": 17,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28c_distribution.py",
+      "tracked_status": "tracked",
+      "sha256": "169274D27BE050D95ED5CF9AF33ED5F4A9CEB5C25A12DEE294BDDE9771673D23",
+      "discovered_test_count": 10,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28c_runtime_distribution.py",
+      "tracked_status": "tracked",
+      "sha256": "0D8D7B16A74B205D2CFAE4CA6CAF81259A402473B49E900D901E90064D5C9EBD",
+      "discovered_test_count": 10,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i0_entry_points.py",
+      "tracked_status": "tracked",
+      "sha256": "48051841C505768E2515649BDD1A107F113BE42CC58D284758994A83FADF1B2E",
+      "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i1_first_run_setup.py",
+      "tracked_status": "tracked",
+      "sha256": "CF5D728C733A054D6DCFC51F0531E4AF452D1D68064FA5879EE46B576EEB068C",
+      "discovered_test_count": 15,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_installer.py",
+      "tracked_status": "untracked",
+      "sha256": "F47B7FF0ACD51EC27CFCE28B3366677A7F6E2B77347177DB83DEDE3D07C60BE0",
+      "discovered_test_count": 40,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2a_support_layer.py",
+      "tracked_status": "untracked",
+      "sha256": "052F872621287EA642CA8FDA909A81988E61C007EB56A32FCFE9395ACE39856A",
+      "discovered_test_count": 21,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b01_environment_adoption.py",
+      "tracked_status": "untracked",
+      "sha256": "ACEBB05B622D711FF902BCBA8D49C9301177F9B7E2E586FDC37DEFBBF861515C",
+      "discovered_test_count": 23,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b0_user_entry.py",
+      "tracked_status": "untracked",
+      "sha256": "0634365C58EE2CABF9A77576030FCE99A0EC5CEB2C4D67837DE6B8DD5EEF3CAA",
+      "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b11_production_consolidation.py",
+      "tracked_status": "untracked",
+      "sha256": "7C286D252995EADCD6EFBD5857C3386A5E312F6BAF7762C308D949961701EC80",
+      "discovered_test_count": 10,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b12_managed_runtime.py",
+      "tracked_status": "untracked",
+      "sha256": "AC9F920E824317A1795B5E5524C9A954B363C128EDF6D3A4479F3D885BF1EF01",
+      "discovered_test_count": 12,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b1_fresh_install.py",
+      "tracked_status": "untracked",
+      "sha256": "AA8CFCA62EFE9C5164EEC3CF493657E1B5F59C14665C6EF0823A54F3CA65DAF7",
+      "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b_fastfix_static_transfer.py",
+      "tracked_status": "untracked",
+      "sha256": "BF0ABCA521F6525C8AC9ADAF5D202724C61D4607FBA2D95F4BCA71E5DE00DB32",
+      "discovered_test_count": 11,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2b_language_boundary_instrumentation.py",
+      "tracked_status": "untracked",
+      "sha256": "94094A53CA8B9AD566532E8FF98DB3DBDBCB2F6517E6251796EC998F4A433899",
+      "discovered_test_count": 9,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf1_model_root_contract.py",
+      "tracked_status": "untracked",
+      "sha256": "918F7B592A196F750ECEBFE95C0882399F220AA2A933A2FDFC7F7DA4DD89B599",
+      "discovered_test_count": 16,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf21_regression_inventory.py",
+      "tracked_status": "untracked",
+      "sha256": "36E1D62CA59DD6CF3679801F2C4069796B9175B40EE37727038B79EC60601133",
+      "discovered_test_count": 13,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf2_h3_sidecar_install.py",
+      "tracked_status": "untracked",
+      "sha256": "0E2475F2F979F5699D40C964B804BBF55EA7EDE40D04E0C45F812F7FBB2B9D8F",
+      "discovered_test_count": 17,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c1_context_differential.py",
+      "tracked_status": "untracked",
+      "sha256": "780D23A69B2A6FF0D11D361116BD42051B91B1C57BA71574D25E9D9FE679F6F5",
+      "discovered_test_count": 23,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2_language_patcher_differential.py",
+      "tracked_status": "untracked",
+      "sha256": "49D1C6F987D8D6941DEBB8960AB020D7EB7B7ED6EB828ADF2AB07B8E67086723",
+      "discovered_test_count": 25,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2f1_memory_boundary.py",
+      "tracked_status": "untracked",
+      "sha256": "5D59B07525B8DD893DA3A718FAC7F17E7ABB0098C892124182348A85F30EB7BD",
+      "discovered_test_count": 17,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2m1_f2_patcher_residency_budget.py",
+      "tracked_status": "untracked",
+      "sha256": "7CD244E89683FB06EFBBD1EC1550A3CE9305A36BE3CD8D866FE8298DED15B6E0",
+      "discovered_test_count": 21,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2m1_g0_bf16_static_validation.py",
+      "tracked_status": "untracked",
+      "sha256": "7CD6D659411B3F7735CEC64F9006D1CDF7FD2D4A4152B0F774FFC8A6E8489B29",
+      "discovered_test_count": 13,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2m1_i1_bf16_candidate.py",
+      "tracked_status": "untracked",
+      "sha256": "C78E469305F18A2F9B0180BC7282A3AF2AEBAEC948FFD2E86A164F19834C7F0B",
+      "discovered_test_count": 17,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2m1_i2_f1_static_inventory_reconciliation.py",
+      "tracked_status": "untracked",
+      "sha256": "9D85690F6EB63222AC02A18FA990D116D60834209AB79750D8825EB2EEFFC748",
+      "discovered_test_count": 21,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2m1_i2_static_transfer_margin.py",
+      "tracked_status": "untracked",
+      "sha256": "830C356B9B83D71DCAAE2924E441A1E04DE67364F894043C774630DB068E8DAB",
+      "discovered_test_count": 24,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_c2m1_memory_strategy.py",
+      "tracked_status": "untracked",
+      "sha256": "F14BB361EA3178BB78C1144CB88C45DF8994D77192057F90A8DA1AC69A7E9DA7",
+      "discovered_test_count": 15,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_qwen_visual_offload.py",
+      "tracked_status": "untracked",
+      "sha256": "C480550DA373A299514D01C6B9AD0DB6CC81D22B6600B7942F17AB9DC768F05C",
+      "discovered_test_count": 13,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_r2_asset_contract.py",
+      "tracked_status": "untracked",
+      "sha256": "110D3D991B4C5B505346C98A4845DE0B0E6A9D3F4ED168A12EE6D8BB6CE01AA9",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_r4_tokenizer_resolution.py",
+      "tracked_status": "untracked",
+      "sha256": "D9E2DA54457DC1092A93944D36BC4E9DF06A5B4ACE4BE860CAB75FB2548F3B38",
+      "discovered_test_count": 14,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_patch28i2_r2bf3_r5_processor_dtype_contract.py",
+      "tracked_status": "untracked",
+      "sha256": "D72DD5F622C6FCC67306128FF58CB51C80FD6E7C52659EB519A1B481149D4090",
+      "discovered_test_count": 17,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_plugin_loading.py",
+      "tracked_status": "tracked",
+      "sha256": "E4ABCD042104DB3D97D91B010AA4DED55441FA62D524682457DC18A4BAB8E9F0",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_product_hardening.py",
+      "tracked_status": "untracked",
+      "sha256": "873AC93434D2D1DFF1F0C5CF6D3D4D92327A2C4020F63E4AB2A1116B5E41324D",
+      "discovered_test_count": 5,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_production_ready_gate.py",
+      "tracked_status": "tracked",
+      "sha256": "CFE3C52814B9458AA16DACA7F4E0E2A81981A7F6B591D46A9864913A71D1D32E",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_prompt_engine.py",
+      "tracked_status": "tracked",
+      "sha256": "246BBA8CE1E026525A1F723F9E7B96670A168B381437925A817832399DA12FF6",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_prompt_improvement.py",
+      "tracked_status": "tracked",
+      "sha256": "4BCA512B2C4799FFB400AD934B404A54ECBA35FCD0DD76667FA4D8178347A579",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_prompt_quality.py",
+      "tracked_status": "tracked",
+      "sha256": "6F636E69DE908EA0F03374A7BA1A8960ED8522FE39E567CFEDED1476AC989B48",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_real_comfy_pipeline.py",
+      "tracked_status": "tracked",
+      "sha256": "50E1EAE79EFF3684E19A375D044B4B09B946EC5755DB28FF1CD5D069CBBE2D45",
+      "discovered_test_count": 5,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_reasoning_graph.py",
+      "tracked_status": "tracked",
+      "sha256": "5BC6DE331FACC8FC7918E312A289371534463C91D35408EEEAB6B413290C2415",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_recommendation_engine.py",
+      "tracked_status": "tracked",
+      "sha256": "73315A84314C28FBEE4C30C83EA3BF53AAD0D3F773040E752FC5B13D6B1277F0",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_revision_executor.py",
+      "tracked_status": "tracked",
+      "sha256": "DD23CD4BC20737DBAA3DF87A3F0A35DD76393B99787BC965A1577C3B3D3E8DB8",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_update.py",
+      "tracked_status": "tracked",
+      "sha256": "EAB77FBD57BC4A7CD7752EDC65AFB93E49838838E8195C3DADF03B804594858D",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_user_interface.py",
+      "tracked_status": "tracked",
+      "sha256": "AE8F5F4940E655BA005BAD8EDA2326A6CE44C1BE6493577E40CB4E60B8800663",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_userdata_protection.py",
+      "tracked_status": "tracked",
+      "sha256": "A1B27BB97A9AFF9E0D0264C87F6B38F74479C22F2E9823C22616FE0E01794AD9",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_v080_rc1_freeze_gates.py",
+      "tracked_status": "tracked",
+      "sha256": "C8A6E900D20801E39CC6AD11ACAE140DE09B93B7E8C193E30AC1E05A3B02D151",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_v080_rc31_integration.py",
+      "tracked_status": "tracked",
+      "sha256": "2A0947135C3E52AEB71326B6421E4FDC74C2FE4CB1AB375EBC05DFC739E26DA4",
+      "discovered_test_count": 3,
+      "classification": "OPTIONAL_EXTERNAL"
+    },
+    {
+      "path": "tests/test_v080_rc32_native_reconstruction.py",
+      "tracked_status": "tracked",
+      "sha256": "38FBD481D6D52526E05D9609E164C69C17C8E072C55C8D3A54468509CB9BEB80",
+      "discovered_test_count": 5,
+      "classification": "OPTIONAL_EXTERNAL"
+    },
+    {
+      "path": "tests/test_v080_rc3_local_adaptation.py",
+      "tracked_status": "tracked",
+      "sha256": "9C49D22E675ADE3A0C1B6FBCE2017C0983B3DFB71F852D965AA3A8782190BA48",
+      "discovered_test_count": 4,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_video_preset.py",
+      "tracked_status": "tracked",
+      "sha256": "B7BBF4159E4056D638AE15B44A0471A4FFD2818CBFEBC116B02581CAEC56511E",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_vision_schema.py",
+      "tracked_status": "tracked",
+      "sha256": "7039EE70B67D88D0DBBB9B3C0E741569B86164DBF9F346497484CCED156E0511",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_vision_workflow_bridge.py",
+      "tracked_status": "tracked",
+      "sha256": "38C8B9C1C54AC5BD77F128C7CA87EAB801FC1DC4CB1C10C746EB79250C9A141B",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_visual_quality_validation.py",
+      "tracked_status": "tracked",
+      "sha256": "95EE4D10B0A068F14DC899116AF11F247615242B126B8F79D9185C77BF838293",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_workflow_matching.py",
+      "tracked_status": "tracked",
+      "sha256": "96612E0AF5215613F8BBE2BD66254A4608A33B524E858556EFBE4BBEBD3DCF2E",
+      "discovered_test_count": 3,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_workflow_registry.py",
+      "tracked_status": "tracked",
+      "sha256": "4CAB930A462D536B3EDDC88253C845B74BDCA579AA311FF5500E2F7F331C819D",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_workflow_selector.py",
+      "tracked_status": "tracked",
+      "sha256": "B002AEC8DFED964EEADC230B33B2397C03F573A9B148388C603A496C921EFC2A",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    }
+  ],
+  "excluded_sources": [
+    {
+      "path": "tests/runtime/test_rc33_patch2_gpu_execution.py",
+      "tracked_status": "tracked",
+      "sha256": "AA82819FE99E981CFA925A6F8068216812A7699E6ADC09F90756C3FBF8CAE67B",
+      "discovered_test_count": 1,
+      "classification": "INTEGRATION",
+      "canonical_command": "python -m unittest discover -s tests/runtime -p \"test*.py\"",
+      "reason_excluded": "real ComfyUI/GPU or prompt-endpoint behavior; explicit opt-in only"
+    },
+    {
+      "path": "tests/runtime/test_rc33_real_h3_golden.py",
+      "tracked_status": "tracked",
+      "sha256": "EE28AE62229ED79AE418754EDC051AE30EE3576952C59E42DF0D9A3EDBE6696C",
+      "discovered_test_count": 1,
+      "classification": "INTEGRATION",
+      "canonical_command": "python -m unittest discover -s tests/runtime -p \"test*.py\"",
+      "reason_excluded": "real ComfyUI/GPU or prompt-endpoint behavior; explicit opt-in only"
+    }
+  ]
+}

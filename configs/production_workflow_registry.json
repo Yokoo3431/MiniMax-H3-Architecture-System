@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "collection": "ARCHITECTURE_PRODUCTION",
+  "policy": "PROJECT_REGISTRY_ONLY",
+  "workflows": {
+    "01_Exterior_Hero": {
+      "display_name": "Architecture Presentation",
+      "input_mode": "I2VA",
+      "canonical_source": "workflows/01_Exterior_Hero.json",
+      "payload_template": "workflows/04_Drone_Aerial.json",
+      "camera": ["slow_push", "slow_pull", "slow_pan", "slow_arc"]
+    },
+    "02_Day_Night_Transition": {
+      "display_name": "Day Night",
+      "input_mode": "FL2VA",
+      "canonical_source": "workflows/02_Day_Night_Transition.json",
+      "payload_template": "workflows/04_Drone_Aerial.json",
+      "camera": ["static"]
+    },
+    "03_Material_Detail": {
+      "display_name": "Material Detail",
+      "input_mode": "I2VA",
+      "canonical_source": "workflows/03_Material_Detail.json",
+      "payload_template": "workflows/04_Drone_Aerial.json",
+      "camera": ["static"]
+    },
+    "04_Drone_Aerial": {
+      "display_name": "Drone Reveal",
+      "input_mode": "I2VA",
+      "canonical_source": "workflows/04_Drone_Aerial.json",
+      "payload_template": "workflows/04_Drone_Aerial.json",
+      "camera": ["aerial_reveal"]
+    },
+    "05_Slow_Walkthrough": {
+      "display_name": "Slow Walkthrough",
+      "input_mode": "I2VA",
+      "canonical_source": "workflows/05_Slow_Walkthrough.json",
+      "payload_template": "workflows/04_Drone_Aerial.json",
+      "camera": ["walkthrough"]
+    }
+  }
+}

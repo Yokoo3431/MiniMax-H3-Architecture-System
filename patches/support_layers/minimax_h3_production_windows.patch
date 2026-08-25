@@ -1,0 +1,287 @@
+--- a/minimax_h3_nodes/api/loaders.py
++++ b/minimax_h3_nodes/api/loaders.py
+@@ -81,0 +82,2 @@
++        strict=False,
++        low_memory=False,
+
+--- a/minimax_h3_nodes/api/sampling_nodes.py
++++ b/minimax_h3_nodes/api/sampling_nodes.py
+@@ -539 +539,13 @@
+-        tel = H3Telemetry()
++        from ..runtime.h3_settings import TELEMETRY_STEP_ABORT_SECONDS
++        _cfg_step_abort = (
++            (sampler_config or {}).get("step_abort_seconds")
++            if isinstance(sampler_config, Mapping)
++            else None
++        )
++        tel = H3Telemetry(
++            step_abort_seconds=(
++                float(TELEMETRY_STEP_ABORT_SECONDS)
++                if _cfg_step_abort is None
++                else float(_cfg_step_abort)
++            )
++        )
+
+--- a/minimax_h3_nodes/runtime/model_loader/_impl.py
++++ b/minimax_h3_nodes/runtime/model_loader/_impl.py
+@@ -1208,0 +1209,92 @@
++
++class _MmapSafetensorsReader:
++    """CUDA-init-safe mmap safetensors reader for large checkpoints.
++
++    Same fix as qwen_encoder/loading.py: safetensors 0.7/0.8 + torch 2.12 on
++    Windows crash inside torch_cpu.dll (0xc0000005 in
++    UntypedStorage.__getitem__) when get_tensor() reads large (>~24 GB)
++    checkpoints after CUDA has been initialized.  numpy.memmap bypasses it.
++    """
++
++    _DTYPE_MAP = {
++        "F32": ("float32", "float32"),
++        "F16": ("float16", "float16"),
++        "BF16": ("uint16", "bfloat16"),
++        "I8": ("int8", "int8"),
++        "U8": ("uint8", "uint8"),
++        "I32": ("int32", "int32"),
++        "I64": ("int64", "int64"),
++        "F64": ("float64", "float64"),
++    }
++
++    def __init__(self, path) -> None:
++        import json
++        import struct
++
++        import numpy as np
++
++        self._path = str(path)
++        self._file = open(self._path, "rb")
++        header_len = struct.unpack("<Q", self._file.read(8))[0]
++        self._header = json.loads(self._file.read(header_len))
++        self._data_start = 8 + header_len
++        self._mmap = np.memmap(self._path, mode="r", offset=self._data_start)
++
++    def keys(self) -> list[str]:
++        return [k for k in self._header if isinstance(self._header[k], dict)]
++
++    def get_tensor(self, name: str):
++        import math
++
++        import numpy as np
++        import torch
++
++        info = self._header.get(name)
++        if not isinstance(info, dict):
++            raise KeyError(name)
++        start, end = info["data_offsets"]
++        shape = tuple(info["shape"])
++        dtype_name = info["dtype"]
++        try:
++            np_name, torch_name = self._DTYPE_MAP[dtype_name]
++        except KeyError:
++            raise RuntimeError(
++                f"unsupported safetensors dtype {dtype_name!r} for {name}"
++            )
++        count = int(math.prod(shape)) if shape else 1
++        if end <= start:
++            return torch.empty(shape, dtype=getattr(torch, torch_name))
++        arr = np.frombuffer(
++            self._mmap, dtype=np.dtype(np_name), count=count, offset=start
++        )
++        arr = arr.copy()
++        tensor = torch.from_numpy(arr)
++        if torch_name != str(tensor.dtype).split(".")[-1]:
++            tensor = tensor.view(getattr(torch, torch_name))
++        return tensor.reshape(shape)
++
++    def close(self) -> None:
++        try:
++            del self._mmap
++        except Exception:
++            pass
++        try:
++            self._file.close()
++        except Exception:
++            pass
++
++
++class _open_safetensors_reader:
++    """Context manager exposing keys()/get_tensor() like safe_open."""
++
++    def __init__(self, shard):
++        self._reader = _MmapSafetensorsReader(shard)
++
++    def __enter__(self):
++        return self._reader
++
++    def __exit__(self, *exc):
++        self._reader.close()
++        return False
+
+
+--- a/minimax_h3_nodes/runtime/qwen_encoder/loading.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/loading.py
+@@ -754,7 +754,22 @@
+-    tokenizer_component = resolve_component(
+-        model_root,
+-        ("tokenizer", "processor", "text_encoder"),
+-        explicit=tokenizer_path,
+-    )
++    # The managed INT8 layout co-locates tokenizer assets with the selected
++    # text encoder under the partition directory.  The old empty required
++    # file contract allowed resolve_component() to return the H3 root itself
++    # when no model_index.json was present, which made AutoTokenizer fall back
++    # to slow-tokenizer conversion and fail despite a valid fast tokenizer.
++    tokenizer_explicit = tokenizer_path
++    if tokenizer_explicit is None:
++        for candidate in (
++            component,
++            component.parent / "processor",
++            component.parent / "tokenizer",
++        ):
++            if (candidate / "tokenizer.json").is_file():
++                tokenizer_explicit = str(candidate)
++                break
++    tokenizer_component = resolve_component(
++        model_root,
++        ("tokenizer", "processor", "text_encoder"),
++        explicit=tokenizer_explicit,
++        required_files=("tokenizer.json",),
++    )
++
++
+@@ -1358 +1450 @@
+-        with safe_open(str(shard), framework="pt", device="cpu") as reader:
++        with _open_safetensors_reader(shard) as reader:
+
+--- a/minimax_h3_nodes/runtime/qwen_encoder/loading.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/loading.py
+@@ -351,0 +352,93 @@
++
++class _MmapSafetensorsReader:
++    """CUDA-init-safe mmap safetensors reader for large checkpoints.
++
++    safetensors 0.7/0.8 + torch 2.12 on Windows crash inside
++    torch_cpu.dll (0xc0000005 in UntypedStorage.__getitem__) when
++    get_tensor() reads this 27 GB checkpoint after CUDA has been
++    initialized, while numpy.memmap reads succeed.  This reader bypasses
++    the safetensors pt path entirely and is used for the text encoder.
++    """
++
++    _DTYPE_MAP = {
++        "F32": ("float32", "float32"),
++        "F16": ("float16", "float16"),
++        "BF16": ("uint16", "bfloat16"),
++        "I8": ("int8", "int8"),
++        "U8": ("uint8", "uint8"),
++        "I32": ("int32", "int32"),
++        "I64": ("int64", "int64"),
++        "F64": ("float64", "float64"),
++    }
++
++    def __init__(self, path) -> None:
++        import json
++        import struct
++
++        import numpy as np
++
++        self._path = str(path)
++        self._file = open(self._path, "rb")
++        header_len = struct.unpack("<Q", self._file.read(8))[0]
++        self._header = json.loads(self._file.read(header_len))
++        self._data_start = 8 + header_len
++        self._mmap = np.memmap(self._path, mode="r", offset=self._data_start)
++
++    def keys(self) -> list[str]:
++        return [k for k in self._header if isinstance(self._header[k], dict)]
++
++    def get_tensor(self, name: str):
++        import math
++
++        import numpy as np
++        import torch
++
++        info = self._header.get(name)
++        if not isinstance(info, dict):
++            raise KeyError(name)
++        start, end = info["data_offsets"]
++        shape = tuple(info["shape"])
++        dtype_name = info["dtype"]
++        try:
++            np_name, torch_name = self._DTYPE_MAP[dtype_name]
++        except KeyError:
++            raise RuntimeError(
++                f"unsupported safetensors dtype {dtype_name!r} for {name}"
++            )
++        count = int(math.prod(shape)) if shape else 1
++        if end <= start:
++            return torch.empty(shape, dtype=getattr(torch, torch_name))
++        arr = np.frombuffer(
++            self._mmap, dtype=np.dtype(np_name), count=count, offset=start
++        )
++        arr = arr.copy()
++        tensor = torch.from_numpy(arr)
++        if torch_name != str(tensor.dtype).split(".")[-1]:
++            tensor = tensor.view(getattr(torch, torch_name))
++        return tensor.reshape(shape)
++
++    def close(self) -> None:
++        try:
++            del self._mmap
++        except Exception:
++            pass
++        try:
++            self._file.close()
++        except Exception:
++            pass
++
++
++class _open_safetensors_reader:
++    """Context manager exposing keys()/get_tensor() like safe_open."""
++
++    def __init__(self, shard):
++        self._reader = _MmapSafetensorsReader(shard)
++
++    def __enter__(self):
++        return self._reader
++
++    def __exit__(self, *exc):
++        self._reader.close()
++        return False
++
++
+@@ -373 +466 @@
+-            with safe_open(str(shard), framework="pt") as reader:
++            with _open_safetensors_reader(shard) as reader:
+@@ -414 +507 @@
+-        with safe_open(str(shard), framework="pt", device="cpu") as reader:
++        with _open_safetensors_reader(shard) as reader:
+
+--- a/minimax_h3_nodes/runtime/h3_settings.py
++++ b/minimax_h3_nodes/runtime/h3_settings.py
+@@ -59,2 +59,3 @@
+ TE_GPU_HEADROOM = 3 << 30  # TE 上卡前额外预留的 encode 工作区显存（字节）
++H3_LANGUAGE_STATIC_TARGET_DTYPE = "bfloat16"  # Strategy A: preserve checkpoint BF16 for ordinary language statics
+ TE_VISUAL_ON_CPU = True  # 纯文本编码不搬 visual 塔，常驻 CPU 省 ~7GB 显存
+
+--- a/minimax_h3_nodes/runtime/qwen_encoder/loading.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/loading.py
+@@ -657,7 +657,12 @@
+     language_model = getattr(model, "language_model", None)
++    if language_model is None:
++        raise H3ComponentError("Qwen3VL language_model missing")
++    if H3_LANGUAGE_STATIC_TARGET_DTYPE != "bfloat16":
++        raise H3ComponentError(
++            "Unsupported H3 language static target dtype: "
++            f"{H3_LANGUAGE_STATIC_TARGET_DTYPE!r}"
++        )
++    # Strategy A is deliberately scoped to the language subtree. The visual
++    # tower remains on the constructor's FP32 target dtype and is not cast.
++    language_model.to(dtype=torch.bfloat16)
+     layers = getattr(language_model, "layers", None) if language_model is not None else None
+
+--- a/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
+@@ -30,3 +30,4 @@
+ from ..h3_settings import (
+     ALLOW_PARTIAL_OFFLOAD_INT8,
++    H3_LANGUAGE_STATIC_TARGET_DTYPE,
+     INT8_FORMAT,

@@ -8,7 +8,8 @@ echo =====================================================================
 echo.
 
 set SYSTEM_ROOT=%~dp0..
-set COMFY_PORTABLE=D:\ProgramFilesNormal\ComfyUI\ComfyUI_windows_portable
+set COMFY_PORTABLE=%H3_COMFY_PORTABLE%
+if not defined COMFY_PORTABLE set COMFY_PORTABLE=%SYSTEM_ROOT%\..\ComfyUI
 set PYTHON_EXE=%COMFY_PORTABLE%\python_embeded\python.exe
 set COMFY_ROOT=%COMFY_PORTABLE%\ComfyUI
 

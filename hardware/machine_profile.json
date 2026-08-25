@@ -2,10 +2,10 @@
   "system_name": "MiniMax H3 Machine Profile",
   "gpu_info": {
     "gpu_name": "NVIDIA GeForce RTX 5070",
-    "vram_mb": 12226.56,
+    "vram_mb": 12227.0,
     "vram_gb": 11.94,
-    "driver": "CUDA 13.0",
-    "detected_via": "pytorch"
+    "driver": "591.86",
+    "detected_via": "nvidia-smi"
   },
   "matched_profile_key": "H3_STANDARD",
   "profile": {

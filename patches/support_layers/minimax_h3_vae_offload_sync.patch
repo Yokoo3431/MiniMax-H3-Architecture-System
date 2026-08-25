@@ -1,0 +1,12 @@
+--- a/minimax_h3_nodes/runtime/vae_adapter/_impl.py
++++ b/minimax_h3_nodes/runtime/vae_adapter/_impl.py
+@@ -812,6 +812,12 @@
+         if dtype is not None:
+             kwargs["dtype"] = _resolve_dtype(dtype, default=torch.float32)
++        # Windows Blackwell can fault when a VAE is recursively moved to CPU
++        # while work is still queued on a CUDA stream.  Synchronize only the
++        # release direction; normal device loads retain existing semantics.
++        if str(kwargs["device"]) == "cpu" and torch.cuda.is_available():
++            torch.cuda.synchronize()
+         with _VAE_CONDITION_ENCODE_LOCK:
+             self.model.to(**kwargs)

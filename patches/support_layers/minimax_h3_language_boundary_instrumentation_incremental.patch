@@ -1,0 +1,225 @@
+--- a/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/helpers.py
+@@ -16,6 +16,11 @@
+ from contextlib import contextmanager
+ from pathlib import Path
+ from typing import Any
+ 
++import ctypes
++import ctypes.wintypes as wintypes
++import json
++import time
++import traceback
+ import logging
+ 
+@@ -379,3 +384,139 @@
+     return bank, patcher, storage_bytes
+ 
++class _LANGUAGE_BOUNDARY_PERFORMANCE_INFORMATION(ctypes.Structure):
++    _fields_ = [
++        ("cb", wintypes.DWORD),
++        ("CommitTotal", ctypes.c_size_t),
++        ("CommitLimit", ctypes.c_size_t),
++        ("CommitPeak", ctypes.c_size_t),
++        ("PhysicalTotal", ctypes.c_size_t),
++        ("PhysicalAvailable", ctypes.c_size_t),
++        ("SystemCache", ctypes.c_size_t),
++        ("KernelTotal", ctypes.c_size_t),
++        ("KernelPaged", ctypes.c_size_t),
++        ("KernelNonpaged", ctypes.c_size_t),
++        ("PageSize", ctypes.c_size_t),
++        ("HandleCount", wintypes.DWORD),
++        ("ProcessCount", wintypes.DWORD),
++        ("ThreadCount", wintypes.DWORD),
++    ]
++
++
++def _language_boundary_windows_free_commit() -> int | None:
++    """Read Windows commit headroom without changing process or model state."""
++
++    try:
++        info = _LANGUAGE_BOUNDARY_PERFORMANCE_INFORMATION()
++        info.cb = ctypes.sizeof(info)
++        psapi = ctypes.WinDLL("psapi")
++        if not psapi.GetPerformanceInfo(ctypes.byref(info), info.cb):
++            return None
++        return int((info.CommitLimit - info.CommitTotal) * info.PageSize)
++    except BaseException:
++        return None
++
++
++def _language_boundary_device_counts(modules: tuple[Any, ...]) -> dict[str, int]:
++    counts = {"cpu": 0, "cuda": 0}
++    for module in modules:
++        values = list(module.parameters(recurse=False))
++        values.extend(module.buffers(recurse=False))
++        if not values:
++            continue
++        device_type = getattr(values[0].device, "type", str(values[0].device))
++        if device_type in counts:
++            counts[device_type] += 1
++    return counts
++
++
++def _language_boundary_static_counts(handle: Any) -> dict[str, int]:
++    counts = {"cpu": 0, "cuda": 0}
++    roots = list(handle._movable())
++    linears = tuple(getattr(handle, "_streaming_linears", ()) or ())
++    excluded = {id(module) for module in linears}
++    seen: set[int] = set()
++    for _module, _collection, _name, tensor in _direct_tensor_slots(roots, excluded):
++        tensor_id = id(tensor)
++        if tensor_id in seen:
++            continue
++        seen.add(tensor_id)
++        device_type = getattr(tensor.device, "type", str(tensor.device))
++        if device_type in counts:
++            counts[device_type] += 1
++    return counts
++
++
++def _language_load_boundary_snapshot(handle: Any, mm: Any) -> dict[str, Any]:
++    """Collect only the frozen LANGLOAD observational payload."""
++
++    import torch
++
++    cuda_allocated = None
++    cuda_reserved = None
++    cuda_free = None
++    try:
++        if torch.cuda.is_available() and getattr(handle.load_device, "type", None) == "cuda":
++            cuda_allocated = int(torch.cuda.memory_allocated(handle.load_device))
++            cuda_reserved = int(torch.cuda.memory_reserved(handle.load_device))
++            cuda_free = int(torch.cuda.mem_get_info(handle.load_device)[0])
++    except BaseException:
++        pass
++
++    patcher = getattr(handle, "_linear_patcher", None)
++    loaded_size = None
++    if patcher is not None:
++        try:
++            loaded_size = int(patcher.loaded_size())
++        except BaseException:
++            pass
++    loaded_models = getattr(mm, "current_loaded_models", ()) if mm is not None else ()
++    linears = tuple(getattr(handle, "_streaming_linears", ()) or ())
++    linear_counts = _language_boundary_device_counts(linears)
++    static_counts = _language_boundary_static_counts(handle)
++    return {
++        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
++        "windows_free_commit": _language_boundary_windows_free_commit(),
++        "cuda_allocated": cuda_allocated,
++        "cuda_reserved": cuda_reserved,
++        "cuda_free": cuda_free,
++        "comfy_current_loaded_models": len(tuple(loaded_models or ())),
++        "model_patcher_loaded_size": loaded_size,
++        "quantized_linear_cpu_count": linear_counts["cpu"],
++        "quantized_linear_cuda_count": linear_counts["cuda"],
++        "direct_static_cpu_count": static_counts["cpu"],
++        "direct_static_cuda_count": static_counts["cuda"],
++    }
++
++
++def _safe_language_load_boundary_snapshot(handle: Any, mm: Any) -> dict[str, Any]:
++    try:
++        return _language_load_boundary_snapshot(handle, mm)
++    except BaseException as exc:
++        return {
++            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
++            "windows_free_commit": None,
++            "cuda_allocated": None,
++            "cuda_reserved": None,
++            "cuda_free": None,
++            "comfy_current_loaded_models": None,
++            "model_patcher_loaded_size": None,
++            "quantized_linear_cpu_count": None,
++            "quantized_linear_cuda_count": None,
++            "direct_static_cpu_count": None,
++            "direct_static_cuda_count": None,
++            "instrumentation_error": f"{type(exc).__name__}: {exc}",
++        }
++
++
++def _emit_language_load_boundary(handle: Any, mm: Any, marker: str) -> dict[str, Any]:
++    """Log one flushed boundary marker; observation failures never alter flow."""
++
++    payload = _safe_language_load_boundary_snapshot(handle, mm)
++    record = {"marker": marker, **payload}
++    try:
++        LOGGER.info("H3_LANGUAGE_LOAD_BOUNDARY %s", json.dumps(record, sort_keys=True))
++        for handler in tuple(LOGGER.handlers):
++            handler.flush()
++    except BaseException:
++        pass
++    return record
++
++
++def _log_language_load_exception(
++    *,
++    last_marker: str | None,
++    exception: BaseException,
++    pre_rollback_state: dict[str, Any],
++    post_rollback_state: dict[str, Any],
++    rollback_clean: bool,
++    traceback_text: str,
++) -> None:
++    """Persist raw traceback and separate pre/post rollback observations."""
++
++    record = {
++        "event": "H3_LANGUAGE_LOAD_EXCEPTION",
++        "last_flushed_marker": last_marker,
++        "exception_type": type(exception).__name__,
++        "exception_message": str(exception),
++        "traceback": traceback_text,
++        "pre_rollback_state": pre_rollback_state,
++        "post_rollback_state": post_rollback_state,
++        "rollback_clean": bool(rollback_clean),
++    }
++    try:
++        LOGGER.error("H3_LANGUAGE_LOAD_EXCEPTION %s", json.dumps(record, sort_keys=True))
++        for handler in tuple(LOGGER.handlers):
++            handler.flush()
++    except BaseException:
++        pass
+
+ __all__ = [n for n in list(globals()) if not n.startswith("__")]
+--- a/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
+@@ -417,16 +417,37 @@
+             )
++            last_marker = None
++            mm = None
+             try:
+                 import comfy.model_management as mm
+ 
++                _emit_language_load_boundary(self, mm, "LANGLOAD-01 BEFORE_LOAD_MODELS_GPU")
++                last_marker = "LANGLOAD-01 BEFORE_LOAD_MODELS_GPU"
+                 # Reserve static embedding/norm/RoPE bytes plus encode
+                 # workspace.  ModelPatcher uses the remainder for resident
+                 # INT8 Linears and streams all others on Comfy's CUDA streams.
+                 mm.load_models_gpu([patcher], memory_required=reserve)
++                _emit_language_load_boundary(self, mm, "LANGLOAD-02 AFTER_LOAD_MODELS_GPU")
++                last_marker = "LANGLOAD-02 AFTER_LOAD_MODELS_GPU"
++                _emit_language_load_boundary(self, mm, "LANGLOAD-03 BEFORE_MOVE_STATIC")
++                last_marker = "LANGLOAD-03 BEFORE_MOVE_STATIC"
+                 self._move_static_tensors(self.load_device)
++                _emit_language_load_boundary(self, mm, "LANGLOAD-04 AFTER_MOVE_STATIC")
++                last_marker = "LANGLOAD-04 AFTER_MOVE_STATIC"
+             except BaseException as exc:
++                pre_rollback_state = _safe_language_load_boundary_snapshot(self, mm)
++                original_traceback = traceback.format_exc()
+                 rollback_clean = self._rollback_failed_quantized_load()
++                post_rollback_state = _safe_language_load_boundary_snapshot(self, mm)
++                _log_language_load_exception(
++                    last_marker=last_marker,
++                    exception=exc,
++                    pre_rollback_state=pre_rollback_state,
++                    post_rollback_state=post_rollback_state,
++                    rollback_clean=rollback_clean,
++                    traceback_text=original_traceback,
++                )
+                 if isinstance(exc, torch.OutOfMemoryError) and rollback_clean:
+                     LOGGER.warning(
+                         "text_encoder INT8 partial load OOM; cleaned up and "
+                         "falling back to CPU encode"
+                     )

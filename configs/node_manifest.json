@@ -4,10 +4,10 @@
   "nodes": {
     "ComfyUI_RH_MinMaxH3": {
       "name": "ComfyUI_RH_MinMaxH3",
-      "repository": "https://github.com/RH-CustomNodes/ComfyUI_RH_MinMaxH3.git",
+      "repository": "https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3.git",
       "target_dir": "custom_nodes/ComfyUI_RH_MinMaxH3",
       "required": true,
-      "recommended_commit": "latest",
+      "recommended_commit": "d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad",
       "key_components": [
         "minimax_h3_nodes/api/loaders.py",
         "minimax_h3_nodes/api/targets.py",
@@ -19,7 +19,7 @@
       "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
       "target_dir": "custom_nodes/ComfyUI-VideoHelperSuite",
       "required": true,
-      "recommended_commit": "latest",
+      "recommended_commit": "4ee72c065db22c9d96c2427954dc69e7b908444b",
       "key_components": [
         "videohelpersuite/nodes.py"
       ]
@@ -29,7 +29,8 @@
       "repository": "https://github.com/ltdrdata/ComfyUI-Manager.git",
       "target_dir": "custom_nodes/ComfyUI-Manager",
       "required": false,
-      "recommended_commit": "latest",
+      "recommended_commit": null,
+      "install_policy": "NEVER_REQUIRED_NO_MANUAL_MANAGER_DEPENDENCY",
       "key_components": [
         "cm_cli.py"
       ]

@@ -13,7 +13,7 @@ import sys
 import unittest
 from pathlib import Path
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
@@ -23,7 +23,7 @@ PATCH27A_CONTRACT = SYSTEM_ROOT / "runtime" / "contracts" / "video_generation_re
 
 
 def load_contract(path: Path = CONTRACT):
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    return safe_load(path.read_text(encoding="utf-8"))
 
 
 def validate_event(event: dict, contract: dict) -> list:
@@ -144,7 +144,7 @@ class TestOutputCompatibility(unittest.TestCase):
 
     def test_metadata_aligns_with_patch27a(self):
         native_meta = set(load_contract()["native_output"]["metadata"])
-        patch27a = yaml.safe_load(PATCH27A_CONTRACT.read_text(encoding="utf-8"))
+        patch27a = safe_load(PATCH27A_CONTRACT.read_text(encoding="utf-8"))
         request_fields = set(patch27a["video_generation_request"]["generation_parameters"]
                              .get("fields", {}))
         # seed/prompt_hash etc. must be present in native metadata

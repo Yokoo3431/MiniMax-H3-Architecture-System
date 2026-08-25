@@ -3,6 +3,7 @@
 
 import sys
 import json
+import os
 import unittest
 from pathlib import Path
 
@@ -17,6 +18,8 @@ LAUNCHER_FILE = SYSTEM_ROOT / "launcher" / "Start_MiniMax_H3_Architect.bat"
 REPORT_DOC = SYSTEM_ROOT / "docs" / "internal_archive" / "V0.8.0_RC3.1_Integration_Fix_Report.md"
 
 class TestV080RC31Integration(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("H3_RUN_EXTERNAL_INTEGRATION_TESTS") == "1",
+                         "historical external-machine deployer test is opt-in")
     def test_workflow_deployer_and_validator(self):
         res = deploy_and_validate_workflows()
         self.assertEqual(res["status"], "PASS")

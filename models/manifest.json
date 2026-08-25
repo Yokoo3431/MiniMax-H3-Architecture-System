@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "phase": "PATCH2.8-I2 pinned production model manifest",
+  "source": "configs/native_production_baseline.json",
+  "license_notice": "Model weights are provided under upstream licensing terms; Architect Video Studio does not relicense model weights.",
+  "h3_model_root": {
+    "directory_name": "MiniMax-H3",
+    "resolver_environment": {
+      "model_roots": "MINIMAX_H3_MODEL_ROOTS",
+      "weights_roots": "MINIMAX_H3_WEIGHTS_ROOTS"
+    },
+    "release_sidecar_root": "diffusers/MiniMax-H3",
+    "sidecar_manifest": "configs/h3_sidecar_manifest.yaml",
+    "runtime_asset_contract": "configs/h3_sidecar_manifest.yaml#runtime_asset_contract",
+    "sidecar_source": {
+      "repository": "MiniMaxAI/MiniMax-H3",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "scope": "FL2VA non-weight files only",
+      "reject_extensions": [".safetensors"]
+    },
+    "required_partition": "FL2VA",
+    "required_sidecars": [
+      "diffusers/MiniMax-H3/FL2VA/model_index.json",
+      "diffusers/MiniMax-H3/FL2VA/transformer/config.json",
+      "diffusers/MiniMax-H3/FL2VA/text_encoder/config.json",
+      "diffusers/MiniMax-H3/FL2VA/processor/tokenizer_config.json",
+      "diffusers/MiniMax-H3/FL2VA/processor/tokenizer.json",
+      "diffusers/MiniMax-H3/FL2VA/processor/vocab.json",
+      "diffusers/MiniMax-H3/FL2VA/processor/preprocessor_config.json",
+      "diffusers/MiniMax-H3/FL2VA/video_vae/config.json",
+      "diffusers/MiniMax-H3/FL2VA/audio_vae/config.json"
+    ],
+    "sidecar_source_status": "TRUSTED_IMMUTABLE_SOURCE",
+    "weight_policy": "reuse_existing_shared_weights_without_copy"
+  },
+  "models": {
+    "dit": {
+      "filename": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "target_subdir": "diffusion_models",
+      "expected_size": 20970379616,
+      "sha256": "E889202C41DAFB67B10D67B97F0D8541508036A6090AF23425A5C2615D03C47A",
+      "source": "https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/transformer/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "required": true,
+      "task_association": ["T2VA", "FL2VA", "Ref2VA"]
+    },
+    "text_encoder": {
+      "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "target_subdir": "text_encoders",
+      "expected_size": 15687142551,
+      "sha256": "35A88D51044231FE332301D7A62AA81E3F2CBA62FEBEB446E2C1E3E0EF76F2C6",
+      "source": "https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/text_encoder/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "required": true,
+      "task_association": ["T2VA", "FL2VA", "Ref2VA"]
+    },
+    "video_vae": {
+      "filename": "minimax_h3_video_vae_fp16.safetensors",
+      "target_subdir": "vae",
+      "expected_size": 5207808496,
+      "sha256": "7C1F131492E7EDDACAAC9069A61B81BDD39DE5CC96561E677C5EAB1CDCE5E522",
+      "source": "https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/video_vae/minimax_h3_video_vae_fp16.safetensors",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "required": true,
+      "task_association": ["T2VA", "FL2VA", "Ref2VA"]
+    },
+    "audio_vae": {
+      "filename": "minimax_h3_audio_vae_fp32.safetensors",
+      "target_subdir": "vae",
+      "expected_size": 605254808,
+      "sha256": "8E505D95DD1561D47ABD43D4238FD40D9BB1AE9E147ED0A4CBA778D76AE4DB48",
+      "source": "https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/audio_vae/minimax_h3_audio_vae_fp32.safetensors",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "required": true,
+      "task_association": ["T2VA", "FL2VA", "Ref2VA"]
+    }
+  }
+}

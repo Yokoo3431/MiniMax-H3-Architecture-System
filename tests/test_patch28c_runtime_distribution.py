@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
@@ -28,7 +28,7 @@ CONFIG = DIST / "distribution_config.yaml"
 class TestRelativePathValidation(unittest.TestCase):
     def test_config_exists_and_all_paths_relative(self):
         self.assertTrue(CONFIG.is_file())
-        data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+        data = safe_load(CONFIG.read_text(encoding="utf-8"))
         for key, value in data["distribution"].items():
             if isinstance(value, str) and value != ".":
                 self.assertFalse(Path(value).is_absolute(), f"{key} absolute: {value}")

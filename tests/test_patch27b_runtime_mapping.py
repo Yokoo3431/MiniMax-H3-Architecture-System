@@ -13,7 +13,7 @@ import sys
 import unittest
 from pathlib import Path
 
-import yaml
+from runtime.yaml_compat import safe_load
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
@@ -38,7 +38,7 @@ EXPECTED_DISPLAY_NAMES = {
 
 
 def load_registry():
-    return yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    return safe_load(CONTRACT.read_text(encoding="utf-8"))
 
 
 def lookup(registry, workflow_id):

@@ -1,9 +1,10 @@
 {
-  "version": "0.6.5",
-  "system_name": "MiniMax H3 Architecture System Production Deployment Ready Packager",
-  "package_filename": "MiniMax-H3-Architecture-System-v0.6.5.zip",
+  "version": "0.8.0-rc1",
+  "system_name": "Architect Video Studio Shareable RC Packager",
+  "package_filename": "ArchitectVideoStudio-RC.zip",
   "include_directories": [
     "launcher",
+    "apps",
     "runtime",
     "core",
     "configs",
@@ -13,24 +14,36 @@
     "scripts",
     "skills",
     "workflows",
-    "sync",
-    "plugins",
-    "tests",
-    "docs"
+    "references",
+    "samples",
+    "skills",
+    "installer"
   ],
   "include_files": [
     "README.md",
-    ".gitignore"
+    ".gitignore",
+    "Start_ArchitectVideoStudio.bat",
+    "Open_Native_ComfyUI.bat",
+    "native_env.path.example",
+    "distribution_config.yaml",
+    "models/manifest.json",
+    "configs/installer_bootstrap.json"
   ],
   "exclude_patterns": [
     "*.mp4",
     "*.avi",
     "*.mov",
     "*.safetensors",
+    "*.7z",
+    "*.exe",
     "__pycache__",
     ".git",
     "userdata/outputs/*",
     "userdata/*",
-    "release/*.zip"
+    "release/*.zip",
+    "release/dist/*",
+    "docs/internal_archive/*",
+    "userdata/*",
+    "Logs/*"
   ]
 }

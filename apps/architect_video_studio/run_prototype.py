@@ -1,4 +1,4 @@
-"""Run the Architect Video Studio local prototype.
+"""Development compatibility wrapper for the production Studio service.
 
 Usage:
     python run_prototype.py [--port 8788] [--data <dir>]
@@ -18,10 +18,14 @@ if str(REPO_ROOT) not in sys.path:
 
 from apps.architect_video_studio.mock_api._paths import DEFAULT_DATA_ROOT  # noqa: E402
 from apps.architect_video_studio.mock_api.server import make_server  # noqa: E402
+from runtime.storage_policy import apply_process_environment  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Architect Video Studio prototype")
+    # Direct Studio launches receive the same project-local cache policy as
+    # launches managed by launcher.ProcessManager.
+    apply_process_environment(REPO_ROOT)
+    parser = argparse.ArgumentParser(description="Architect Video Studio (development compatibility entry)")
     parser.add_argument("--port", type=int, default=8788)
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA_ROOT)
     parser.add_argument("--runtime", choices=("mock", "real"), default="real",
