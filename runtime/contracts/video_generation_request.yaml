@@ -52,19 +52,48 @@ video_generation_request:
     fields:
       resolution:
         type: string
-        allowed: ["1344x768", "1280x720"]
-        default: "1344x768"
+        allowed: ["832x480", "1024x576", "1344x768"]
+        default: "1024x576"
       fps:
         type: integer
         allowed: [24]
         default: 24
       duration:
         type: number
+        minimum: 4.0
+        maximum: 15.0
         default: 4.0
       quality:
         type: enum
-        allowed: ["diagnostic", "production"]
-        default: "diagnostic"
+        allowed: ["draft", "standard", "high"]
+        default: "standard"
+      aspect_ratio:
+        type: enum
+        allowed: ["auto", "16:9", "9:16", "1:1"]
+        default: "auto"
+      generation_speed:
+        type: enum
+        allowed: ["standard", "auto"]
+        default: "standard"
+      sampler_mode:
+        type: enum
+        allowed: ["euler", "res_multistep"]
+        default: "euler"
+      sigma_points:
+        type: integer
+        minimum: 2
+        maximum: 100
+        default: 50
+      accel:
+        type: enum
+        allowed: ["off", "auto", "manual-velocity", "manual-cache-dit"]
+        default: "off"
+      velocity_cache:
+        type: boolean
+        default: false
+      cache_dit:
+        type: boolean
+        default: false
       seed:
         type: integer
         required: true

@@ -11,6 +11,13 @@ from typing import Any, Dict, List
 
 from ..state_machine.machine import ProjectStateMachine
 from .store import StudioStore
+from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.prompt_provenance import (
+    generation_parameters_hash,
+    prompt_input_hash,
+    reference_asset_hash,
+)
+from runtime.workflow_motion import normalize_camera_motion
 
 FROZEN_WORKFLOWS = (
     "01_Exterior_Hero",
@@ -52,11 +59,12 @@ class PromptAPI:
         self.adapter = adapter
 
     def generate_prompt(self, project_id: str,
-                        workflow: str | None = None) -> Dict[str, Any]:
+                        workflow: str | None = None,
+                        generation_parameters: Dict[str, Any] | None = None) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
-        if project["state"] not in ("PROMPT_REVIEW", "USER_CONFIRM"):
+        if project["state"] == "GPU_RUNNING":
             raise ValueError(
-                f"generate_prompt requires PROMPT_REVIEW/USER_CONFIRM; project is {project['state']}"
+                "当前任务正在生成，完成后才能更新 Prompt"
             )
         intent = self.store.load_intent(project_id)
         if intent is None:
@@ -74,11 +82,13 @@ class PromptAPI:
             raise ValueError("Reference Approval Gate: no approved reference")
 
         reference_paths = [r["stored_path"] or r["filename"] for r in approved]
+        reference_hash = reference_asset_hash(approved)
+        camera_motion = normalize_camera_motion(workflow)
         intent_obj = self._intent_cls(
             project_type=project["project_type"],
             video_task=intent.get("selected_video_task"),
             scene=intent.get("natural_language", ""),
-            camera_motion=CAMERA_BY_WORKFLOW[workflow],
+            camera_motion=camera_motion,
             amplitude="small",
             speed="slow",
             priority=PRIORITY_BY_WORKFLOW[workflow],
@@ -92,14 +102,17 @@ class PromptAPI:
             user_approved=True,
         )
         frame_count = 107 if workflow == "02_Day_Night_Transition" else None
+        params = normalize_generation_parameters(generation_parameters)
         prompt = self.adapter.build_prompt(
             intent_obj,
             workflow=workflow,
             reference=ref_meta,
-            duration_seconds=4.0,
+            duration_seconds=params["duration"],
             frame_count=frame_count,
-            fps=24.0,
+            fps=float(params["fps"]),
         )
+        created_at = self.store.timestamp()
+        params_hash = generation_parameters_hash(params)
         record = {
             "project_id": project_id,
             "workflow": workflow,
@@ -112,10 +125,29 @@ class PromptAPI:
             "verified": prompt["verified"],
             "prompt_hash": prompt["provenance"]["generated_prompt_hash"],
             "provenance": prompt["provenance"],
-            "created_at": self.store.timestamp(),
+            "generation_parameters": params,
+            "original_intent": intent.get("natural_language", ""),
+            "optimized_prompt": prompt["prompt"],
+            "workflow_id": workflow,
+            "reference_asset_hash": reference_hash,
+            "generation_parameters_hash": params_hash,
+            "input_hash": prompt_input_hash(
+                intent.get("natural_language", ""), workflow,
+                reference_hash, params),
+            "generated_at": created_at,
+            "adapter_version": prompt["provenance"].get("adapter_revision", ""),
+            "bridge_version": prompt["provenance"].get("bridge_revision", ""),
+            "status": "CURRENT",
+            "official_skill_status": "官方 H3 Prompt Skill 已优化",
+            "created_at": created_at,
         }
         self.store.save_prompt(project_id, record)
 
+        # A terminal Job is history, not an edit lock on the Study.  Restore
+        # the editable Study state before applying the normal prompt transition.
+        if project["state"] in ("GPU_FAILED", "QUALITY_FAILED", "COMPLETED"):
+            project["state"] = "PROMPT_REVIEW"
+            self.store.save_project(project)
         machine = ProjectStateMachine(project["state"])
         if machine.state == "PROMPT_REVIEW":
             machine.transition("show_generation_panel", actor="architect",

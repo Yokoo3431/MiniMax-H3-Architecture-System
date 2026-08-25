@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
 from .store import StudioStore
+from runtime.prompt_provenance import is_current_prompt, reference_asset_hash
 
 TERMINAL_JOB_STATES = {"COMPLETED", "FAILED", "GPU_FAILED", "CANCELLED"}
 
@@ -36,10 +37,13 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     )
     reference_approved = bool(approved)
     selected_workflow = intent.get("selected_workflow")
-    prompt_ready = bool(
-        prompt
-        and prompt.get("verified", {}).get("pass")
-        and prompt.get("workflow") == selected_workflow
+    approved_hash = reference_asset_hash(approved)
+    prompt_ready = is_current_prompt(
+        prompt,
+        intent=str(intent.get("natural_language") or ""),
+        workflow=str(selected_workflow or ""),
+        reference_hash=approved_hash,
+        parameters=prompt.get("generation_parameters") if prompt else None,
     )
     prompt_confirmed = bool(
         prompt_ready and project.get("state") in {
@@ -100,6 +104,9 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         "intent_text": intent.get("natural_language"),
         "intent_analysis": intent or None,
         "prompt_ready": prompt_ready,
+        "prompt_current": prompt_ready,
+        "prompt_status": (prompt.get("status", "CURRENT") if prompt else "MISSING")
+        if prompt_ready else ("STALE" if prompt else "MISSING"),
         "prompt_confirmed": prompt_confirmed,
         "generation_status": current_state,
         "current_state": current_state,

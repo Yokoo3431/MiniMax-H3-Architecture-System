@@ -15,6 +15,7 @@ from typing import Any, Mapping
 
 from runtime.adapters.runtime_adapter import REPO_ROOT
 from runtime.support_layer import FROZEN_NODE_NAMES
+from runtime.h3_generation_parameters import normalize_generation_parameters
 
 
 REGISTRY_PATH = REPO_ROOT / "configs" / "production_workflow_registry.json"
@@ -120,14 +121,14 @@ def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> di
     if not TEMPLATE_PATH.is_file():
         raise ProductionBindingError(f"production payload template missing: {TEMPLATE_PATH}")
 
-    params = request.get("generation_parameters") or {}
-    resolution = str(params.get("resolution", "1344x768")).lower().replace("x", " ").split()
-    if len(resolution) != 2:
-        raise ProductionBindingError("invalid production resolution")
-    width, height = int(resolution[0]), int(resolution[1])
-    fps = float(params.get("fps", 24))
-    duration = float(params.get("duration", 4.0))
-    seed = int(params.get("seed", 42))
+    try:
+        params = normalize_generation_parameters(request.get("generation_parameters"))
+    except ValueError as exc:
+        raise ProductionBindingError(str(exc)) from exc
+    width, height = params["width"], params["height"]
+    fps = float(params["fps"])
+    duration = float(params["duration"])
+    seed = int(params["seed"])
     prompt = str((request.get("prompt_payload") or {}).get("prompt") or "")
     names = [Path(str(ref.get("path_or_ref") or "reference.png")).name for ref in refs]
     # This is an API-format graph, not a saved UI workflow.  Node classes and
@@ -151,7 +152,7 @@ def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> di
             "first_frame": _link("1"),
         }},
         "6": {"class_type": "RHMiniMaxH3FL2VATarget", "inputs": {
-            "keyframes": _link("5"), "aspect_ratio": "16:9",
+            "keyframes": _link("5"), "aspect_ratio": params["aspect_ratio"],
             "duration_seconds": duration, "width": width, "height": height,
         }},
         "7": {"class_type": "RHMiniMaxH3FL2VAEncode", "inputs": {
@@ -163,9 +164,15 @@ def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> di
         }},
         "9": {"class_type": "RHMiniMaxH3DualSigmaSampler", "inputs": {
             "h3_model": _link("2"), "conditioning": _link("7"),
-            "av_latent": _link("8"), "seed": seed, "sigma_points": 50,
-            "video_shift": 12.0, "audio_shift": 3.0, "accel": "off",
-            "denoise_video": True, "sampler_mode": "euler",
+            "av_latent": _link("8"), "seed": seed,
+            "sigma_points": params["sigma_points"],
+            "video_shift": 12.0, "audio_shift": 3.0, "accel": params["accel"],
+            "denoise_video": True, "sampler_mode": params["sampler_mode"],
+            "cache_dit_rdt": params["cache_dit_rdt"],
+            "cache_dit_mc": params["cache_dit_mc"],
+            "cache_dit_warmup": params["cache_dit_warmup"],
+            "velocity_stride": params["velocity_stride"],
+            "allow_accel_with_res_multistep": params["allow_accel_with_res_multistep"],
         }},
         "10": {"class_type": "RHMiniMaxH3DecodeAV", "inputs": {
             "h3_vae_bundle": _link("4"), "sampled_av_latent": _link("9"),

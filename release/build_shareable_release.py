@@ -62,6 +62,10 @@ EXCLUDED_NAMES = {
     # it in a portable payload can seed a stale absolute path before the
     # cross-drive environment discovery runs.
     "system_config.json",
+    # Per-machine state can contain the developer's Runtime, Models Root,
+    # GPU probe, and private diagnostics.  A release must recreate this under
+    # the installed user's data root instead of shipping it.
+    "setup_state.json",
     "run_prototype.py",
     "capture_r2b0_setup_screenshots.mjs", "capture_screenshots.mjs",
 }

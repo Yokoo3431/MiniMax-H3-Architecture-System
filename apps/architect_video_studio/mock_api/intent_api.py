@@ -22,10 +22,21 @@ class IntentAPI:
 
     def analyze_intent(self, project_id: str, natural_language: str) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
+        active = [j for j in self.store.load_jobs(project_id).values()
+                  if j.get("state") not in {"COMPLETED", "FAILED", "GPU_FAILED", "CANCELLED"}]
+        if active:
+            raise ValueError("当前任务正在生成，完成后才能修改意图")
         if project["state"] != "REFERENCE_APPROVED":
-            raise ValueError(
-                f"analyze_intent requires REFERENCE_APPROVED; project is {project['state']}"
-            )
+            # Failed/completed Jobs do not poison the editable Study.  Rebuild
+            # the reference gate before analyzing the new current intent.
+            approved = any(r.get("state") == "APPROVED"
+                           for r in self.store.load_references(project_id).values())
+            if not approved:
+                raise ValueError(
+                    f"analyze_intent requires REFERENCE_APPROVED; project is {project['state']}"
+                )
+            project["state"] = "REFERENCE_APPROVED"
+            self.store.save_project(project)
         if not (natural_language or "").strip():
             raise ValueError("natural_language is required")
 
@@ -42,6 +53,9 @@ class IntentAPI:
             "created_at": self.store.timestamp(),
         }
         self.store.save_intent(project_id, intent)
+        # Intent is part of Prompt provenance; any previous optimized result
+        # is stale immediately, even if its workflow is unchanged.
+        self.store.clear_prompt(project_id)
 
         machine = ProjectStateMachine(project["state"])
         if result["requires_user_confirmation"]:
@@ -113,9 +127,14 @@ class IntentAPI:
     def select_workflow(self, project_id: str, workflow: str) -> Dict[str, Any]:
         """Persist a deliberate workflow change and invalidate stale Prompt data."""
         project = self.store.load_project(project_id)
-        if project["state"] not in {"PROMPT_REVIEW", "USER_CONFIRM", "GPU_FAILED"}:
+        if project["state"] == "GPU_RUNNING":
+            raise ValueError("当前任务正在生成，完成后才能切换视频类型")
+        if project["state"] not in {"REFERENCE_APPROVED", "INTENT_ANALYSIS",
+                                     "PROMPT_REVIEW", "PROMPT_NEEDS_CONFIRMATION",
+                                     "USER_CONFIRM", "GPU_FAILED", "QUALITY_FAILED",
+                                     "COMPLETED"}:
             raise ValueError(
-                f"select_workflow requires PROMPT_REVIEW/USER_CONFIRM/GPU_FAILED; "
+                f"select_workflow requires an editable Study; "
                 f"project is {project['state']}"
             )
         intent = self.store.load_intent(project_id)
@@ -138,6 +157,17 @@ class IntentAPI:
                 "from": project["state"], "to": project["state"],
                 "detail": {"workflow": workflow, "invalidated_prompt": True},
             })
+        self.store.clear_prompt(project_id)
+        if project["state"] in {"GPU_FAILED", "QUALITY_FAILED", "COMPLETED"}:
+            project["state"] = "PROMPT_REVIEW"
+            self.store.save_project(project)
+        if project["state"] == "PROMPT_NEEDS_CONFIRMATION":
+            machine = ProjectStateMachine(project["state"])
+            machine.transition("user_selects_workflow", actor="architect",
+                               reason=f"user selected {workflow}")
+            project["state"] = machine.state
+            project["intent_confirmed"] = True
+            self.store.save_project(project)
         return intent
 
     @staticmethod

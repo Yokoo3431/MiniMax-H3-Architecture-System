@@ -108,6 +108,10 @@ class TestProductionJobUiContract(unittest.TestCase):
         self.assertIn("/retry", script)
         self.assertIn("高级设置", studio)
         self.assertIn("开始生成", studio)
+        script = (ROOT / "apps/architect_video_studio/frontend/js/workspace.js").read_text(encoding="utf-8")
+        self.assertIn("schedulePromptRefresh", script)
+        self.assertIn("prompt_current", script)
+        self.assertIn("OfficialSkillAdapter", script)
 
 
 if __name__ == "__main__":

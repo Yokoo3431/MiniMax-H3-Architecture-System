@@ -27,7 +27,10 @@ class ReferenceAPI:
                          role: str = "first_frame",
                          data_base64: Optional[str] = None) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
-        if project["state"] not in ("CREATED", "REFERENCE_PENDING", "REFERENCE_REJECTED"):
+        if project["state"] not in (
+                "CREATED", "REFERENCE_PENDING", "REFERENCE_REJECTED",
+                "REFERENCE_APPROVED", "PROMPT_REVIEW", "PROMPT_NEEDS_CONFIRMATION",
+                "USER_CONFIRM", "GPU_FAILED", "QUALITY_FAILED", "COMPLETED"):
             raise ValueError(
                 f"cannot upload reference from state {project['state']}; "
                 "reject/restart required"
@@ -65,6 +68,9 @@ class ReferenceAPI:
         refs = self.store.load_references(project_id)
         refs[ref_id] = ref
         self.store.save_references(project_id, refs)
+        # A new reference materially changes Prompt provenance.  The old
+        # optimized Prompt is stale immediately.
+        self.store.clear_prompt(project_id)
 
         machine = ProjectStateMachine(project["state"])
         try:
@@ -74,6 +80,10 @@ class ReferenceAPI:
             elif project["state"] == "REFERENCE_REJECTED":
                 machine.transition("upload_new", actor="architect",
                                    reason=f"upload {filename}")
+            elif project["state"] not in ("REFERENCE_PENDING",):
+                # Editing the reference reopens only the reference gate; Job
+                # history remains untouched.
+                machine.state = "REFERENCE_PENDING"
         except IllegalTransitionError:
             pass  # already REFERENCE_PENDING: adding another reference is fine
         project["state"] = machine.state
@@ -102,6 +112,11 @@ class ReferenceAPI:
                                reason=f"approve reference {reference_id}")
             project["state"] = machine.state
             self.store.save_project(project)
+        elif project["state"] in ("GPU_FAILED", "QUALITY_FAILED", "COMPLETED",
+                                   "PROMPT_REVIEW", "USER_CONFIRM"):
+            project["state"] = "REFERENCE_APPROVED"
+            self.store.save_project(project)
+        self.store.clear_prompt(project_id)
         self._audit(project_id, "approve_reference", project["state"],
                     {"reference_id": reference_id, "filename": ref["filename"]})
         return self._public_ref(ref)

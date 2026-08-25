@@ -558,7 +558,7 @@
     {
       "path": "tests/test_product_hardening.py",
       "tracked_status": "untracked",
-      "sha256": "873AC93434D2D1DFF1F0C5CF6D3D4D92327A2C4020F63E4AB2A1116B5E41324D",
+      "sha256": "520B4C8F30215983959311D09F5E5A14D8E2BA2C4986BFCC782914BC10E26717",
       "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },

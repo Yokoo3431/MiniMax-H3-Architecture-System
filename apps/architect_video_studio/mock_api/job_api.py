@@ -28,6 +28,8 @@ from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
 from runtime.adapters.comfyui_client import ComfyUIOfflineError
 from runtime.product_hardening import unique_comfy_filename
 from runtime.product_hardening import estimate_eta
+from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.workflow_motion import WorkflowParameterError, normalize_camera_motion
 
 # rough expected real-run duration used to derive UI stages while executing
 _EXPECTED_REAL_SECONDS = 900.0
@@ -116,6 +118,11 @@ class JobAPI:
         if not (prompt.get("verified") or {}).get("pass"):
             raise ValueError("Prompt Gate: official structure verification failed")
 
+        try:
+            normalized_motion = normalize_camera_motion(prompt["workflow"], camera_motion)
+        except WorkflowParameterError as exc:
+            raise ValueError(f"{exc.code}: 参数配置错误。{exc}") from exc
+
         # The live ComfyUI registry is checked before a Job record is created.
         # This prevents missing model-path/workflow bindings from becoming a
         # misleading GPU_FAILED job and never submits /prompt.
@@ -125,17 +132,10 @@ class JobAPI:
             except Exception as exc:  # noqa: BLE001
                 raise ValueError(f"MODEL_PATH_ERROR: 模型路径或工作流绑定未通过预检。{exc}") from exc
 
-        params = {
-            "resolution": "1344x768",
-            "fps": 24,
-            "duration": 4.0,
-            "quality": "diagnostic",
-            "seed": int(seed),
-        }
-        if generation_parameters:
-            params.update({k: v for k, v in generation_parameters.items()
-                           if k in ("resolution", "fps", "duration", "quality")})
-            params["seed"] = int(seed)
+        try:
+            params = normalize_generation_parameters(generation_parameters, seed=int(seed))
+        except ValueError as exc:
+            raise ValueError(f"参数不符合 H3 生成契约: {exc}") from exc
 
         now = self.clock()
         job_id = self.store.new_id("job")
@@ -145,7 +145,7 @@ class JobAPI:
             "workflow": prompt["workflow"],
             "state": "PREPARING",
             "seed": int(seed),
-            "camera_motion": camera_motion,
+            "camera_motion": normalized_motion,
             "generation_parameters": params,
             "runtime": "native" if self.runtime_adapter else "mock",
             "created_at": self.store.timestamp(),
@@ -184,7 +184,7 @@ class JobAPI:
 
         if self.runtime_adapter:
             request = self._build_request(project_id, project, prompt, approved,
-                                          params, camera_motion)
+                                          params, normalized_motion)
             self.runtime_adapter.progress_callback = lambda event: self._record_progress(
                 project_id, job_id, event)
             thread = threading.Thread(
@@ -320,7 +320,7 @@ class JobAPI:
             study_id=project_id,
             reference_assets=refs,
             workflow_id=prompt["workflow"],
-            camera_motion=camera_motion or "slow_push",
+            camera_motion=camera_motion or normalize_camera_motion(prompt["workflow"]),
             generation_parameters=params,
             prompt_payload={
                 "mode": prompt.get("mode", "I2VA"),
@@ -332,7 +332,7 @@ class JobAPI:
                 "non_diegetic_music": "N/A",
                 "prompt_hash": prompt["prompt_hash"],
             },
-            output_spec={"container": "mp4", "codec": "h264", "fps": 24,
+            output_spec={"container": "mp4", "codec": "h264", "fps": params["fps"],
                          "resolution": params.get("resolution", "1344x768"),
                          "report_format": "json"},
             gates={"reference_approved": True, "intent_confirmed": True,
@@ -503,14 +503,24 @@ class JobAPI:
     def _sync_project_failed(self, project_id: str, job: Dict[str, Any],
                              reason: str) -> None:
         project = self.store.load_project(project_id)
-        machine = ProjectStateMachine(project["state"])
-        machine.transition("failed", actor="runtime", reason=reason)
-        project["state"] = machine.state
+        # A Job failure is historical Job state.  It must not poison the
+        # editable Study or block a new intent/reference/prompt cycle.
+        approved = any(r.get("state") == "APPROVED"
+                       for r in self.store.load_references(project_id).values())
+        intent = self.store.load_intent(project_id)
+        prompt = self.store.load_prompt(project_id)
+        if approved and prompt and prompt.get("verified", {}).get("pass"):
+            project["state"] = "USER_CONFIRM"
+        elif approved and intent:
+            project["state"] = "PROMPT_REVIEW"
+        elif approved:
+            project["state"] = "REFERENCE_APPROVED"
         self.store.save_project(project)
         self.store.append_audit(project_id, {
-            "actor": "runtime", "event": "job_failed",
-            "from": "GPU_RUNNING", "to": "GPU_FAILED",
-            "detail": {"job_id": job["id"], "reason": reason},
+            "actor": "runtime", "event": "job_failed_study_preserved",
+            "from": "GPU_RUNNING", "to": project.get("state"),
+            "detail": {"job_id": job["id"], "reason": reason,
+                        "job_state_only": True},
         })
 
     def _save_job(self, project_id: str, job: Dict[str, Any]) -> None:
@@ -593,8 +603,13 @@ def _classify_failure(exc: Exception, *, runtime_mismatch: bool = False) -> tupl
         return "INPUT_ERROR", "参考图文件不可用，请重新上传并批准参考图。"
     if isinstance(exc, ComfyUIOfflineError):
         return "COMFYUI_CRASHED", "生成引擎意外退出，请重新启动服务。"
+    if isinstance(exc, WorkflowParameterError):
+        return "WORKFLOW_PARAMETER_ERROR", "参数配置错误，请检查当前视频类型的设置。"
     name = type(exc).__name__.lower()
     message = str(exc).lower()
+    if ("camera_motion" in message or "not supported" in message
+            or "parameter" in message or "invalid" in message):
+        return "WORKFLOW_PARAMETER_ERROR", "参数配置错误，请检查当前视频类型的设置。"
     if "workflow" in message or "workflow" in name:
         return "WORKFLOW_ERROR", "工作流文件不可用，请前往环境修复。"
     if "model" in message and ("load" in message or "missing" in message):
@@ -634,7 +649,7 @@ def _decorate_job(job: Dict[str, Any]) -> Dict[str, Any]:
         out["friendly_reason"] = {
             "WORKFLOW_ERROR": "工作流不可用", "MODEL_ERROR": "模型不可用",
         "COMFYUI_ERROR": "ComfyUI 执行失败", "COMFYUI_CRASHED": "生成引擎意外退出",
-        "OUTPUT_ERROR": "输出失败",
+        "OUTPUT_ERROR": "输出失败", "WORKFLOW_PARAMETER_ERROR": "参数配置错误",
         }.get(category, "生成失败")
     else:
         out["friendly_reason"] = ""

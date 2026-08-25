@@ -1,4 +1,4 @@
-// Video Studio Workspace V2 (task-centric, Rhino/Enscape visual language)
+// Studio workspace: one simple product flow backed by canonical Study/Job state.
 const projectId = qs('project');
 if (!projectId) location.href = 'index.html';
 
@@ -7,42 +7,63 @@ let project = null;
 let catalog = null;
 let intent = null;
 let prompt = null;
-let selectedRef = null;
 let study = null;
+let refs = [];
+let selectedRef = null;
+let pendingFile = null;
+let pollTimer = null;
+let promptTimer = null;
+let promptRequestSerial = 0;
 
-const WF_LABEL = {
-  '01_Exterior_Hero': 'Architecture Presentation',
-  '02_Day_Night_Transition': 'Day Night',
-  '03_Material_Detail': 'Material Detail',
-  '04_Drone_Aerial': 'Drone Reveal',
-  '05_Slow_Walkthrough': 'Slow Walkthrough',
-};
-const CAM_UI_TO_INTERNAL = {
-  static: 'static', push: 'slow_push', reveal: 'slow_push',
-  walkthrough: 'walkthrough', aerial: 'aerial_reveal',
-};
-const CAMERA_SUGGEST = {
-  static: null,
-  push: '01_Exterior_Hero',
-  reveal: '01_Exterior_Hero',
-  walkthrough: '05_Slow_Walkthrough',
-  aerial: '04_Drone_Aerial',
-};
-const CAM_DEFAULT_BY_WF = {
-  '01_Exterior_Hero': 'push',
-  '02_Day_Night_Transition': 'static',
-  '03_Material_Detail': 'static',
-  '04_Drone_Aerial': 'aerial',
-  '05_Slow_Walkthrough': 'walkthrough',
-};
-const PROJECT_STEPS = [
-  'CREATED','REFERENCE_PENDING','REFERENCE_APPROVED','INTENT_ANALYSIS',
-  'PROMPT_NEEDS_CONFIRMATION','PROMPT_REVIEW','USER_CONFIRM','GPU_RUNNING',
-  'QUALITY_CHECK','COMPLETED',
+const VIDEO_TYPES = [
+  ['01_Exterior_Hero', 'Exterior Hero'],
+  ['02_Day_Night_Transition', 'Day / Night Transition'],
+  ['03_Material_Detail', 'Material Detail'],
+  ['04_Drone_Aerial', 'Drone Aerial'],
+  ['05_Slow_Walkthrough', 'Slow Walkthrough'],
 ];
+const TYPE_HELP = {
+  '01_Exterior_Hero': '建筑外观主镜头，适合入口、立面与整体空间展示。',
+  '02_Day_Night_Transition': '日夜与灯光氛围变化，适合表现时间和照明设计。',
+  '03_Material_Detail': '材质与细部镜头，适合墙面、节点和构造质感。',
+  '04_Drone_Aerial': '航拍与总图展示，适合建筑群、景观和场地关系。',
+  '05_Slow_Walkthrough': '人视缓慢漫游，适合室内空间与动线体验。',
+};
+const QUALITY_DEFAULTS = {
+  draft: { resolution: '832x480', sampler_mode: 'res_multistep' },
+  standard: { resolution: '1024x576', sampler_mode: 'euler' },
+  high: { resolution: '1344x768', sampler_mode: 'euler' },
+};
+const STATE_LABELS = {
+  CREATED: '准备中', REFERENCE_PENDING: '等待参考图', REFERENCE_APPROVED: '准备中',
+  PROMPT_REVIEW: '准备中', PROMPT_NEEDS_CONFIRMATION: '准备中', USER_CONFIRM: '可以生成',
+  GPU_RUNNING: '生成中', QUALITY_CHECK: '生成中', COMPLETED: '已完成',
+  FAILED: '生成失败', GPU_FAILED: '生成失败', GENERATING: '生成中',
+  READY_TO_GENERATE: '可以生成',
+};
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
-function clearErr() { errEl.style.display = 'none'; }
+function clearErr() { errEl.style.display = 'none'; errEl.textContent = ''; }
+function value(id) { return document.getElementById(id).value; }
+function currentWorkflow() { return value('video-type'); }
+function currentParams() {
+  const raw = {
+    duration: parseFloat(value('param-duration')),
+    resolution: value('param-resolution'),
+    aspect_ratio: value('param-aspect'),
+    quality: value('param-quality'),
+    generation_speed: value('param-speed'),
+    sampler_mode: value('param-sampler'),
+    velocity_cache: document.getElementById('param-velocity').checked,
+    cache_dit: document.getElementById('param-cache-dit').checked,
+  };
+  const seed = value('param-seed').trim();
+  const steps = value('param-steps').trim();
+  if (seed) raw.seed = parseInt(seed, 10);
+  if (steps) raw.steps = parseInt(steps, 10);
+  return raw;
+}
+function stateLabel(state) { return STATE_LABELS[state] || '准备中'; }
 
 async function refreshStudy() {
   study = await get(`/api/projects/${projectId}/study`);
@@ -50,445 +71,259 @@ async function refreshStudy() {
 }
 
 async function loadAll() {
-  try {
-    const env = await get('/api/system/environment');
-    if (env.overall === 'SETUP_REQUIRED' || env.overall === 'BLOCK') {
-      location.href = 'setup.html';
-      return;
-    }
-  } catch (_) { /* fall through to workspace */ }
-  const [p, c] = await Promise.all([
-    get(`/api/projects/${projectId}`),
-    get('/api/catalog'),
-  ]);
-  project = p;
-  catalog = c;
+  const [p, c] = await Promise.all([get(`/api/projects/${projectId}`), get('/api/catalog')]);
+  project = p; catalog = c;
   await refreshStudy();
-  renderHeader();
-  await renderRefs();
+  try { refs = await get(`/api/projects/${projectId}/references`); } catch (_) { refs = []; }
   try { intent = await get(`/api/projects/${projectId}/intent`); } catch (_) { intent = null; }
   try { prompt = await get(`/api/projects/${projectId}/prompt`); } catch (_) { prompt = null; }
-  await refreshStudy();
-  renderHeader();  // refresh viewport chip once intent/prompt are known
-  renderIntent();
-  renderParams();
-  renderAdvanced();
-  updateGate();
+  if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
+  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderPrompt(); updateGate();
+  if (selectedRef && selectedRef.state === 'APPROVED'
+      && document.getElementById('intent-text').value.trim()
+      && !(study && study.prompt_current)) schedulePromptRefresh(80);
   pollJobs();
 }
 
 function renderHeader() {
-  document.getElementById('task-title').textContent = project.name;
-  document.getElementById('task-name').textContent = project.name;
+  document.getElementById('task-name').textContent = project.name || 'Architect Video Studio';
   document.getElementById('task-meta').textContent =
-    `项目标签: ${project.project_type} · ${project.building_stage} · 更新 ${project.updated_at}`;
+    `${project.project_type || '建筑视频'} · 参考图 → 视频类型 → 意图 → 参数 → 生成`;
   const badge = document.getElementById('task-state');
-  const currentState = (study && study.current_state) || project.state;
-  const stateLabel = {
-    REFERENCE_PENDING: '等待参考图',
-    REFERENCE_APPROVED: '参考图已批准',
-    PROMPT_REVIEW: '正在准备 Prompt',
-    READY_TO_GENERATE: '可以生成',
-    GENERATING: '正在生成',
-    COMPLETED: '已完成',
-    FAILED: '生成失败',
-  }[currentState] || currentState;
-  badge.textContent = stateLabel;
-  badge.className = 'badge ' + (
-    ['COMPLETED','READY_TO_GENERATE','REFERENCE_APPROVED'].includes(currentState) ? 'done'
-    : ['FAILED','REFERENCE_REJECTED'].includes(currentState) ? 'err'
-    : ['GENERATING','PROMPT_REVIEW'].includes(currentState) ? 'warn' : 'state');
-  const idx = PROJECT_STEPS.indexOf((study && study.internal_project_state) || project.state);
-  document.getElementById('steps').innerHTML = PROJECT_STEPS
-    .map((s, i) => `<span class="step ${i < idx ? 'done' : i === idx ? 'active' : ''}">${s}</span>`).join('');
-  document.getElementById('v-wf').textContent =
-    'workflow: ' + ((intent && intent.selected_workflow) || '—');
-  const chip = document.getElementById('v-mode-chip');
-  if (intent && intent.selected_workflow) {
-    chip.textContent = `${WF_LABEL[intent.selected_workflow]} · ${intent.selected_workflow}`;
-  } else {
-    chip.textContent = currentState === 'REFERENCE_PENDING' ? '等待参考图' : currentState;
+  const state = (study && study.current_state) || project.state;
+  badge.textContent = stateLabel(state);
+  badge.className = `badge ${['COMPLETED','USER_CONFIRM','READY_TO_GENERATE'].includes(state) ? 'done' : ['FAILED','GPU_FAILED'].includes(state) ? 'err' : state === 'GPU_RUNNING' ? 'warn' : 'state'}`;
+}
+
+function renderVideoTypes() {
+  const select = document.getElementById('video-type');
+  const selected = (intent && intent.selected_workflow) || VIDEO_TYPES[0][0];
+  select.innerHTML = VIDEO_TYPES.map(([id, label]) =>
+    `<option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  document.getElementById('video-type-help').textContent = TYPE_HELP[selected];
+}
+
+function renderParams() {
+  const duration = document.getElementById('param-duration');
+  duration.innerHTML = Array.from({length: 12}, (_, i) => i + 4)
+    .map((seconds) => `<option value="${seconds}">${seconds} 秒</option>`).join('');
+  const resolution = document.getElementById('param-resolution');
+  resolution.innerHTML = ['832x480', '1024x576', '1344x768']
+    .map((v) => `<option value="${v}" ${v === '1024x576' ? 'selected' : ''}>${v.replace('x', '×')}</option>`).join('');
+  const saved = (prompt && prompt.generation_parameters) || {};
+  if (saved.duration) duration.value = String(saved.duration);
+  if (saved.resolution) resolution.value = saved.resolution;
+  if (saved.aspect_ratio) document.getElementById('param-aspect').value = saved.aspect_ratio;
+  if (saved.quality) document.getElementById('param-quality').value = saved.quality;
+  if (saved.generation_speed) document.getElementById('param-speed').value = saved.generation_speed;
+  const qualityDefaults = QUALITY_DEFAULTS[value('param-quality')];
+  document.getElementById('param-sampler').value = saved.sampler_mode ||
+    (value('param-speed') === 'auto' ? 'euler' : qualityDefaults.sampler_mode);
+  if (saved.seed != null) document.getElementById('param-seed').value = String(saved.seed);
+  if (saved.sigma_points != null) document.getElementById('param-steps').value = String(saved.sigma_points);
+  document.getElementById('param-velocity').checked = !!saved.velocity_cache;
+  document.getElementById('param-cache-dit').checked = !!saved.cache_dit;
+  syncViewportParams();
+}
+
+function refUrl(ref) { return ref && ref.preview_ready ? ref.preview_url : null; }
+function renderRefs() {
+  selectedRef = refs[refs.length - 1] || refs.find((r) => r.state === 'APPROVED') || null;
+  const state = document.getElementById('reference-state');
+  if (!selectedRef) {
+    state.textContent = '未上传'; state.className = 'badge state';
+    document.getElementById('reference-preview').innerHTML = '拖拽图片到这里，或点击选择';
+    document.getElementById('refs').textContent = '';
+    document.getElementById('upload-btn').disabled = !pendingFile;
+    return;
   }
+  const img = refUrl(selectedRef);
+  document.getElementById('reference-preview').innerHTML = img
+    ? `<img class="reference-image" src="${esc(img)}" alt="当前参考图">`
+    : `<span>${esc(selectedRef.filename)}</span>`;
+  document.getElementById('replace-ref-btn').style.display = 'inline-flex';
+  document.getElementById('refs').textContent = `${selectedRef.filename} · ${selectedRef.sha256 ? selectedRef.sha256.slice(0, 12) : 'asset'}`;
+  const approved = selectedRef.state === 'APPROVED';
+  state.textContent = approved ? '参考图已批准 ✓' : '待审批';
+  state.className = `badge ${approved ? 'done' : 'warn'}`;
+  document.getElementById('upload-btn').disabled = true;
+  showViewportRef(selectedRef);
 }
 
-// ------------------------------------------------------------------ //
-// Reference
-// ------------------------------------------------------------------ //
-function refImageUrl(r) {
-  return r && r.preview_ready && r.preview_url
-    ? r.preview_url : null;
+function showViewportRef(ref) {
+  const url = refUrl(ref);
+  document.getElementById('v-body').innerHTML = url
+    ? `<img class="preview" src="${esc(url)}" alt="当前参考图">`
+    : `<div class="v-empty">${esc(ref.filename)}<br><span class="small">预览暂不可用</span></div>`;
+  document.getElementById('v-mode-chip').textContent = ref.state === 'APPROVED' ? '参考图已批准 ✓' : '等待参考图审批';
 }
 
-async function renderRefs() {
-  const box = document.getElementById('refs');
-  box.innerHTML = '<div class="small muted">加载中…</div>';
-  try {
-    const refs = await get(`/api/projects/${projectId}/references`);
-    if (!refs.length) { box.innerHTML = '<div class="muted small">尚未上传参考图</div>'; return; }
-    selectedRef = refs[refs.length - 1] || refs.find((r) => r.state === 'APPROVED');
-    box.innerHTML = refs.map((r) => {
-      const qq = (r.quality_card || {}).reference_quality || {};
-      const img = refImageUrl(r);
-      return `<div class="ref-item" data-ref="${r.id}">
-        ${img ? `<img class="thumb" src="${img}" alt="">` : '<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:var(--muted);">no image bytes</div>'}
-        <div class="row">
-          <strong class="small">${esc(r.filename)}</strong>
-          <span class="muted small">${esc(r.role)}</span>
-        </div>
-        <div class="row">
-          <span class="badge ${r.state.toLowerCase()}">${esc(r.state)}</span>
-          <span class="q">${esc(qq.resolution || '—')} · ${esc(qq.geometry || '—')} · motion ${esc(qq.motion_risk || '—')}</span>
-        </div>
-        <div class="acts">
-          ${r.state === 'PENDING'
-            ? `<button class="btn small ok approve-btn">Approve</button>
-               <button class="btn small danger reject-btn">Reject</button>`
-            : ''}
-          <button class="btn small select-btn">预览</button>
-        </div>
-      </div>`;
-    }).join('');
-    box.querySelectorAll('.approve-btn').forEach((b) =>
-      b.addEventListener('click', () => actRef(b, 'approve')));
-    box.querySelectorAll('.reject-btn').forEach((b) =>
-      b.addEventListener('click', () => actRef(b, 'reject')));
-    box.querySelectorAll('.select-btn').forEach((b) =>
-      b.addEventListener('click', () => {
-        const id = b.closest('.ref-item').dataset.ref;
-        selectedRef = refs.find((x) => x.id === id);
-        showViewportRef(selectedRef);
-      }));
-    if (selectedRef) showViewportRef(selectedRef);
-  } catch (e) { showErr(e.message); }
+function previewPending(file) {
+  pendingFile = file;
+  const url = URL.createObjectURL(file);
+  document.getElementById('reference-preview').innerHTML = `<img class="reference-image" src="${url}" alt="待上传参考图">`;
+  document.getElementById('upload-btn').disabled = false;
+  document.getElementById('reference-state').textContent = '待上传';
+  document.getElementById('reference-state').className = 'badge warn';
 }
 
-function showViewportRef(r) {
-  const body = document.getElementById('v-body');
-  const img = refImageUrl(r);
-  if (img) {
-    body.innerHTML = `<img class="preview" src="${img}" alt="">`;
-  } else {
-    body.innerHTML = `<div class="v-empty">${esc(r.filename)}<br><span class="small">无图片字节（仅元数据）</span></div>`;
-  }
-  document.getElementById('v-status').textContent =
-    `reference: ${r.filename} · ${r.role} · ${r.state}`;
-}
-
-async function actRef(btn, action) {
-  const refId = btn.closest('.ref-item').dataset.ref;
-  try {
-    await post(`/api/projects/${projectId}/references/${refId}/${action}`, { reason: '' });
-    project = await get(`/api/projects/${projectId}`);
-    await refreshStudy();
-    renderHeader();
-    await renderRefs();
-    updateGate();
-  } catch (e) { showErr(e.message); }
-}
-
-document.getElementById('upload-btn').addEventListener('click', () => {
-  const file = document.getElementById('ref-file').files[0];
-  if (!file) { showErr('请选择图片文件'); return; }
-  const role = document.getElementById('ref-role').value;
+async function uploadPending() {
+  if (!pendingFile) return;
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      await post(`/api/projects/${projectId}/references`, {
-        filename: file.name, role, data_base64: String(reader.result).split(',')[1],
+      const created = await post(`/api/projects/${projectId}/references`, {
+        filename: pendingFile.name, role: 'first_frame',
+        data_base64: String(reader.result).split(',')[1],
       });
-      clearErr();
-      project = await get(`/api/projects/${projectId}`);
-      await refreshStudy();
-      renderHeader();
-      await renderRefs();
-      updateGate();
+      await post(`/api/projects/${projectId}/references/${created.id}/approve`, {reason: 'Studio reference approval'});
+      pendingFile = null; clearErr();
+      [project, refs] = await Promise.all([get(`/api/projects/${projectId}`), get(`/api/projects/${projectId}/references`)]);
+      await refreshStudy(); renderRefs(); renderHeader(); updateGate(); schedulePromptRefresh(80);
     } catch (e) { showErr(e.message); }
   };
-  reader.readAsDataURL(file);
-});
+  reader.readAsDataURL(pendingFile);
+}
 
-// ------------------------------------------------------------------ //
-// Intent
-// ------------------------------------------------------------------ //
-document.getElementById('analyze-btn').addEventListener('click', async () => {
-  const text = document.getElementById('intent-text').value.trim();
-  if (!text) { showErr('请输入意图描述'); return; }
-  try {
-    intent = await post(`/api/projects/${projectId}/intent`, { natural_language: text });
-    project = await get(`/api/projects/${projectId}`);
-    await refreshStudy();
-    renderHeader();
-    renderIntent();
-    renderParams();
-    updateGate();
-  } catch (e) { showErr(e.message); }
-});
+function renderPrompt() {
+  const card = document.getElementById('prompt-skill-card');
+  const details = document.getElementById('prompt-details');
+  if (!prompt) { card.style.display = 'none'; details.style.display = 'none'; return; }
+  const current = !!(study && study.prompt_current && prompt.workflow === currentWorkflow());
+  card.style.display = 'block';
+  card.innerHTML = current
+    ? '<strong>官方 H3 Prompt Skill 已优化 ✓</strong><span class="muted small">刚刚更新 · OfficialSkillAdapter → H3PromptBridge</span>'
+    : '<strong class="warn-text">正在更新当前提示词…</strong><span class="muted small">旧提示词不会用于生成</span>';
+  details.style.display = 'block';
+  const provenance = prompt.provenance || {};
+  document.getElementById('prompt-detail-content').innerHTML = `
+    <div class="prompt-detail-row"><span>Original Intent</span><span>${esc((intent && intent.natural_language) || '—')}</span></div>
+    <div class="prompt-detail-row"><span>Optimized Prompt</span><pre class="prompt">${esc(prompt.prompt || '—')}</pre></div>
+    <div class="prompt-detail-row"><span>Video Type</span><span>${esc((VIDEO_TYPES.find(([id]) => id === prompt.workflow) || [null, prompt.workflow])[1])}</span></div>
+    <div class="prompt-detail-row"><span>Provenance</span><span class="mono small">${esc(`${provenance.adapter || 'OfficialSkillAdapter'} → ${provenance.bridge || 'H3PromptBridge'}`)}</span></div>`;
+}
 
-function renderIntent() {
-  const box = document.getElementById('intent-card');
-  const confirmBox = document.getElementById('confirm-box');
-  if (!intent) { box.innerHTML = ''; confirmBox.style.display = 'none'; return; }
-  const pct = Math.round((intent.confidence || 0) * 100);
-  const label = WF_LABEL[intent.selected_workflow] || intent.selected_workflow || '待确认';
-  box.innerHTML = `<div class="intent-card">
-    <div class="kv"><span class="k">Workflow</span><span><strong>${esc(label)}</strong> <span class="mono muted">${esc(intent.selected_workflow || '')}</span></span></div>
-    <div class="kv"><span class="k">Confidence</span><span>${pct}%</span></div>
-    <div class="kv"><span class="k">Reason</span><span class="small">${esc(intent.reason)}</span></div>
-    <div class="kv"><span class="k">Need Confirmation</span><span>${intent.requires_user_confirmation ? 'YES' : 'NO'}</span></div>
-  </div>`;
-  confirmBox.style.display = intent.requires_user_confirmation ? 'block' : 'none';
-  if (intent.requires_user_confirmation) {
-    const sel = document.getElementById('wf-candidates');
-    sel.innerHTML = (intent.candidate_workflows || [])
-      .map((w) => `<option value="${esc(w)}">${esc(WF_LABEL[w] || w)} (${esc(w)})</option>`).join('');
+async function refreshPrompt() {
+  const requestSerial = ++promptRequestSerial;
+  const text = value('intent-text').trim();
+  if (!text || !selectedRef || selectedRef.state !== 'APPROVED') {
+    prompt = null; renderPrompt(); updateGate(); return;
   }
-}
-
-document.getElementById('confirm-btn').addEventListener('click', async () => {
   try {
-    intent = await post(`/api/projects/${projectId}/workflow/confirm`, {
-      workflow: document.getElementById('wf-candidates').value,
+    document.getElementById('prompt-skill-card').style.display = 'block';
+    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在调用官方 H3 Prompt Skill…</strong><span class="muted small">OfficialSkillAdapter → H3PromptBridge</span>';
+    intent = await post(`/api/projects/${projectId}/intent`, {natural_language: text});
+    intent = await post(`/api/projects/${projectId}/workflow/select`, {workflow: currentWorkflow()});
+    prompt = await post(`/api/projects/${projectId}/prompt`, {
+      workflow: currentWorkflow(), generation_parameters: currentParams(),
     });
-    project = await get(`/api/projects/${projectId}`);
-    await refreshStudy();
-    renderHeader();
-    renderIntent();
-    renderParams();
-    updateGate();
-  } catch (e) { showErr(e.message); }
-});
-
-// ------------------------------------------------------------------ //
-// Generation Control (parameters + workflow)
-// ------------------------------------------------------------------ //
-function renderParams() {
-  const shelf = document.getElementById('param-shelf');
-  if (!intent || intent.requires_user_confirmation) { shelf.style.display = 'none'; return; }
-  shelf.style.display = 'block';
-  const names = Object.keys(catalog.workflows || {});
-  const current = intent.selected_workflow || names[0];
-  const wfSelect = document.getElementById('wf-select');
-  wfSelect.innerHTML = names.map((n) =>
-    `<option value="${esc(n)}" ${n === current ? 'selected' : ''}>${esc(WF_LABEL[n] || n)} (${esc(n)})</option>`).join('');
-  renderWorkflowMeta(current);
-
-  // camera segmented (default from intent workflow)
-  const camDefault = CAM_DEFAULT_BY_WF[current] || 'push';
-  document.querySelectorAll('#camera-seg button').forEach((b) => {
-    b.classList.toggle('on', b.dataset.cam === camDefault);
-  });
-  updateCameraHint(camDefault);
-  syncViewportParams();
-
-  if (prompt && prompt.workflow === current) {
-    document.getElementById('prompt-preview').textContent = prompt.prompt;
-  } else if (prompt && prompt.workflow !== current) {
-    document.getElementById('prompt-preview').textContent = '工作流已变更，需重新生成 Prompt 预览。';
-  } else {
-    document.getElementById('prompt-preview').textContent = '参数已就绪；点击“生成 Prompt 预览”（官方 Skill 只读生成）。';
-  }
-  get(`/api/projects/${projectId}/references`).then((refs) => {
-    const approved = refs.filter((r) => r.state === 'APPROVED');
-    document.getElementById('risk-text').innerHTML = approved.length
-      ? approved.map((r) => {
-          const q = (r.quality_card || {}).reference_quality || {};
-          return `<div>${esc(r.filename)} — resolution ${esc(q.resolution || '—')} · geometry ${esc(q.geometry || '—')} · motion risk ${esc(q.motion_risk || '—')}</div>`;
-        }).join('')
-      : '参考图未批准前无法生成。';
-  }).catch(showErr);
+    if (requestSerial !== promptRequestSerial) return;
+    [project, study] = await Promise.all([get(`/api/projects/${projectId}`), refreshStudy()]);
+    clearErr(); renderPrompt(); renderHeader(); updateGate();
+  } catch (e) { if (requestSerial === promptRequestSerial) showErr(e.message); }
 }
 
-function renderWorkflowMeta(name) {
-  const wf = (catalog.workflows || {})[name] || {};
-  document.getElementById('wf-meta').textContent =
-    `mode: ${wf.official_skill_mode || '—'} · 冻结工作流，不可编辑`;
+function schedulePromptRefresh(delay = 500) {
+  clearTimeout(promptTimer);
+  promptTimer = setTimeout(refreshPrompt, delay);
 }
-
-document.getElementById('wf-select').addEventListener('change', async (e) => {
-  try {
-    intent = await post(`/api/projects/${projectId}/workflow/select`, {
-      workflow: e.target.value,
-    });
-    prompt = null;
-    project = await get(`/api/projects/${projectId}`);
-    await refreshStudy();
-    renderHeader();
-    renderIntent();
-    renderParams();
-    renderAdvanced();
-    updateGate();
-  } catch (err) { showErr(err.message); }
-});
-
-document.querySelectorAll('#camera-seg button').forEach((b) =>
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#camera-seg button').forEach((x) => x.classList.remove('on'));
-    b.classList.add('on');
-    updateCameraHint(b.dataset.cam);
-  }));
-
-['param-duration', 'param-resolution', 'param-fps', 'param-quality']
-  .forEach((id) => document.getElementById(id).addEventListener('change', syncViewportParams));
 
 function syncViewportParams() {
   document.getElementById('v-params').textContent =
-    `${document.getElementById('param-resolution').value.replace('×', 'x')} · ` +
-    `${document.getElementById('param-fps').value}fps · ` +
-    `${document.getElementById('param-duration').value}`;
+    `${value('param-resolution').replace('x', '×')} · 24fps · ${value('param-duration')}s`;
 }
 
-function updateCameraHint(cam) {
-  const suggest = CAMERA_SUGGEST[cam];
-  document.getElementById('cam-hint').textContent = suggest
-    ? `建议工作流: ${WF_LABEL[suggest]} (${suggest}) — 显式选择优先`
-    : '静态机位：结合意图选择工作流（材质→03 / 日夜→02）';
-}
-
-// ------------------------------------------------------------------ //
-// Gate + generate
-// ------------------------------------------------------------------ //
 function updateGate() {
   const approved = !!(study && study.reference_approved);
-  const intentConfirmed = !!(study && study.intent_analysis &&
-    !study.intent_analysis.requires_user_confirmation);
-  const promptReady = !!(study && study.prompt_ready && prompt &&
-    prompt.workflow === document.getElementById('wf-select').value);
-  const riskChecked = document.getElementById('risk-check').checked;
-
-  const previewBtn = document.getElementById('preview-btn');
-  previewBtn.disabled = !(approved && intentConfirmed && !promptReady);
-  previewBtn.textContent = promptReady ? 'Prompt 已生成' : '生成 Prompt 预览';
-  const generateBtn = document.getElementById('generate-btn');
-  generateBtn.disabled = !(study && study.generate_allowed && intentConfirmed &&
-    promptReady && riskChecked);
-
+  const promptReady = !!(study && study.prompt_current && study.prompt_ready
+      && prompt && prompt.workflow === currentWorkflow());
+  const risk = document.getElementById('risk-check').checked;
+  const button = document.getElementById('generate-btn');
+  button.disabled = !(approved && promptReady && risk && study.generate_allowed);
   const note = document.getElementById('gate-note');
-  if (study && study.current_state === 'GENERATING') note.textContent = '当前任务正在生成';
-  else if (!approved) note.textContent = '等待参考图批准（Rule 1）';
-  else if (!intentConfirmed) note.textContent = '等待意图确认';
-  else if (!promptReady) note.textContent = '先点击“生成 Prompt 预览”（官方 Skill 只读生成）';
-  else if (study && study.current_state === 'COMPLETED') note.textContent = '本任务已完成';
-  else if (!riskChecked) note.textContent = '请先勾选已审阅风险';
-  else if (study && study.gate_reasons && study.gate_reasons.length) {
-    note.textContent = study.gate_reasons[0];
-  } else note.textContent = '';
+  if (!approved) note.textContent = '请先上传并审批参考图';
+  else if (!promptReady) note.textContent = '正在生成当前 H3 优化提示词…';
+  else if (!risk) note.textContent = '请确认参考图与设置';
+  else if (study.gate_reasons && study.gate_reasons.length) note.textContent = study.gate_reasons[0];
+  else note.textContent = '准备完成，可以生成';
 }
 
-document.getElementById('risk-check').addEventListener('change', updateGate);
+async function selectVideoType() {
+  document.getElementById('video-type-help').textContent = TYPE_HELP[currentWorkflow()];
+  prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
+}
 
-document.getElementById('preview-btn').addEventListener('click', async () => {
-  try {
-    const rec = await post(`/api/projects/${projectId}/prompt`, {
-      workflow: document.getElementById('wf-select').value,
-    });
-    prompt = rec;
-    project = await get(`/api/projects/${projectId}`);
-    await refreshStudy();
-    renderHeader();
-    document.getElementById('prompt-preview').textContent = rec.prompt;
-    renderAdvanced();
-    updateGate();
-  } catch (e) { showErr(e.message); }
-});
+function selectQuality() {
+  const defaults = QUALITY_DEFAULTS[value('param-quality')];
+  document.getElementById('param-resolution').value = defaults.resolution;
+  // H3's res_multistep mode is the Draft profile. Auto acceleration stays on
+  // the sampler mode that supports it.
+  document.getElementById('param-sampler').value =
+    value('param-speed') === 'auto' ? 'euler' : defaults.sampler_mode;
+  prompt = null; renderPrompt(); syncViewportParams(); updateGate(); schedulePromptRefresh();
+}
 
-document.getElementById('generate-btn').addEventListener('click', async () => {
-  try {
-    const seedInput = document.getElementById('param-seed').value.trim();
-    const seed = seedInput ? parseInt(seedInput, 10) : Math.floor(Math.random() * 900000000);
-    if (!Number.isInteger(seed) || seed < 0) { showErr('Seed 需为正整数或留空'); return; }
-    const activeCam = document.querySelector('#camera-seg button.on')?.dataset.cam || 'push';
-    const generation_parameters = {
-      resolution: document.getElementById('param-resolution').value.replace('×', 'x'),
-      fps: parseInt(document.getElementById('param-fps').value, 10),
-      duration: parseFloat(document.getElementById('param-duration').value),
-      quality: document.getElementById('param-quality').value === 'Diagnostic'
-        ? 'diagnostic' : 'production',
-    };
-    await post(`/api/projects/${projectId}/jobs`, {
-      seed,
-      risk_reviewed: true,
-      generation_parameters,
-      camera_motion: CAM_UI_TO_INTERNAL[activeCam] || 'slow_push',
-    });
-    location.href = `jobs.html?project=${projectId}`;
-  } catch (e) { showErr(e.message); }
-});
-
-// ------------------------------------------------------------------ //
-// Advanced panel (interface only, no real open)
-// ------------------------------------------------------------------ //
-function renderAdvanced() {
-  const info = document.getElementById('adv-info');
-  const btn = document.getElementById('open-comfy-btn');
-  if (prompt) {
-    const approved = selectedRef ? [selectedRef] : [];
-    info.innerHTML =
-      `<div class="kv"><span class="k">Current Workflow</span><span>${esc(prompt.workflow)}</span></div>
-       <div class="kv"><span class="k">Reference</span><span>${esc(approved.map((r) => r.filename).join(', ') || '—')}</span></div>
-       <div class="kv"><span class="k">Prompt Hash</span><span class="mono">${esc(prompt.prompt_hash)}</span></div>`;
-    btn.disabled = false;
-  } else {
-    info.innerHTML = '提交 Prompt 后显示：Current Workflow / Reference / Prompt Hash。';
-    btn.disabled = true;
+function selectSpeed() {
+  if (value('param-speed') === 'auto' && value('param-sampler') === 'res_multistep') {
+    document.getElementById('param-sampler').value = 'euler';
   }
+  prompt = null; renderPrompt(); syncViewportParams(); updateGate(); schedulePromptRefresh();
 }
 
-document.getElementById('open-comfy-btn').addEventListener('click', () => {
-  const box = document.getElementById('adv-contract');
-  if (!prompt) return;
-  const wfFile = {
-    '01_Exterior_Hero': 'workflows/1_建筑效果图_ImageToVideo.json',
-    '02_Day_Night_Transition': 'workflows/3_建筑夜景灯光变化_NightTransition.json',
-    '03_Material_Detail': 'workflows/1_建筑效果图_ImageToVideo.json',
-    '04_Drone_Aerial': 'workflows/04_Drone_Aerial_GOLDEN.json',
-    '05_Slow_Walkthrough': 'workflows/2_建筑鸟瞰动画_AerialView.json',
-  }[prompt.workflow] || '—';
-  box.style.display = 'block';
-  box.innerHTML =
-    `接口设计（不真实打开）:<br>
-     GET http://127.0.0.1:8189/?workflow=${esc(wfFile)}<br>
-     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;prompt_hash=${esc(prompt.prompt_hash)}<br>
-     <span class="muted">The launcher binds references and the Official Skill prompt to the selected workflow.</span>`;
-});
+async function generate() {
+  try {
+    const rawSeed = value('param-seed').trim();
+    const seed = rawSeed ? parseInt(rawSeed, 10) : Math.floor(Math.random() * 900000000);
+    if (!Number.isInteger(seed) || seed < 0) { showErr('Seed 需为非负整数或留空'); return; }
+    const params = currentParams(); params.seed = seed;
+    await post(`/api/projects/${projectId}/jobs`, {
+      seed, risk_reviewed: true, generation_parameters: params,
+    });
+    location.href = `jobs.html?project=${encodeURIComponent(projectId)}`;
+  } catch (e) { showErr(e.message); }
+}
 
-// ------------------------------------------------------------------ //
-// Drawers + collapsed prompt preview
-// ------------------------------------------------------------------ //
-document.getElementById('ref-toggle').addEventListener('click', () => {
-  document.getElementById('drawer-reference').classList.toggle('collapsed');
-});
-document.getElementById('ctl-toggle').addEventListener('click', () => {
-  document.getElementById('drawer-control').classList.toggle('collapsed');
-});
-document.getElementById('prompt-toggle').addEventListener('click', () => {
-  document.getElementById('prompt-wrap').classList.toggle('open');
-});
-
-// ------------------------------------------------------------------ //
-// Viewport progress (mock job polling)
-// ------------------------------------------------------------------ //
 async function pollJobs() {
   try {
     const jobs = await get(`/api/projects/${projectId}/jobs`);
     await refreshStudy();
-    const running = jobs.find((j) => !['COMPLETED','FAILED','GPU_FAILED','CANCELLED'].includes(j.state));
-    if (running) {
-      const stageIdx = ['PREPARING','LOADING_MODEL','SAMPLING','ENCODING','EXPORTING','COMPLETED'].indexOf(running.state);
-      const pct = Math.min(100, Math.round((Math.max(0, stageIdx) / 5) * 100));
-      document.getElementById('v-progress').style.width = pct + '%';
-      document.getElementById('v-status').textContent =
-        `job ${running.id} · ${running.state} · ${pct}%`;
-      setTimeout(pollJobs, 2000);
-    } else if (jobs.some((j) => j.state === 'COMPLETED')) {
-      document.getElementById('v-progress').style.width = '100%';
-      document.getElementById('v-status').textContent = 'status: recent task COMPLETED';
-    } else {
-      document.getElementById('v-status').textContent =
-        study && study.last_job_status === 'GPU_FAILED'
-          ? '上次任务失败；当前 Study 已恢复为可重新生成'
-          : 'status: ' + ((study && study.current_state) || project.state);
+    const active = jobs.find((j) => !['COMPLETED','FAILED','GPU_FAILED','CANCELLED'].includes(j.state));
+    const job = active || jobs[0];
+    if (job) {
+      const progress = job.progress == null ? null : Math.round(job.progress);
+      const pct = progress == null ? 0 : progress;
+      document.getElementById('v-progress').style.width = `${pct}%`;
+      document.getElementById('v-progress-label').textContent = progress == null ? '—' : `${progress}%`;
+      document.getElementById('v-status').textContent = job.current_stage || stateLabel(job.state);
+      document.getElementById('current-job-title').textContent = job.workflow ? '当前建筑视频任务' : job.id;
+      document.getElementById('current-job-stage').textContent = job.current_stage || stateLabel(job.state);
+      document.getElementById('current-job-progress').textContent = progress == null ? '—' : `${progress}%${job.step && job.total_steps ? ` · ${job.step}/${job.total_steps}` : ''}`;
+      document.getElementById('current-job-elapsed').textContent = job.elapsed ? `已用时 ${Math.ceil(job.elapsed)}s` : '—';
+      document.getElementById('current-job-eta').textContent = job.eta_seconds == null ? '预计剩余时间计算中' : `剩余约 ${Math.ceil(job.eta_seconds)}s`;
     }
-  } catch (_) { /* poll quietly */ }
+    renderHeader(); updateGate();
+  } catch (_) { /* the engine status control owns service errors */ }
+  pollTimer = setTimeout(pollJobs, 2000);
 }
 
-loadAll().catch(showErr);
+document.getElementById('choose-ref-btn').addEventListener('click', () => document.getElementById('ref-file').click());
+document.getElementById('replace-ref-btn').addEventListener('click', () => document.getElementById('ref-file').click());
+document.getElementById('ref-file').addEventListener('change', (e) => { if (e.target.files[0]) previewPending(e.target.files[0]); });
+document.getElementById('upload-btn').addEventListener('click', uploadPending);
+document.getElementById('reference-dropzone').addEventListener('dragover', (e) => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
+document.getElementById('reference-dropzone').addEventListener('dragleave', (e) => e.currentTarget.classList.remove('drag-over'));
+document.getElementById('reference-dropzone').addEventListener('drop', (e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if (e.dataTransfer.files[0]) previewPending(e.dataTransfer.files[0]); });
+document.getElementById('video-type').addEventListener('change', selectVideoType);
+document.getElementById('analyze-btn').addEventListener('click', refreshPrompt);
+document.getElementById('intent-text').addEventListener('input', () => {
+  prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
+});
+document.getElementById('generate-btn').addEventListener('click', generate);
+document.getElementById('risk-check').addEventListener('change', updateGate);
+['param-duration','param-resolution','param-aspect','param-sampler','param-steps','param-velocity','param-cache-dit'].forEach((id) => {
+  document.getElementById(id).addEventListener('change', () => { prompt = null; renderPrompt(); syncViewportParams(); updateGate(); schedulePromptRefresh(); });
+});
+document.getElementById('param-quality').addEventListener('change', selectQuality);
+document.getElementById('param-speed').addEventListener('change', selectSpeed);
+
+loadAll().catch((e) => showErr(e.message));

@@ -73,13 +73,27 @@ def validate_request(request: Dict[str, Any],
     if params:
         resolution = params.get("resolution", "1344x768")
         res_allowed = (req.get("generation_parameters", {}).get("fields", {})
-                       .get("resolution", {}).get("allowed")) or ["1344x768", "1280x720"]
+                       .get("resolution", {}).get("allowed")) or ["832x480", "1024x576", "1344x768"]
         if resolution not in set(res_allowed):
             errors.append(f"resolution {resolution!r} not allowed")
         if params.get("fps", 24) not in [24]:
             errors.append("fps must be 24")
-        if params.get("quality") not in (None, "diagnostic", "production"):
-            errors.append("quality must be diagnostic|production")
+        # Preserve the pre-RC diagnostic/production aliases while exposing
+        # Draft/Standard/High in the new Studio.  The payload builder expands
+        # both aliases through the single H3 parameter normalizer.
+        if params.get("quality") not in (
+                None, "draft", "standard", "high", "diagnostic", "production"):
+            errors.append("quality must be draft|standard|high")
+        try:
+            duration = float(params.get("duration", 4.0))
+            if not 4.0 <= duration <= 15.0:
+                errors.append("duration must be between 4 and 15 seconds")
+        except (TypeError, ValueError):
+            errors.append("duration must be numeric")
+        if params.get("aspect_ratio", "auto") not in ("auto", "16:9", "9:16", "1:1"):
+            errors.append("aspect_ratio must be auto|16:9|9:16|1:1")
+        if params.get("generation_speed", "standard") not in ("standard", "auto"):
+            errors.append("generation_speed must be standard|auto")
         if "seed" not in params:
             errors.append("generation_parameters.seed is required")
 

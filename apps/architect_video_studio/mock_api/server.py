@@ -198,7 +198,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     # endpoint + response identical; absent -> intent workflow).
                     return self._ok(apis["prompt"].generate_prompt(
                         m.group(1),
-                        workflow=body.get("workflow") or None))
+                        workflow=body.get("workflow") or None,
+                        generation_parameters=body.get("generation_parameters")))
             m = re.fullmatch(r"/api/projects/([^/]+)/jobs", path)
             if m and method == "GET":
                 return self._ok(apis["job"].list_jobs(m.group(1)))

@@ -2,173 +2,120 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>Architect Video Studio — Video Studio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architect Video Studio</title>
   <link rel="stylesheet" href="css/studio.css">
 </head>
 <body>
-  <div class="topbar">
-    <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
-    <a href="index.html">Home</a>
-    <a href="jobs.html">Job Center</a>
-    <a href="setup.html">⚙ System</a>
+  <header class="topbar studio-topbar">
+    <div class="brand">Architect<span class="dot">·</span>Video Studio</div>
+    <nav class="nav" aria-label="主导航">
+      <a class="active" href="workspace.html">Studio</a>
+      <a href="jobs.html">任务</a>
+      <a href="setup.html">环境</a>
+    </nav>
     <span class="spacer"></span>
-    <span id="task-title" class="small muted">…</span>
-  </div>
-  <div class="wrap wrap-wide">
-    <div class="task-head">
-      <div>
-        <h2 id="task-name" style="margin:0;">…</h2>
-        <div id="task-meta" class="muted small"></div>
-      </div>
-      <div style="text-align:right;">
-        <span id="task-state" class="badge state"></span>
-        <div id="steps" class="steps hidden" style="justify-content:flex-end;"></div>
-      </div>
-    </div>
-    <div id="err" class="error-banner" style="display:none;"></div>
+    <span id="task-state" class="badge state">准备中</span>
+  </header>
 
-    <div class="studio">
-      <!-- VIDEO VIEWPORT (render area, 70%) -->
-      <section class="viewport">
+  <main class="wrap wrap-wide studio-page">
+    <div id="err" class="error-banner" style="display:none"></div>
+    <section class="studio-heading">
+      <div>
+        <p class="eyebrow">ARCHITECTURAL VIDEO WORKSPACE</p>
+        <h1 id="task-name">Architect Video Studio</h1>
+        <p id="task-meta" class="muted">参考图 → 视频类型 → 意图 → 参数 → 生成</p>
+      </div>
+      <a class="btn ghost" href="jobs.html">查看任务与输出</a>
+    </section>
+
+    <section class="studio-layout">
+      <section class="viewport" aria-label="预览">
         <div class="v-head">
-          <span>VIDEO VIEWPORT</span>
-          <span class="spacer"></span>
-          <span id="v-wf" class="small mono">workflow: —</span>
+          <span>预览</span><span class="spacer"></span>
+          <span id="v-params" class="small">1024×576 · 24fps · 4s</span>
         </div>
         <div class="v-body" id="v-body">
-          <div class="v-empty" id="v-empty">
-            参考图将在此渲染预览<br>
-            <span class="small">Interactive architectural preview</span>
-          </div>
+          <div class="v-empty" id="v-empty">拖入参考图，开始构建建筑视频</div>
         </div>
-        <div class="v-chip" id="v-mode-chip">—</div>
-        <div class="v-params" id="v-params">1344×768 · 24fps · 4s</div>
+        <div class="v-chip" id="v-mode-chip">尚未选择参考图</div>
         <div class="v-foot">
-          <span id="v-status" class="small">GENERATION STATUS — 空闲</span>
+          <div class="job-progress-line"><span id="v-status">空闲</span><span id="v-progress-label">—</span></div>
           <div class="progress"><div class="bar" id="v-progress" style="width:0%"></div></div>
         </div>
       </section>
 
-      <!-- TOOL DRAWERS (30%) -->
-      <div class="drawers">
-        <!-- LEFT: REFERENCE DRAWER -->
-        <aside class="drawer collapsed" id="drawer-reference">
-          <button class="drawer-head" id="ref-toggle" type="button">
-            <span>REFERENCE</span><span class="chev">▾</span>
-          </button>
-          <div class="drawer-body">
-            <label>上传参考图（first / last frame）</label>
-            <input type="file" id="ref-file" accept="image/*">
-            <div style="display:flex;gap:6px;margin-top:6px;">
-              <select id="ref-role">
-                <option value="first_frame">first_frame</option>
-                <option value="last_frame">last_frame</option>
-              </select>
-              <button class="btn" id="upload-btn">上传</button>
-            </div>
-            <div id="refs" class="mt"></div>
+      <aside class="generation-panel" aria-label="生成控制">
+        <section class="control-section reference-section">
+          <div class="section-title"><span>1. 参考图</span><span id="reference-state" class="badge state">未上传</span></div>
+          <div id="reference-dropzone" class="reference-dropzone" tabindex="0">
+            <div id="reference-preview" class="reference-preview">拖拽图片到这里，或点击选择</div>
+            <input type="file" id="ref-file" accept="image/*" hidden>
+            <button class="btn" id="choose-ref-btn" type="button">选择图片</button>
+            <button class="btn ghost" id="replace-ref-btn" type="button" style="display:none">替换</button>
           </div>
-        </aside>
-
-        <!-- RIGHT: GENERATION CONTROL DRAWER -->
-        <aside class="drawer" id="drawer-control">
-          <button class="drawer-head" id="ctl-toggle" type="button">
-            <span>GENERATION CONTROL</span><span class="chev">▾</span>
-          </button>
-          <div class="drawer-body">
-            <!-- Intent -->
-            <label>Video Intent（自然语言）</label>
-            <textarea id="intent-text" placeholder="例如：做一个入口缓慢推进的视频，突出建筑尺度感"></textarea>
-            <button class="btn primary" id="analyze-btn" style="width:100%;">分析意图</button>
-            <div id="intent-card"></div>
-            <div id="confirm-box" style="display:none;margin-top:10px;">
-              <label>选择工作流（候选）</label>
-              <select id="wf-candidates"></select>
-              <button class="btn mt" id="confirm-btn" style="width:100%;">确认工作流</button>
-            </div>
-
-            <div id="param-shelf" class="mt" style="display:none;">
-              <!-- Camera -->
-              <div class="ctl-group">
-                <h4 class="hidden">Camera</h4>
-                <div class="seg hidden" id="camera-seg">
-                  <button data-cam="static">Static</button>
-                  <button data-cam="push">Push</button>
-                  <button data-cam="reveal">Reveal</button>
-                  <button data-cam="walkthrough">Walkthrough</button>
-                  <button data-cam="aerial">Aerial</button>
-                </div>
-                <div id="cam-hint" class="small muted mt hidden"></div>
-              </div>
-
-              <!-- Output parameters (bound to VideoGenerationRequest) -->
-              <div class="ctl-group">
-                <h4>生成设置</h4>
-                <div class="param-grid">
-                  <div><label>时长</label><select id="param-duration"><option>4s</option></select></div>
-                  <div><label>质量</label><select id="param-quality"><option>Diagnostic</option><option>Production</option></select></div>
-                </div>
-                <details class="advanced-settings mt"><summary>高级设置</summary>
-                  <div class="param-grid mt">
-                    <div><label>Resolution</label><select id="param-resolution"><option>1344×768</option><option>1280×720</option></select></div>
-                    <div><label>FPS</label><select id="param-fps"><option>24</option></select></div>
-                    <div class="wide"><label>Seed（可选，留空=随机）</label><input type="text" id="param-seed" placeholder="例如 777888999"></div>
-                  </div>
-                </details>
-              </div>
-
-              <!-- Workflow -->
-              <div class="ctl-group">
-                <h4>视频类型</h4>
-                <select id="wf-select"></select>
-                <div id="wf-meta" class="small muted mt"></div>
-              </div>
-
-              <!-- Prompt preview: collapsed by default -->
-              <div class="ctl-group prompt-wrap" id="prompt-wrap">
-                <button class="prompt-toggle" id="prompt-toggle" type="button">
-                  <span>Prompt Preview · Official Skill Generated</span><span class="chev"></span>
-                </button>
-                <div class="prompt-collapse">
-                  <pre class="prompt" id="prompt-preview">未生成</pre>
-                </div>
-              </div>
-
-              <div class="risk mt">
-                <strong>Risk Warning</strong>
-                <div id="risk-text" class="small">参考质量与运动风险提示显示于此。</div>
-              </div>
-              <label class="mt"><input type="checkbox" id="risk-check"> 我已审阅风险提示</label>
-              <div class="mt" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <button class="btn" id="preview-btn" disabled>生成提示词</button>
-                <button class="btn primary" id="generate-btn" disabled>开始生成</button>
-                <span id="gate-note" class="gate-note"></span>
-              </div>
-            </div>
-
-            <!-- Advanced (hidden in D.2, interface retained for later) -->
-            <div class="adv-card mt hidden" id="adv-card">
-              <h3 style="margin-top:0;">Advanced</h3>
-              <div class="small" id="adv-info">提交 Prompt 后显示：Current Workflow / Reference / Prompt Hash。</div>
-              <button class="btn small mt" id="open-comfy-btn" disabled>Open Native ComfyUI（接口设计）</button>
-              <div id="adv-contract" class="small muted mono mt" style="display:none;"></div>
-            </div>
-
-            <!-- Workflow Controller -->
-            <div class="adv-card mt hidden">
-              <h3 style="margin-top:0;">Workflow Controller</h3>
-              <div class="strategy-grid">
-                <div class="strategy"><div class="s-name">Single Image <span class="badge done">当前</span></div><div class="s-note">I2VA · 01/03/04/05</div></div>
-                <div class="strategy"><div class="s-name">Multi Reference <span class="badge state">未来</span></div><div class="s-note">同机位多参考一致性</div></div>
-                <div class="strategy"><div class="s-name">Keyframe Sequence <span class="badge warn">2帧可用</span></div><div class="s-note">FL2VA / 分段拼接</div></div>
-                <div class="strategy"><div class="s-name">Scene Sequence <span class="badge state">未来</span></div><div class="s-note">场景级分段成片</div></div>
-              </div>
-            </div>
+          <div id="refs" class="reference-meta muted small"></div>
+          <div class="reference-actions">
+            <select id="ref-role" aria-label="参考图用途" hidden><option value="first_frame">first_frame</option></select>
+            <button class="btn ok" id="upload-btn" type="button" disabled>上传并审批</button>
           </div>
-        </aside>
-      </div>
-    </div>
-  </div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title"><span>2. 视频类型</span></div>
+          <label for="video-type">选择一种成片方式</label>
+          <select id="video-type" class="large-control"></select>
+          <div id="video-type-help" class="muted small mt"></div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title"><span>3. 生成意图</span></div>
+          <label for="intent-text">你希望镜头如何展示空间？</label>
+          <textarea id="intent-text" placeholder="例如：镜头从入口缓慢推进，突出建筑尺度、材质和自然光"></textarea>
+          <button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
+          <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
+          <details id="prompt-details" class="prompt-details" style="display:none">
+            <summary>查看优化提示词</summary>
+            <div id="prompt-detail-content"></div>
+          </details>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title"><span>4. 参数</span><span class="muted small">H3</span></div>
+          <div class="param-grid">
+            <div><label for="param-duration">时长</label><select id="param-duration"></select></div>
+            <div><label for="param-resolution">分辨率</label><select id="param-resolution"></select></div>
+            <div><label for="param-aspect">画幅</label><select id="param-aspect"><option value="auto">自动</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></div>
+            <div><label for="param-quality">质量</label><select id="param-quality"><option value="draft">Draft</option><option value="standard" selected>Standard</option><option value="high">High</option></select></div>
+            <div class="wide"><label for="param-speed">生成速度</label><select id="param-speed"><option value="standard">Standard（基准）</option><option value="auto">Auto Accelerated</option></select></div>
+          </div>
+          <details class="advanced-settings mt">
+            <summary>高级设置</summary>
+            <div class="param-grid mt">
+              <div><label for="param-seed">Seed（可选）</label><input type="text" id="param-seed" placeholder="留空随机"></div>
+              <div><label for="param-steps">Sigma 点数</label><input type="number" id="param-steps" min="2" max="100" placeholder="随质量"></div>
+              <div><label for="param-sampler">采样器</label><select id="param-sampler"><option value="euler">Euler</option><option value="res_multistep">Res Multi-step</option></select></div>
+              <label class="check-row wide"><input type="checkbox" id="param-velocity"> Velocity-cache（手动）</label>
+              <label class="check-row wide"><input type="checkbox" id="param-cache-dit"> Cache-DiT（手动）</label>
+            </div>
+          </details>
+        </section>
+
+        <section class="control-section generate-section">
+          <div id="gate-note" class="gate-note">请先上传并审批参考图</div>
+          <button class="btn primary generate-button" id="generate-btn" type="button" disabled>开始生成</button>
+          <label class="check-row small"><input type="checkbox" id="risk-check"> 我已确认参考图与设置</label>
+        </section>
+      </aside>
+    </section>
+
+    <section class="current-job-strip panel" id="current-job-strip">
+      <div><span class="eyebrow">CURRENT JOB</span><strong id="current-job-title">尚无任务</strong></div>
+      <div class="job-strip-stage"><span id="current-job-stage">准备就绪</span><span id="current-job-progress">—</span></div>
+      <div class="job-strip-time"><span id="current-job-elapsed">—</span><span id="current-job-eta">预计剩余时间计算中</span></div>
+      <a class="btn small" href="jobs.html">打开任务中心</a>
+    </section>
+  </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>
   <script src="js/workspace.js"></script>

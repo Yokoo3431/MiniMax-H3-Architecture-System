@@ -4,7 +4,7 @@
   "test_inventory_file": "configs/regression_test_inventory.txt",
   "inventory_sha256": "0472701A20342E956F9DD906B8DC0E00E44D374BAC39982FA20B013DD476AC06",
   "test_source_manifest_file": "configs/regression_test_sources.json",
-  "test_source_manifest_sha256": "64A1B8310595B02E21F8E03C7174CCB96ABD07B26D9C51AF58EA7CE3DB41B043",
+  "test_source_manifest_sha256": "1B626FFADE9BAD01CA71CC699D999E335A79DFDCB76D6D1918C10904DB14DBF9",
   "discovered_count": 766,
   "expected_skip_count": 38,
   "expected_skip_ids": [

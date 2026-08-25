@@ -71,6 +71,12 @@ class TestStudyStateRecovery(unittest.TestCase):
             old_job = h.jobs.submit_job(pid, risk_reviewed=True)
             h.jobs.fail_job(old_job["id"], "synthetic old GPU failure")
 
+            # The failure belongs to the Job record, never to the editable
+            # project gate.  A fresh intent cycle must remain possible.
+            self.assertNotEqual(h.store.load_project(pid)["state"], "GPU_FAILED")
+            h.intent.analyze_intent(pid, "镜头从庭院缓慢漫游到水池边")
+            h.prompt.generate_prompt(pid)
+
             state = build_study_state(h.store, pid)
             self.assertEqual(state["last_job_status"], "GPU_FAILED")
             self.assertEqual(state["current_state"], "READY_TO_GENERATE")
@@ -101,6 +107,16 @@ class TestStudyStateRecovery(unittest.TestCase):
             self.assertEqual(changed["selected_workflow"], "04_Drone_Aerial")
             self.assertFalse(changed["prompt_ready"])
             self.assertIsNone(h.store.load_prompt(pid))
+
+            # The Job layer must normalize historical slow_push input to the
+            # only valid structured control for the walkthrough workflow.
+            h.intent.select_workflow(pid, "05_Slow_Walkthrough")
+            h.prompt.generate_prompt(pid)
+            with self.assertRaisesRegex(ValueError, "WORKFLOW_PARAMETER_ERROR"):
+                h.jobs.submit_job(pid, risk_reviewed=True, camera_motion="aerial_reveal")
+            self.assertEqual(len(h.store.load_jobs(pid)), 0)
+            job = h.jobs.submit_job(pid, risk_reviewed=True, camera_motion="slow_push")
+            self.assertEqual(job["camera_motion"], "walkthrough")
         finally:
             h.close()
 
