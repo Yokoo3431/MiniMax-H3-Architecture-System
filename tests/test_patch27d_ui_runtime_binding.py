@@ -201,14 +201,17 @@ class TestStateTransitions(unittest.TestCase):
             final = None
             while time.time() < deadline:
                 final = h.job_api.get_job(job["id"])
-                if final["state"] == "GPU_FAILED":
+                if final["state"] == "FAILED":
                     break
                 time.sleep(0.1)
-            self.assertEqual(final["state"], "GPU_FAILED")
+            # A generic adapter failure is not evidence of CUDA/model
+            # execution; GPU_FAILED is reserved for direct GPU/OOM evidence.
+            self.assertEqual(final["state"], "FAILED")
+            self.assertEqual(final["error_category"], "COMFYUI_ERROR")
             self.assertIn("fake runtime failure", final["failure_reason"])
             # no auto retry: still terminal after waiting
             time.sleep(0.5)
-            self.assertEqual(h.job_api.get_job(job["id"])["state"], "GPU_FAILED")
+            self.assertEqual(h.job_api.get_job(job["id"])["state"], "FAILED")
         finally:
             h.close()
 

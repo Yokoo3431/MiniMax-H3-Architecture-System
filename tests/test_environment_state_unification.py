@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -94,6 +95,15 @@ class TestEnvironmentStateUnification(unittest.TestCase):
                  "support_dependencies_ready": True, "workflows_5of5": True,
                  "contract_valid": True}
         self.assertEqual(service._overall(system, runtime, models, support, skill, gates), "READY")
+        self.assertEqual(service._free_commit_policy(19.8, "COMPATIBILITY")["status"], "WARNING")
+
+        manifest = json.loads((ROOT / "configs" / "release_runtime_manifest.json").read_text(encoding="utf-8"))
+        h3 = manifest["h3"]
+        self.assertEqual(h3["upstream_commit"], "d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad")
+        self.assertEqual(h3["managed_runtime_fingerprint"],
+                         "22167e28e6fb11c016397c9fdbb545a9f0a386fe4cef48d235942d6c3af80f9d")
+        stale_prefix = "54" + "c1d5d8"
+        self.assertNotIn(stale_prefix, (ROOT / "configs" / "release_runtime_manifest.json").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

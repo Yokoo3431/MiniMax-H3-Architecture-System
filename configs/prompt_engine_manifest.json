@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "engine": "universal_h3_prompt_engine",
+  "default_provider": "OFFLINE_COMPILER",
+  "official_skill": {
+    "source": "MiniMax-AI/MiniMax-H3/skills/h3-prompt-writing",
+    "source_url": "https://github.com/MiniMax-AI/MiniMax-H3/tree/main/.agents/skills/h3-prompt-writing",
+    "execution_contract": "The Markdown Skill is a specification; a reasoning provider is required for Skill execution.",
+    "local_bundle": "references/known_good_h3/comfy_official/skill_check",
+    "update_policy": "docs/Official_H3_Skill_Update_Policy.md"
+  },
+  "providers": {
+    "OFFLINE_COMPILER": {
+      "kind": "deterministic",
+      "multimodal": false,
+      "network": false,
+      "always_available": true
+    },
+    "CLI_BRIDGE": {
+      "kind": "configured_command",
+      "environment": "AVS_PROMPT_CLI_EXECUTABLE",
+      "never_auto_invoke": true
+    },
+    "LOCAL_OPENAI_COMPATIBLE": {
+      "kind": "local_http",
+      "environment": "AVS_PROMPT_LOCAL_BASE_URL",
+      "never_auto_invoke": true,
+      "image_consent_required": false
+    },
+    "OPENAI_COMPATIBLE_HTTP": {
+      "kind": "remote_or_private_http",
+      "api_key": "environment-variable reference only",
+      "never_auto_invoke": true,
+      "image_consent_required": true
+    },
+    "CUSTOM_COMMAND": {
+      "kind": "configured_command",
+      "never_auto_invoke": true
+    }
+  },
+  "validator": {
+    "modes": ["T2VA", "I2VA", "FL2VA", "L2VA", "Ref2VA"],
+    "max_prompt_characters": 7000,
+    "duration_seconds": [4, 15],
+    "shared_by_all_providers": true
+  }
+}

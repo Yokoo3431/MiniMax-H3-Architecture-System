@@ -204,6 +204,40 @@ class OutputAPI:
             encoding="utf-8")
         return self.manifest(project_id, job)
 
+    def copy_to_study_output(self, project_id: str, job: Dict[str, Any],
+                             runtime_output_path: str | Path) -> Path:
+        """Copy and verify the real MP4 into the user-selected Study folder."""
+        import hashlib
+        import shutil
+        source = Path(runtime_output_path)
+        if not source.is_file() or source.stat().st_size <= 0:
+            raise ValueError(f"OUTPUT_ERROR: runtime output is missing: {source}")
+        project = self.store.load_project(project_id)
+        destination_dir = self.store.output_directory(project)
+        try:
+            destination_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            # Protected Documents locations are common on Windows.  Keep the
+            # job successful and fall back to the app-owned data tree; persist
+            # the resolved path so the user can open the actual result.
+            destination_dir = self.store.data_root / "outputs" / self.store._safe_study_name(project.get("name"))
+            destination_dir.mkdir(parents=True, exist_ok=True)
+            project["output_directory"] = str(destination_dir)
+            self.store.save_project(project)
+        destination = destination_dir / f"{job.get('workflow', 'ArchitectVideo')}_{job.get('id', 'job')}.mp4"
+        shutil.copy2(source, destination)
+        if not destination.is_file() or destination.stat().st_size != source.stat().st_size:
+            raise ValueError(f"OUTPUT_ERROR: copied output verification failed: {destination}")
+        def digest(path: Path) -> str:
+            h = hashlib.sha256()
+            with path.open("rb") as fh:
+                for block in iter(lambda: fh.read(1024 * 1024), b""):
+                    h.update(block)
+            return h.hexdigest()
+        if digest(source) != digest(destination):
+            raise ValueError(f"OUTPUT_ERROR: copied output hash mismatch: {destination}")
+        return destination
+
     def get_result(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
         if job.get("runtime") == "mock" and not self.allow_mock_outputs:
@@ -245,6 +279,8 @@ class OutputAPI:
             "job_id": job["id"],
             "project_id": project_id,
             "workflow": job.get("workflow"),
+            "runtime_output_path": job.get("runtime_output_path", ""),
+            "final_output_path": job.get("final_output_path", ""),
             "package_root": str(package),
             "structure": {
                 "input": [p.name for p in sorted((package / "input").iterdir())] if (package / "input").is_dir() else [],
@@ -259,7 +295,7 @@ class OutputAPI:
                 "provenance_json": str(package / "report" / "provenance.json"),
                 "runtime_info_json": str(package / "report" / "runtime_info.json"),
                 "report_json": str(package / "report" / "report.json"),
-                "video_mp4": str(package / "output" / "video.mp4"),
+                "video_mp4": str(job.get("final_output_path") or package / "output" / "video.mp4"),
                 # Kept for backwards-compatible mock fixtures only. Production
                 # jobs never expose this as a successful output.
                 "output_mp4_placeholder": str(package / "output" / "output.mp4"),

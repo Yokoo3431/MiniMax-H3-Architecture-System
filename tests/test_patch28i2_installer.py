@@ -465,6 +465,7 @@ class TestInstallerExecutionAndIntegration(unittest.TestCase):
         manifest = json.loads((SYSTEM_ROOT / "release" / "release_manifest.json").read_text(encoding="utf-8"))
         self.assertIn("apps", manifest["include_directories"])
         self.assertIn("models/manifest.json", manifest["include_files"])
+        self.assertIn("configs/h3_runtime_profiles.json", manifest["include_files"])
         self.assertNotIn("yaml.py", manifest["include_files"])
         self.assertTrue((SYSTEM_ROOT / "runtime" / "yaml_compat.py").is_file())
         self.assertTrue((SYSTEM_ROOT / "configs" / "installation_manifest.yaml").is_file())

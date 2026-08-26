@@ -29,7 +29,8 @@ async function saveDesktopSettings() {
 // The legacy top-level fields remain in the API for older clients only.
 function environmentState() { return env?.environment_state || env || {}; }
 
-function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
+function showErr(msg) { errEl.className = 'error-banner'; errEl.style.display = 'block'; errEl.textContent = msg; }
+function showNotice(msg) { errEl.className = 'notice-banner'; errEl.style.display = 'block'; errEl.textContent = msg; }
 
 function badge(overall) {
   const cls = overall === 'READY' ? 'done' : overall === 'WARNING' ? 'warn'
@@ -235,10 +236,16 @@ function renderGroup(g) {
       + statusRow('Runtime CUDA', runtimeCuda.status || (s.cuda ? 'READY' : 'ISSUE'), runtimeClass)
       + statusRow('GPU Ready', s.gpu_ready ? 'READY' : runtimeCuda.status === 'NOT_TESTED' ? 'NOT TESTED' : 'ISSUE', readinessClass)
       + statusRow('Hardware Policy', policy.label || 'UNKNOWN', policy.status === 'SUPPORTED' ? 'ok' : policy.status === 'EXPERIMENTAL' ? 'warn' : 'err')
+      + statusRow('H3 Runtime Profile', s.deployment_profile || 'AUTO', s.deployment_profile === 'COMPATIBILITY' ? 'ok' : 'warn')
+      + statusRow('Profile Hardware Source', s.profile_hardware_source || '—')
       + statusRow('Probe Status', probe.probe_status === 'READY' ? 'PASS' : (probe.probe_status || 'NOT_TESTED'), probe.probe_status === 'READY' ? 'ok' : 'warn')
       + statusRow('Last Probe', probe.last_probe_finished || '—')
       + `<div class="gate-note">${esc(s.gpu_detail || policy.reason || 'Current lightweight GPU/runtime probes have not completed.')}</div>`
-      + statusRow('Free Commit', `${s.free_commit} GB`, s.free_commit >= 50 ? 'ok' : s.free_commit >= 30 ? 'warn' : 'err')
+      + statusRow('Free Commit', `${s.free_commit} GB`,
+          s.free_commit_policy?.status === 'READY' ? 'ok' :
+          s.free_commit_policy?.status === 'WARNING' ? 'warn' : 'err')
+      + (s.free_commit_policy?.status === 'WARNING'
+          ? `<div class="gate-note">Compatibility profile：当前 Free Commit 属于警告级，不会因旧 INT8 阈值阻断；实际可用性仍以真实运行结果为准。</div>` : '')
       + statusRow('Disk', `${s.disk_free_gb} GB free`);
   } else if (g === 'runtime') {
     const support = state.support || {};
@@ -252,15 +259,20 @@ function renderGroup(g) {
     };
     const h3Provenance = support.h3?.provenance || {};
     const videoProvenance = support.video?.provenance || {};
+    const upstreamReady = h3Provenance.upstream_ready === true
+      || (!Object.prototype.hasOwnProperty.call(h3Provenance, 'upstream_ready') && Boolean(support.h3?.ready));
+    const upstreamStatus = h3Provenance.upstream_status
+      || (upstreamReady ? 'READY' : (h3Provenance.commit ? 'WRONG REVISION' : 'MISSING'));
     html += statusRow('Native ComfyUI', r.present ? 'READY' : 'MISSING', r.present ? 'ok' : 'err')
       + statusRow('ComfyUI Version', r.version || '—')
       + statusRow('Frontend', r.frontend || '—')
       + statusRow('R2A Baseline Comparison', r.baseline_comparison || '—', r.baseline_comparison === 'MATCH' ? 'ok' : 'warn')
       + statusRow('PREAD', r.pread ? 'READY' : 'MISSING', r.pread ? 'ok' : 'err')
-      + statusRow('H3 Upstream', support.h3?.ready ? 'READY' : (h3Provenance.commit ? 'WRONG REVISION / NEEDS REPAIR' : 'MISSING'), support.h3?.ready ? 'ok' : 'err')
+      + statusRow('H3 Upstream', upstreamStatus, upstreamReady ? 'ok' : 'err')
       + statusRow('H3 Support Layer', supportValue(support.h3), support.h3?.ready ? 'ok' : 'err')
       + statusRow('H3 Upstream Commit', shortHash(h3Provenance.commit))
       + statusRow('H3 Managed Fingerprint', shortHash(h3Provenance.actual_fingerprint))
+      + statusRow('H3 Expected Fingerprint', shortHash(h3Provenance.expected_fingerprint))
       + statusRow('Video Support', supportValue(support.video), support.video?.ready ? 'ok' : 'err')
       + statusRow('Support Dependencies', support.dependencies?.status || 'AUDIT_REQUIRED', support.dependencies?.ready ? 'ok' : 'err')
       + statusRow('Port', r.port);
@@ -360,6 +372,22 @@ document.getElementById('recheck-btn').addEventListener('click', async () => {
     await loadPlan();
   } catch (e) { showErr(e.message); }
   finally { finishProbeChecking(); }
+});
+
+document.getElementById('restart-comfyui-btn').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = '正在重启 ComfyUI…';
+  try {
+    const result = await post('/api/system/restart-comfyui', {});
+    showNotice(result.message || 'ComfyUI 已重新启动。');
+  } catch (e) {
+    showErr(e.message || 'ComfyUI 重启失败。');
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
 });
 
 document.getElementById('continue-btn').addEventListener('click', () => {

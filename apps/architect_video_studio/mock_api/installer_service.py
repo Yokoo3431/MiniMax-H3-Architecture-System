@@ -38,6 +38,7 @@ from runtime.h3_sidecar import (
 from runtime.h3_asset_contract import evaluate_h3_asset_contract
 from runtime.support_layer import (
     apply_unified_patch,
+    load_release_runtime_manifest,
     load_support_manifest,
     source_tree_fingerprint,
     support_entries,
@@ -254,10 +255,13 @@ class InstallationService:
             # support layer. Older node directories used that record directly.
             record = data.get("h3" if layer_id == self.H3_SUPPORT_COMPONENT
                               else "video_helper_suite") or data
-            expected = entry.get("production_snapshot", {}).get("source_tree_fingerprint_without_backups")
+            release_h3 = (load_release_runtime_manifest(self.repo_root).get("h3") or {})
+            expected_commit = release_h3.get("upstream_commit") or entry.get("commit")
+            expected = release_h3.get("managed_runtime_fingerprint")
+            expected = expected or entry.get("production_snapshot", {}).get("source_tree_fingerprint_without_backups")
             if not expected:
                 expected = entry.get("source_tree_fingerprint", {}).get("value")
-            if record.get("commit") != entry.get("commit") or record.get("source_tree_fingerprint") != expected:
+            if record.get("commit") != expected_commit or record.get("source_tree_fingerprint") != expected:
                 return {"status": "FAILED", "code": "SUPPORT_LAYER_PROVENANCE_MISMATCH", "target": str(target)}
             if layer_id == self.H3_SUPPORT_COMPONENT:
                 patch = entry.get("production_snapshot", {}).get("local_patch", {})
@@ -908,15 +912,24 @@ class InstallationService:
                     {"expected": expected_base, "actual": base_fingerprint},
                 )
             patch_meta = entry.get("production_snapshot", {}).get("local_patch", {})
+            patch_chain = ([patch_meta] if patch_meta else []) + list(
+                entry.get("production_snapshot", {}).get("additional_patches", []) or []
+            )
             patch_sha = None
-            if patch_meta:
-                patch_path = self.repo_root / str(patch_meta.get("path"))
-                if not patch_path.is_file() or _sha256(patch_path) != str(patch_meta.get("sha256", "")).upper():
+            applied_patch_shas = []
+            for patch_spec in patch_chain:
+                patch_path = self.repo_root / str(patch_spec.get("path"))
+                expected_sha = str(patch_spec.get("sha256", ""))
+                if not patch_path.is_file() or _sha256(patch_path) != expected_sha.upper():
                     raise InstallerError("SUPPORT_PATCH_MISMATCH", "The audited production support patch is missing or altered.")
                 apply_unified_patch(patch_path, stage)
+                applied_patch_shas.append(expected_sha.lower())
+            if patch_meta:
                 patch_sha = str(patch_meta["sha256"]).lower()
             final_fingerprint = source_tree_fingerprint(stage)
-            expected_final = entry.get("production_snapshot", {}).get("source_tree_fingerprint_without_backups")
+            release_h3 = (load_release_runtime_manifest(self.repo_root).get("h3") or {})
+            expected_final = release_h3.get("managed_runtime_fingerprint")
+            expected_final = expected_final or entry.get("production_snapshot", {}).get("source_tree_fingerprint_without_backups")
             expected_final = expected_final or entry["source_tree_fingerprint"]["value"]
             if final_fingerprint != expected_final:
                 raise InstallerError(
@@ -932,6 +945,12 @@ class InstallationService:
                 "base_source_tree_fingerprint": base_fingerprint,
                 "source_tree_fingerprint": final_fingerprint,
                 "patch_sha256": patch_sha,
+                "additional_patch_sha256": applied_patch_shas[1:],
+                "runtime_unification": {
+                    "nvfp4_loader": "native_comfy_minimax_h3",
+                    "vae_offload_sync": any("vae_offload_sync" in str(p.get("path")) for p in patch_chain),
+                    "model_files_modified": False,
+                },
                 "license": entry["license"],
                 "installed_at": _now(),
             }

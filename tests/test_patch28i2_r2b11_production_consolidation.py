@@ -51,11 +51,9 @@ class _BindingClient:
     def object_info(self):
         names = (
             "LoadImage", "UNETLoader", "CLIPLoader", "VAELoader",
-            "RHMiniMaxH3DecodeAV", "RHMiniMaxH3DualSigmaSampler",
-            "RHMiniMaxH3EmptyAVLatent", "RHMiniMaxH3FL2VAEncode",
-            "RHMiniMaxH3FL2VAFirstFrameCondition", "RHMiniMaxH3FL2VATarget",
-            "RHMiniMaxH3ModelLoader", "RHMiniMaxH3TextEncoderLoader",
-            "RHMiniMaxH3T2VATextEncode", "RHMiniMaxH3VAELoader", "VHS_VideoCombine")
+            "MiniMaxH3ImageToVideo", "KSamplerSelect", "BasicScheduler",
+            "RandomNoise", "BasicGuider", "SamplerCustomAdvanced",
+            "VAEDecode", "VAEDecodeAudio", "CreateVideo", "SaveVideo")
         inputs = {
             "LoadImage": "image", "UNETLoader": "unet_name",
             "CLIPLoader": "clip_name", "VAELoader": "vae_name",
@@ -97,13 +95,13 @@ class TestProductionConsolidation(unittest.TestCase):
         for workflow in CANONICAL_WORKFLOWS:
             payload = build_production_payload(request(workflow), workflow)
             classes = {node["class_type"] for node in payload.values()}
-            self.assertNotIn("MiniMaxH3ImageToVideo", classes)
-            self.assertIn("RHMiniMaxH3ModelLoader", classes)
-            self.assertIn("RHMiniMaxH3TextEncoderLoader", classes)
-            self.assertIn("RHMiniMaxH3VAELoader", classes)
-            self.assertIn("VHS_VideoCombine", classes)
+            self.assertIn("MiniMaxH3ImageToVideo", classes)
+            self.assertIn("CLIPLoader", classes)
+            self.assertIn("UNETLoader", classes)
+            self.assertIn("VAELoader", classes)
+            self.assertIn("SaveVideo", classes)
             self.assertEqual(payload["1"]["inputs"]["image"], "first.png")
-            self.assertEqual(payload["7"]["inputs"]["prompt"], "official prompt")
+            self.assertEqual(payload["6"]["inputs"]["prompt"], "official prompt")
 
     def test_all_payloads_resolve_against_frozen_node_contract(self):
         object_info = {name: {} for name in (
@@ -111,7 +109,11 @@ class TestProductionConsolidation(unittest.TestCase):
             "RHMiniMaxH3EmptyAVLatent", "RHMiniMaxH3FL2VAEncode",
             "RHMiniMaxH3FL2VAFirstFrameCondition", "RHMiniMaxH3FL2VATarget",
             "RHMiniMaxH3ModelLoader", "RHMiniMaxH3TextEncoderLoader",
-            "RHMiniMaxH3T2VATextEncode", "RHMiniMaxH3VAELoader", "VHS_VideoCombine")}
+            "RHMiniMaxH3T2VATextEncode", "RHMiniMaxH3VAELoader", "VHS_VideoCombine",
+            "CLIPLoader", "UNETLoader", "VAELoader", "MiniMaxH3ImageToVideo",
+            "KSamplerSelect", "BasicScheduler", "RandomNoise", "BasicGuider",
+            "SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio", "CreateVideo",
+            "SaveVideo")}
         for workflow in CANONICAL_WORKFLOWS:
             result = validate_production_payload(build_production_payload(request(workflow), workflow), object_info)
             self.assertEqual(result["unknown_node_types"], [])
@@ -125,7 +127,7 @@ class TestProductionConsolidation(unittest.TestCase):
         adapter = NativeRuntimeAdapter(client=_BindingClient(), production_binding=True)
         prepared = adapter.prepare(VideoGenerationRequest.from_dict(request("04_Drone_Aerial")))
         self.assertTrue(prepared["binding"]["browser_state_ignored"])
-        self.assertNotIn("MiniMaxH3ImageToVideo", {n["class_type"] for n in prepared["translated_payload"].values()})
+        self.assertIn("MiniMaxH3ImageToVideo", {n["class_type"] for n in prepared["translated_payload"].values()})
 
     def test_no_model_copy_or_download_in_binding_module(self):
         source = (ROOT / "runtime/adapters/production_workflow_binding.py").read_text()

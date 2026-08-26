@@ -57,18 +57,37 @@ async function openDetail(jobId, pid) {
   document.getElementById('detail-summary').innerHTML = `
     <div class="kv"><span class="k">状态</span><span>${esc(detail.friendly_reason || friendlyState(detail))}</span></div>
     <div class="kv"><span class="k">进度</span><span>${esc(detail.progress == null ? '—' : `${Math.round(detail.progress)}%`)} · ${esc(detail.current_stage || '执行工作流')} · ${esc(detail.eta_seconds == null ? '预计剩余时间计算中' : `剩余约 ${Math.ceil(detail.eta_seconds)}s`)}</span></div>
-    <div class="kv"><span class="k">参数</span><span>${esc(`${p.duration ?? '—'}s · ${p.quality ?? '—'} · ${p.resolution ?? '—'}`)}</span></div>
+    <div class="kv"><span class="k">参数</span><span>${esc(`${p.duration ?? '—'}s · ${p.fps ?? '—'}fps · ${p.quality ?? '—'} · ${p.resolution ?? '—'}`)}</span></div>
     <div class="kv"><span class="k">提示词摘要</span><span>${esc(detail.prompt_summary || '—')}</span></div>
     ${detail.output_path ? `<div class="kv"><span class="k">视频文件</span><span class="small">${esc(detail.output_path)}</span></div>` : ''}`;
   const actions = document.getElementById('detail-actions');
   actions.innerHTML = `${['FAILED','GPU_FAILED','CANCELLED'].includes(detail.state) ? '<button class="btn primary" id="retry-job">重试</button>' : ''}
     ${detail.error_category === 'COMFYUI_CRASHED' ? '<button class="btn" id="restart-comfyui">重新启动服务</button>' : ''}
+    <button class="btn" id="open-current-workflow">打开当前任务工作流</button>
     <button class="btn" id="open-study">打开 Study</button>
-    ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?job=${esc(detail.id)}">打开输出</a>` : ''}
+    ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?job=${esc(detail.id)}">打开输出</a><button class="btn" id="open-output-folder">打开所在文件夹</button>` : ''}
     <button class="btn" id="copy-tech">复制技术详情</button>`;
   document.getElementById('detail-technical').textContent = JSON.stringify(detail.technical_details || {}, null, 2);
   document.getElementById('open-study')?.addEventListener('click', () => { location.href = `workspace.html?project=${encodeURIComponent(pid)}`; });
+  document.getElementById('open-current-workflow')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = '正在准备…';
+    try {
+      const info = await post('/api/system/open-comfyui', {job_id: detail.id});
+      location.href = info.url;
+    } catch (e) {
+      showErr(e.message || '当前任务工作流打开失败');
+      button.disabled = false;
+      button.textContent = '打开当前任务工作流';
+    }
+  });
   document.getElementById('copy-tech')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(document.getElementById('detail-technical').textContent || ''); });
+  document.getElementById('open-output-folder')?.addEventListener('click', async () => {
+    const target = detail.final_output_path || detail.output_path;
+    if (!target) return;
+    try { await post('/api/system/open-path', {path: target}); } catch (e) { showErr(e.message); }
+  });
   document.getElementById('retry-job')?.addEventListener('click', async () => {
     try { const next = await post(`/api/jobs/${encodeURIComponent(detail.id)}/retry`, {}); location.href = `jobs.html?project=${encodeURIComponent(pid)}&job=${encodeURIComponent(next.id)}`; }
     catch (e) { showErr(e.message); }

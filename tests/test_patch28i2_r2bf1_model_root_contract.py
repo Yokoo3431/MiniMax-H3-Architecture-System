@@ -136,13 +136,10 @@ class H3ModelRootContractTests(unittest.TestCase):
                 {"path_or_ref": f"reference-{index}.png"} for index in range(count)
             ]
             payload = build_production_payload(request, workflow)
-            model_inputs = [
-                node["inputs"] for node in payload.values()
-                if node.get("class_type", "").startswith("RHMiniMaxH3")
-            ]
-            self.assertTrue(model_inputs)
-            self.assertTrue(all(item.get("model_root") == "MiniMax-H3" for item in model_inputs
-                                if "model_root" in item))
+            self.assertEqual(payload["2"]["inputs"]["clip_name"],
+                             "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors")
+            self.assertEqual(payload["3"]["class_type"], "UNETLoader")
+            self.assertEqual(payload["4"]["class_type"], "VAELoader")
 
     def test_no_prompt_submission_in_contract_module(self):
         source = (ROOT / "runtime" / "h3_model_root.py").read_text(encoding="utf-8")

@@ -251,7 +251,8 @@ internal sealed class DesktopShellForm : Form
             if (currentUrl.StartsWith(ComfyUrl, StringComparison.OrdinalIgnoreCase))
             {
                 var returnUrl = (StudioUrl + "/index.html?new=1").Replace("'", "\\'");
-                var script = "(() => { const reset='architect-video-studio-workflow-reset-v2'; if (localStorage.getItem(reset)!=='1') { localStorage.clear(); sessionStorage.clear(); localStorage.setItem(reset,'1'); location.reload(); return; } const id='architect-video-studio-return'; if (document.getElementById(id)) return; const b=document.createElement('button'); b.id=id; b.textContent='返回 Architect Video Studio'; b.style.cssText='position:fixed;z-index:2147483647;left:12px;top:12px;height:34px;padding:0 14px;border:0;border-radius:5px;background:#2469b4;color:#fff;font:14px Segoe UI,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;'; b.onclick=()=>{window.location.href='" + returnUrl + "';}; document.body.appendChild(b); })();";
+                var studioEndpoint = (StudioUrl + "/api/system/current-workflow?job_id=" + Uri.EscapeDataString(GetQueryValue(currentUrl, "h3_job"))).Replace("'", "\\'");
+                var script = "(() => { const token=new URL(location.href).searchParams.get('h3_refresh')||'default'; const reset='architect-video-studio-workflow-reset-v3:'+token; if (sessionStorage.getItem(reset)!=='1') { localStorage.clear(); sessionStorage.setItem(reset,'1'); location.reload(); return; } const id='architect-video-studio-return'; if (!document.getElementById(id)) { const b=document.createElement('button'); b.id=id; b.textContent='返回 Architect Video Studio'; b.style.cssText='position:fixed;z-index:2147483647;left:12px;top:12px;height:34px;padding:0 14px;border:0;border-radius:5px;background:#2469b4;color:#fff;font:14px Segoe UI,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;'; b.onclick=()=>{window.location.href='" + returnUrl + "';}; document.body.appendChild(b); } const endpoint='" + studioEndpoint + "'; fetch(endpoint,{cache:'no-store'}).then(r=>r.json()).then(x=>{ const d=x.data||{}; const wf=d.workflow; if (!wf) return; let attempts=0; const apply=()=>{ const a=window.app||globalThis.app; let ok=false; try { if (a && typeof a.loadGraphData==='function') { a.loadGraphData(wf); ok=true; } else if (a && a.graph && typeof a.graph.configure==='function') { a.graph.configure(wf); if (typeof a.graph.setDirtyCanvas==='function') a.graph.setDirtyCanvas(true,true); ok=true; } } catch(e) {} if (!ok && attempts++<8) return setTimeout(apply,750); const n=document.createElement('div'); n.textContent=ok ? ('已加载 Studio 当前任务：'+(d.workflow_id||'')) : ('当前任务工作流已准备：'+(d.file_name||'')); n.style.cssText='position:fixed;z-index:2147483647;right:18px;top:14px;padding:9px 14px;border-radius:5px;background:'+(ok?'#1f7a4d':'#8a5a00')+';color:#fff;font:14px Segoe UI,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);'; document.body.appendChild(n); setTimeout(()=>n.remove(),5000); }; apply(); }).catch(()=>{}); })();";
                 await webView.ExecuteScriptAsync(script);
             }
             Log("APP-09", "page ready signal received readyState=" + state + " url=" + currentUrl);
@@ -264,6 +265,20 @@ internal sealed class DesktopShellForm : Form
         if (comfyReturnButton == null) return;
         comfyReturnButton.Visible = !String.IsNullOrEmpty(url) && url.StartsWith(ComfyUrl, StringComparison.OrdinalIgnoreCase);
         if (comfyReturnButton.Visible) comfyReturnButton.BringToFront();
+    }
+
+    private static string GetQueryValue(string url, string key)
+    {
+        try {
+            var query = new Uri(url).Query.TrimStart('?');
+            foreach (var pair in query.Split('&')) {
+                var parts = pair.Split(new[] { '=' }, 2);
+                if (parts.Length == 2 && String.Equals(Uri.UnescapeDataString(parts[0]), key, StringComparison.OrdinalIgnoreCase))
+                    return Uri.UnescapeDataString(parts[1]);
+            }
+        }
+        catch { return ""; }
+        return "";
     }
 
     private void Navigate(string url)

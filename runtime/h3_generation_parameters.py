@@ -78,6 +78,13 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
     if not 4.0 <= duration <= 15.0:
         raise H3ParameterError("duration must be between 4 and 15 seconds")
 
+    try:
+        fps = int(raw.get("fps", 24))
+    except (TypeError, ValueError) as exc:
+        raise H3ParameterError("fps must be an integer") from exc
+    if fps != 24:
+        raise H3ParameterError("current H3 Golden workflows support 24 fps only")
+
     resolution = _resolution(raw.get("resolution") or QUALITY_PROFILES[quality]["default_resolution"])
     width, height = RESOLUTION_PRESETS[resolution]
     aspect_ratio = _text(raw.get("aspect_ratio"), "auto")
@@ -119,7 +126,7 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
         "width": width,
         "height": height,
         "aspect_ratio": aspect_ratio,
-        "fps": 24,
+        "fps": fps,
         "duration": round(duration, 3),
         "quality": quality,
         "seed": final_seed,

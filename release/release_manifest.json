@@ -26,6 +26,7 @@
     "Open_Native_ComfyUI.bat",
     "native_env.path.example",
     "distribution_config.yaml",
+    "configs/h3_runtime_profiles.json",
     "models/manifest.json",
     "configs/installer_bootstrap.json"
   ],

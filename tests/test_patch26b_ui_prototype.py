@@ -258,7 +258,7 @@ class TestGenerateGateWithoutApproval(unittest.TestCase):
             h.store.save_references(pid, refs)
             with self.assertRaises(ValueError) as ctx:
                 h.job_api.submit_job(pid, risk_reviewed=True)
-            self.assertIn("Reference Approval Gate", str(ctx.exception))
+            self.assertIn("REFERENCE_CONFIGURATION_ERROR", str(ctx.exception))
         finally:
             h.close()
 

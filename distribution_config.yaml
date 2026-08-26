@@ -17,10 +17,14 @@ distribution:
 native_runtime:
   comfyui_root: "ArchitectVideoStudio_Runtime"
   models_root: "Models"
+  profile_config: "configs/h3_runtime_profiles.json"
+  profile_selection: "AUTO"
   comfy_input: "ArchitectVideoStudio_Runtime/ComfyUI/input"
   comfy_output: "ArchitectVideoStudio_Runtime/ComfyUI/output"
   port: 8189
-  args: ["--port", "8189", "--disable-dynamic-vram", "--disable-async-offload", "--disable-pinned-memory"]
+  # Memory flags are selected at runtime from profile_config after probing
+  # VRAM/RAM and checking installed model alternatives.
+  args: ["--port", "8189"]
   safe_load: "pread"
 
 studio:

@@ -215,11 +215,36 @@ from minimax_h3_nodes.runtime import components
 from minimax_h3_nodes.api import _shared
 
 selectors = {
-    "transformer": ("MiniMax-H3-FL2VA-int8_convrot.safetensors", "transformer"),
-    "text_encoder": ("qwen3-vl-32b-int8_convrot.safetensors", "text_encoder"),
-    "video_vae": ("MiniMax-H3-video_vae.safetensors", "video_vae"),
-    "audio_vae": ("MiniMax-H3-audio_vae.safetensors", "audio_vae"),
+    # The path-only production preflight must validate the AUTO/12GB-safe
+    # contract, not the historical full-INT8 selectors used by old UI tabs.
+    "transformer": ("minimax_h3_fl2va_pruned_int8_convrot.safetensors", "transformer"),
+    "text_encoder": ("qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "text_encoder"),
+    "video_vae": ("minimax_h3_video_vae_fp16.safetensors", "video_vae"),
+    "audio_vae": ("minimax_h3_audio_vae_fp32.safetensors", "audio_vae"),
 }
+
+def _select_installed(preferred, alternatives, kind):
+    roots = [Path(path) for path in components.list_h3_model_root_paths()]
+    for name in (preferred, *alternatives):
+        for root in roots:
+            try:
+                if any(
+                    path.is_file() and ".download" not in path.parts
+                    for path in root.rglob(name)
+                ):
+                    return name
+            except OSError:
+                continue
+    return preferred
+
+selectors["transformer"] = (
+    _select_installed(
+        selectors["transformer"][0],
+        ("MiniMax-H3-FL2VA-int8_convrot.safetensors",),
+        "transformer",
+    ),
+    "transformer",
+)
 out = {"candidates": [str(p) for p in components.list_h3_model_root_paths()]}
 selector_t = selectors["transformer"][0]
 component_hint = _shared._selector_to_component_dirname(
@@ -243,9 +268,20 @@ tokenizer = components.resolve_component(
 processor = components.resolve_component(
     partition_root, ("processor", "text_encoder", "tokenizer"),
     required_files=("preprocessor_config.json",))
+def _component_weight(component, name):
+    candidates = [component / name, component / "source" / name]
+    candidates.extend(path for path in component.rglob(name)
+                      if ".download" not in path.parts)
+    for path in candidates:
+        if path.is_file():
+            return path.resolve()
+    raise FileNotFoundError(f"selected {name!r} is not inside {component}")
+
 weights = {
-    kind: str(components.resolve_weight_file(name, kind, "fl2va"))
-    for kind, (name, _label) in selectors.items()
+    "transformer": str(_component_weight(transformer, selector_t)),
+    "text_encoder": str(_component_weight(text_encoder, selectors["text_encoder"][0])),
+    "video_vae": str(_component_weight(video_vae, selectors["video_vae"][0])),
+    "audio_vae": str(_component_weight(audio_vae, selectors["audio_vae"][0])),
 }
 sidecar_sets = {
     "transformer": ["config.json"],

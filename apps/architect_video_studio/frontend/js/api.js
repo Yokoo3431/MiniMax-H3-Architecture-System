@@ -16,6 +16,7 @@ async function api(method, path, body) {
 
 const get = (p) => api('GET', p);
 const post = (p, b) => api('POST', p, b || {});
+const patch = (p, b) => api('PATCH', p, b || {});
 
 function qs(name) {
   return new URLSearchParams(window.location.search).get(name);

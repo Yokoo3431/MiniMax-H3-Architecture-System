@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from ._paths import FRONTEND_DIR
 from .store import StudioStore
@@ -74,7 +74,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             path = parsed.path
             try:
                 if path.startswith("/api/"):
-                    self._route_api(method, path, self._read_json() if method == "POST" else {})
+                    self._route_api(method, path, self._read_json() if method in ("POST", "PATCH", "DELETE") else {}, parsed.query)
                 else:
                     self._route_static(path)
             except KeyError as exc:
@@ -92,6 +92,12 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
 
         def do_POST(self) -> None:
             self._dispatch("POST")
+
+        def do_PATCH(self) -> None:
+            self._dispatch("PATCH")
+
+        def do_DELETE(self) -> None:
+            self._dispatch("DELETE")
 
         # ------------------------------------------------------------ #
         def _route_static(self, path: str) -> None:
@@ -135,7 +141,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             self._send_file(f, ctype)
 
         # ------------------------------------------------------------ #
-        def _route_api(self, method: str, path: str, body: dict) -> None:
+        def _route_api(self, method: str, path: str, body: dict, query: str = "") -> None:
             if method == "GET" and path == "/api/health":
                 return self._ok({"status": "ok", "mode": self.server.mode})
             if method == "GET" and path == "/api/projects":
@@ -148,7 +154,21 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 ))
             m = re.fullmatch(r"/api/projects/([^/]+)", path)
             if m and method == "GET":
-                return self._ok(apis["project"].get_project(m.group(1)))
+                return self._ok(apis["project"].get_project_detail(m.group(1)))
+            if m and method == "PATCH":
+                return self._ok(apis["project"].update_project(m.group(1), body))
+            if m and method == "DELETE":
+                return self._ok(apis["project"].delete_project(
+                    m.group(1), confirm=bool(body.get("confirm")),
+                    delete_outputs=bool(body.get("delete_outputs"))))
+            m = re.fullmatch(r"/api/projects/([^/]+)/duplicate", path)
+            if m and method == "POST":
+                return self._ok(apis["project"].duplicate_project(
+                    m.group(1), body.get("name")))
+            m = re.fullmatch(r"/api/projects/([^/]+)/rename", path)
+            if m and method == "POST":
+                return self._ok(apis["project"].rename_project(
+                    m.group(1), body.get("name", "")))
             m = re.fullmatch(r"/api/projects/([^/]+)/study", path)
             if m and method == "GET":
                 return self._ok(apis["study"].get_state(m.group(1)))
@@ -162,6 +182,14 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 return self._ok(apis["reference"].list_references(m.group(1)))
             if m and method == "POST":
                 return self._ok(apis["reference"].upload_reference(
+                    m.group(1),
+                    filename=body.get("filename", "reference.png"),
+                    role=body.get("role", "first_frame"),
+                    data_base64=body.get("data_base64"),
+                ))
+            m = re.fullmatch(r"/api/projects/([^/]+)/references/upload-approve", path)
+            if m and method == "POST":
+                return self._ok(apis["reference"].upload_and_approve(
                     m.group(1),
                     filename=body.get("filename", "reference.png"),
                     role=body.get("role", "first_frame"),
@@ -199,7 +227,13 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     return self._ok(apis["prompt"].generate_prompt(
                         m.group(1),
                         workflow=body.get("workflow") or None,
-                        generation_parameters=body.get("generation_parameters")))
+                        generation_parameters=body.get("generation_parameters"),
+                        prompt_engine=body.get("prompt_engine") or "AUTO",
+                        image_consent=bool(body.get("image_consent"))))
+            m = re.fullmatch(r"/api/projects/([^/]+)/estimate", path)
+            if m and method == "POST":
+                return self._ok(apis["job"].estimate(
+                    m.group(1), body.get("generation_parameters")))
             m = re.fullmatch(r"/api/projects/([^/]+)/jobs", path)
             if m and method == "GET":
                 return self._ok(apis["job"].list_jobs(m.group(1)))
@@ -220,6 +254,9 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/jobs/([^/]+)/retry", path)
             if m and method == "POST":
                 return self._ok(apis["job"].retry_job(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/cancel", path)
+            if m and method == "POST":
+                return self._ok(apis["job"].cancel(m.group(1)))
             m = re.fullmatch(r"/api/jobs/([^/]+)/result", path)
             if m and method == "GET":
                 return self._ok(apis["output"].get_result(m.group(1)))
@@ -230,6 +267,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 from ._paths import REPO_ROOT
                 catalog = json.loads((REPO_ROOT / "configs" / "workflow_catalog.json").read_text(encoding="utf-8"))
                 return self._ok(catalog)
+            if path == "/api/capabilities" and method == "GET":
+                return self._ok(apis["system"].capabilities())
             if path == "/api/system/environment" and method == "GET":
                 return self._ok(apis["system"].environment())
             if path == "/api/system/engine-status" and method == "GET":
@@ -244,8 +283,16 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 return self._ok(apis["system"].recheck())
             if path == "/api/system/open-comfyui" and method == "POST":
                 return self._ok(apis["system"].open_comfyui())
+            if path == "/api/system/current-workflow" and method == "GET":
+                values = parse_qs(query)
+                return self._ok(apis["system"].current_workflow(
+                    (values.get("job_id") or [""])[0]))
             if path == "/api/system/restart-comfyui" and method == "POST":
                 return self._ok(apis["system"].restart_comfyui())
+            if path == "/api/system/pick-folder" and method == "POST":
+                return self._ok(apis["system"].pick_folder())
+            if path == "/api/system/open-path" and method == "POST":
+                return self._ok(apis["system"].open_path(body.get("path", "")))
             if path == "/api/system/install-plan" and method == "GET":
                 return self._ok(apis["system"].install_plan())
             if path == "/api/system/install-plan" and method == "POST":
@@ -294,6 +341,11 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                 output_root=str(runtime_paths.output_root),
                 strict_output=True,
                 ffmpeg_path=str(runtime_paths.ffmpeg) if runtime_paths.ffmpeg else None,
+                health_timeout=5.0,
+                submission_timeout=60.0,
+                metadata_timeout=10.0,
+                observation_timeout=15.0,
+                output_timeout=30.0,
             ),
             comfy_input_dir=comfy_input_dir,
             production_binding=True,

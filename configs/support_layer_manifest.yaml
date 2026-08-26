@@ -32,17 +32,32 @@ support_layers:
     production_snapshot:
       source: D-drive validated Native custom_nodes forensic audit
       upstream_commit: d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad
-      source_tree_fingerprint_without_backups: 887ddf87371e703f27c52694d849171e90ef455a52a2ae811aa3b8b934c38ae0
+      source_tree_fingerprint_without_backups: 22167e28e6fb11c016397c9fdbb545a9f0a386fe4cef48d235942d6c3af80f9d
       local_patch:
         path: patches/support_layers/minimax_h3_production_windows.patch
         sha256: 488ab271e68d226a690f3c1dc322a9fc15a0eba7273045e890a871de2c0196bd
         applies_to: d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad
         purpose: Windows large-safetensors mmap crash mitigation, validated sampler/loader settings, and Strategy A BF16 language-static target policy
+      additional_patches:
+        - path: patches/support_layers/minimax_h3_vae_offload_sync.patch
+          sha256: 0362be1be2a4edec06cf220a000a5a65d36e529eaae0c9698e396b68d91a464f
+          purpose: synchronize CUDA before VAE CPU offload on Windows
+        - path: patches/support_layers/minimax_h3_nvfp4_native_loader.patch
+          sha256: 99791c32240c16d60cd79401908f726a6634a45a07d6bc00a37f75d72849795e
+          purpose: route NVFP4 through native Comfy MiniMax H3 loader
       vae_windows_hardening:
         path: patches/support_layers/minimax_h3_vae_offload_sync.patch
         strategy: B
-        status: SOURCE_PATCH_PREPARED_GPU_VALIDATION_REQUIRED
+        status: SOURCE_RECONCILED_CPU_VALIDATED_GPU_VALIDATION_PENDING
+        patch_sha256: 0362be1be2a4edec06cf220a000a5a65d36e529eaae0c9698e396b68d91a464f
         purpose: Synchronize CUDA before the existing recursive VAE CPU release; no model, dtype, or workflow changes.
+      nvfp4_native_loader:
+        path: patches/support_layers/minimax_h3_nvfp4_native_loader.patch
+        strategy: A
+        status: SOURCE_RECONCILED_CPU_VALIDATED_GPU_VALIDATION_PENDING
+        loader: native_comfy_minimax_h3
+        rejects: runninghub_int8_convrot
+        patch_sha256: 99791c32240c16d60cd79401908f726a6634a45a07d6bc00a37f75d72849795e
       strategy_a:
         status: CPU_META_CANDIDATE_IMPLEMENTED
         target_dtype: bfloat16

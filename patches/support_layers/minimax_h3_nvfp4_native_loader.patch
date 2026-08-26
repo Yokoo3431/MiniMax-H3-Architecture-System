@@ -1,0 +1,141 @@
+--- a/minimax_h3_nodes/runtime/qwen_encoder/loading.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/loading.py
+@@ -749,6 +749,22 @@
+     if external_weights is not None and not external_weights.is_file():
+         raise H3ComponentError(
+             f"MiniMax-H3 text_encoder weight file not found: {external_weights}"
+         )
++    # NVFP4 is a native Comfy quantization contract.  It must not enter the
++    # RunningHub INT8/ConvRot streaming loader, which requires quant_meta.json.
++    if (
++        external_weights is not None
++        and "nvfp4" in external_weights.name.casefold()
++    ):
++        from .encoder import load_native_nvfp4_text_encoder
++
++        return load_native_nvfp4_text_encoder(
++            external_weights,
++            load_device=device,
++            offload_device=offload_device,
++            component_path=text_encoder_path,
++        )
+     if not text_encoder_path:  # 未显式指定时自动优先 int8 量化目录（26GB vs BF16 62GB）
+         auto = model_root_path(model_root) / INT8_TE_DIRNAME
+         if auto.is_dir() and (auto / "config.json").is_file():
+--- a/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
++++ b/minimax_h3_nodes/runtime/qwen_encoder/encoder.py
+@@ -1399,1 +1399,100 @@
+ __all__ = [n for n in list(globals()) if not n.startswith("__")]
++
++
++class NativeComfyNVFP4TextEncoder:
++    """Adapt native Comfy MiniMax H3 CLIP to the RunningHub FL2VA contract.
++
++    The native CLIP loader owns NVFP4 quantization and ModelPatcher residency.
++    This adapter only translates the resulting conditioning tuple into the
++    mapping expected by the existing RunningHub FL2VA nodes.
++    """
++
++    def __init__(self, clip, *, component_path, load_device, offload_device):
++        self.clip = clip
++        self.component_path = component_path
++        self.load_device = load_device
++        self.offload_device = offload_device
++        self._compute_device = None
++        self._inference_active = False
++        self.quantized = True
++        self.loader_contract = "native_comfy_minimax_h3:nvfp4_awq"
++
++    @property
++    def device(self):
++        return self._compute_device or self.offload_device
++
++    def load_for_inference(self):
++        # encode_from_tokens_scheduled performs the actual ModelPatcher load.
++        self._compute_device = self.load_device
++        self._inference_active = True
++        return self
++
++    def encode_fl2va_conditioning(self, prompt, images):
++        if not isinstance(prompt, str) or not prompt:
++            raise H3ComponentError("MiniMax-H3 prompt must be a non-empty string")
++        if not isinstance(images, (list, tuple)) or len(images) not in (1, 2):
++            raise H3ComponentError("FL2VA requires one or two keyframes")
++        tokens = self.clip.tokenize(prompt, images=list(images))
++        encoded = self.clip.encode_from_tokens_scheduled(
++            tokens, show_pbar=False
++        )
++        if not encoded or not isinstance(encoded[0], (list, tuple)):
++            raise H3ComponentError("Native Comfy H3 CLIP returned no conditioning")
++        hidden, metadata = encoded[0][0], encoded[0][1]
++        if not hasattr(hidden, "shape"):
++            raise H3ComponentError("Native Comfy H3 conditioning is not a tensor")
++        if len(hidden.shape) == 3 and int(hidden.shape[0]) == 1:
++            hidden = hidden[0]
++        tags = (metadata or {}).get("minimax_token_tags")
++        if tags is None:
++            raise H3ComponentError(
++                "Native Comfy H3 CLIP did not return minimax_token_tags"
++            )
++        if len(tags.shape) > 1 and int(tags.shape[0]) == 1:
++            tags = tags[0]
++        return {
++            "prompt": prompt,
++            "prompt_embeds": hidden,
++            "hidden_states": hidden,
++            "text_len": int(hidden.shape[0]),
++            "text_token_tags": tags,
++            "cfg_distilled": True,
++            "presentation": "native_comfy_minimax_h3_fl2va_v1",
++            "loader_contract": self.loader_contract,
++        }
++
++    def offload_after_inference(self):
++        import comfy.model_management as model_management
++
++        try:
++            model_management.unload_model_and_clones(self.clip.patcher)
++        finally:
++            self._compute_device = None
++            self._inference_active = False
++
++
++def load_native_nvfp4_text_encoder(
++    external_weights,
++    *,
++    load_device="auto",
++    offload_device="cpu",
++    component_path=None,
++):
++    """Load NVFP4 through Comfy's verified native MiniMax H3 CLIP path."""
++    import comfy.sd
++    import comfy.model_management as model_management
++    import folder_paths
++
++    resolved_load_device = model_management.get_torch_device()
++    if str(load_device).casefold() not in ("", "auto"):
++        import torch
++
++        resolved_load_device = torch.device(load_device)
++    import torch
++
++    options = {
++        "load_device": resolved_load_device,
++        "offload_device": torch.device(offload_device),
++        "initial_device": torch.device(offload_device),
++    }
++    clip = comfy.sd.load_clip(
++        [str(external_weights)],
++        embedding_directory=folder_paths.get_folder_paths("embeddings"),
++        clip_type=comfy.sd.CLIPType.MINIMAX,
++        model_options=options,
++    )
++    return NativeComfyNVFP4TextEncoder(
++        clip,
++        component_path=component_path or external_weights,
++        load_device=resolved_load_device,
++        offload_device=torch.device(offload_device),
++    )
++
++
++__all__ = [n for n in list(globals()) if not n.startswith("__")]

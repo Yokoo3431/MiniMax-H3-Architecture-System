@@ -43,9 +43,20 @@ class ReferenceAPI:
         sha256 = None
         if data_base64:
             raw = base64.b64decode(data_base64)
+            sha256 = hashlib.sha256(raw).hexdigest().upper()
+
+            # Reuse an already approved asset with the same content hash.  A
+            # second pending upload is kept as a separate review record so
+            # the approval workflow remains explicit and backwards compatible.
+            existing = next((item for item in self.store.load_references(project_id).values()
+                             if item.get("sha256") == sha256
+                             and item.get("role") == role
+                             and item.get("state") == "APPROVED"), None)
+            if existing is not None:
+                return self._public_ref(existing)
+
             stored_path = self.store.input_dir(project_id) / filename
             stored_path.write_bytes(raw)
-            sha256 = hashlib.sha256(raw).hexdigest().upper()
 
         quality_card = self._assess_quality(stored_path if stored_path else None,
                                             filename=filename)
@@ -92,6 +103,30 @@ class ReferenceAPI:
                     {"filename": filename, "role": role, "reference_id": ref_id})
         return self._public_ref(ref)
 
+    def upload_and_approve(self, project_id: str, filename: str,
+                           role: str = "first_frame",
+                           data_base64: Optional[str] = None) -> Dict[str, Any]:
+        """Atomically expose the Studio's normal upload-and-approve action."""
+        ref = self.upload_reference(project_id, filename, role, data_base64)
+        if ref["state"] == "PENDING":
+            ref = self.approve_reference(project_id, ref["id"])
+        else:
+            # A deduplicated approved asset is still an explicit selection for
+            # this Study; do not infer it from historical approved records.
+            project = self.store.load_project(project_id)
+            project["current_reference_asset_id"] = ref["id"]
+            if project["state"] in {"CREATED", "REFERENCE_PENDING", "REFERENCE_REJECTED",
+                                     "GPU_FAILED", "QUALITY_FAILED", "COMPLETED",
+                                     "PROMPT_REVIEW", "PROMPT_NEEDS_CONFIRMATION",
+                                     "USER_CONFIRM"}:
+                project["state"] = "REFERENCE_APPROVED"
+            self.store.save_project(project)
+            self.store.clear_prompt(project_id)
+        from .project_api import ProjectAPI
+        detail = ProjectAPI(self.store).get_project_detail(project_id)
+        return {"reference": ref, "project": detail["project"],
+                "study": detail["study"], "current_reference_asset_id": ref["id"]}
+
     def approve_reference(self, project_id: str, reference_id: str) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
         refs = self.store.load_references(project_id)
@@ -103,6 +138,9 @@ class ReferenceAPI:
         ref["state"] = "APPROVED"
         ref["approved_at"] = self.store.timestamp()
         self.store.save_references(project_id, refs)
+        # The current reference is an explicit Study selection, not an
+        # inference over every historical APPROVED record.
+        project["current_reference_asset_id"] = reference_id
 
         if project["state"] in ("REFERENCE_PENDING", "REFERENCE_REJECTED"):
             machine = ProjectStateMachine(project["state"])

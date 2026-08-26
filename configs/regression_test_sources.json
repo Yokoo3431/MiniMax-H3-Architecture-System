@@ -108,6 +108,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_comfyui_submission_reconciliation.py",
+      "tracked_status": "untracked",
+      "sha256": "AB4FFA0C3702479C7242E6F4227A1A56D34A8695BFDE435CC4ADC65C4A1023D0",
+      "discovered_test_count": 5,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_comparison_engine.py",
       "tracked_status": "tracked",
       "sha256": "613C2C621D14D634B4D53CE93FB39932132BF50CB7E618007E119C82582ED226",
@@ -292,7 +299,7 @@
     {
       "path": "tests/test_patch26b_ui_prototype.py",
       "tracked_status": "tracked",
-      "sha256": "5BBBAE0210DA5496E1386E6F87C6638C925E59E2ED6EB95BF72FAD6BB0696EC3",
+      "sha256": "0CBC09D297D057E8093D648BCA4D9C8039125803AAC685BF80A9DD9F2DBF172D",
       "discovered_test_count": 20,
       "classification": "CORE_REGRESSION"
     },
@@ -334,7 +341,7 @@
     {
       "path": "tests/test_patch27d_ui_runtime_binding.py",
       "tracked_status": "tracked",
-      "sha256": "5B65F6776F40AD646CD2DC509906A0015C6A6299D4162C4FB8802C343C2BE5A4",
+      "sha256": "9908E1FA0134B3816A0B2ACF373F1D3A87E3714A8B181C01C152C51AD9A974F6",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
@@ -558,8 +565,8 @@
     {
       "path": "tests/test_product_hardening.py",
       "tracked_status": "untracked",
-      "sha256": "520B4C8F30215983959311D09F5E5A14D8E2BA2C4986BFCC782914BC10E26717",
-      "discovered_test_count": 5,
+      "sha256": "5117391EAB3F0DAC0045B0F5854808BC295ADE0AFAAE24BC42B7EA0BAF1DCA87",
+      "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -714,6 +721,27 @@
       "tracked_status": "tracked",
       "sha256": "B002AEC8DFED964EEADC230B33B2397C03F573A9B148388C603A496C921EFC2A",
       "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_product_lifecycle_parity.py",
+      "tracked_status": "untracked",
+      "sha256": "2506100C9F949F83EE2201126A1029FCC03AED39C4EA04EE91BA89B353EBCE8A",
+      "discovered_test_count": 5,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_owner_visible_product_truth.py",
+      "tracked_status": "untracked",
+      "sha256": "C31C205C283064133AD6868C36E4D23B0AA25D6A70358DBA1CCFE50D56B6C5A6",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_universal_h3_prompt_engine.py",
+      "tracked_status": "untracked",
+      "sha256": "1D400AF94EB2C200678BE008E3D160E6F88F7A7FE869891ED7F835F4F096C73B",
+      "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     }
   ],

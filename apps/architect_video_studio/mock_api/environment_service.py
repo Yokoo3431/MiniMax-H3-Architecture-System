@@ -203,11 +203,16 @@ class EnvironmentService:
         skill = self._skill_status()
         workflows = self._workflow_status()
         probe = dict(system["environment_probe"])
+        h3_provenance = support["h3"].get("provenance") or {}
         probe.update({
             "comfy_runtime_present": bool(runtime["present"]),
+            # Upstream provenance is deliberately independent from the
+            # patched source-tree/runtime fingerprint.  A valid upstream
+            # commit must not be reported as WRONG_REVISION merely because
+            # the managed Runtime is a patched production tree.
             "h3_upstream_ready": bool(
-                support["h3"].get("provenance", {}).get("commit")
-                or support["h3"].get("ready")
+                h3_provenance.get("upstream_ready",
+                                  h3_provenance.get("commit") or support["h3"].get("ready"))
             ),
             "h3_support_layer_ready": bool(support["h3"]["ready"]),
             "models_ready": bool(models["ready"] == models["count"] and
@@ -241,7 +246,9 @@ class EnvironmentService:
             "support_dependencies_ready": bool(support["dependencies"]["ready"]),
             "skill_pinned_ready": skill["generation_allowed"],
             "workflows_5of5": workflows["ready"] == 5,
-            "free_commit_ok": system["free_commit"] >= 30,
+            "free_commit_ok": system.get("free_commit_policy", self._free_commit_policy(
+                system["free_commit"], system.get("deployment_profile")
+            ))["status"] != "BLOCK",
             "contract_valid": self._contract_valid(),
         }
 
@@ -405,6 +412,7 @@ class EnvironmentService:
         }
         policy = environment_probe["hardware_policy"]
         gpu_ready = bool(environment_probe["gpu_detected"] and environment_probe["driver_detected"] and environment_probe["torch_cuda_available"])
+        deployment_profile = os.environ.get("H3_DEPLOYMENT_PROFILE", "AUTO")
         return {
             "os": platform.system(),
             "gpu_name": hardware["name"] or "未检测到 NVIDIA GPU",
@@ -416,6 +424,11 @@ class EnvironmentService:
             "driver": driver,
             "runtime_cuda": runtime_cuda,
             "hardware_policy": policy,
+            "deployment_profile": deployment_profile,
+            "profile_hardware_source": os.environ.get("H3_PROFILE_HARDWARE_SOURCE", ""),
+            "profile_gpu_vram_gb": os.environ.get("H3_GPU_VRAM_GB", ""),
+            "profile_system_ram_gb": os.environ.get("H3_SYSTEM_RAM_GB", ""),
+            "free_commit_policy": self._free_commit_policy(float(mem or 0.0), deployment_profile),
             "environment_probe": environment_probe,
             "memory_gb": self.overrides.get("ram_gb"),
             "free_commit": float(mem or 0.0),
@@ -568,6 +581,10 @@ class EnvironmentService:
             h3_entry = manifest["support_layers"]["minimax_h3_nodes"]
             vhs_entry = manifest["support_layers"]["video_helper_suite"]
             release_h3 = release.get("h3") or {}
+            # The release runtime manifest is the sole current expected
+            # fingerprint source.  The support manifest remains a pinned
+            # installation fallback for older installers, but it must not
+            # override the current RC contract.
             expected_h3 = (release_h3.get("managed_runtime_fingerprint") or
                            h3_entry["production_snapshot"]["source_tree_fingerprint_without_backups"])
             expected_vhs = vhs_entry["source_tree_fingerprint"]["value"]
@@ -578,19 +595,49 @@ class EnvironmentService:
             lock_h3 = lock.get("h3") or {}
             expected_commit = release_h3.get("upstream_commit") or h3_entry.get("commit")
             expected_patch = release_h3.get("project_patch_sha256") or h3_entry.get("production_snapshot", {}).get("local_patch", {}).get("sha256")
-            lock_matches = bool(
-                lock_h3.get("commit") == expected_commit
-                and lock_h3.get("project_patch_sha256") == expected_patch
-                and lock_h3.get("source_tree_fingerprint") == expected_h3
+            actual_commit = str(lock_h3.get("commit") or "")
+            upstream_ready = bool(actual_commit and actual_commit == expected_commit)
+            fingerprint_ready = bool(actual_h3 and actual_h3 == expected_h3)
+            project_patch_ready = bool(
+                lock_h3.get("project_patch_sha256") == expected_patch
             )
-            h3_provenance_ready = actual_h3 == expected_h3 and lock_matches
+            runtime_unification = lock_h3.get("runtime_unification") or {}
+            patch_specs = {
+                "vae_safe_offload": (
+                    (release_h3.get("vae_windows_hardening") or {}).get("patch_sha256"),
+                    runtime_unification.get("vae_offload_sync_patch_sha256"),
+                ),
+                "nvfp4_native_loader": (
+                    (release_h3.get("nvfp4_native_loader") or {}).get("patch_sha256"),
+                    runtime_unification.get("nvfp4_patch_sha256"),
+                ),
+            }
+            patch_status = {}
+            for name, (expected, actual) in patch_specs.items():
+                patch_status[name] = {
+                    "status": "READY" if expected and actual == expected else "MISMATCH",
+                    "expected_sha256": expected or "",
+                    "actual_sha256": actual or "",
+                }
+            patches_ready = all(item["status"] == "READY" for item in patch_status.values())
+            lock_matches = bool(
+                upstream_ready and project_patch_ready and fingerprint_ready and patches_ready
+            )
+            h3_provenance_ready = fingerprint_ready and lock_matches
             return {
                 "h3": {"status": "READY" if h3_provenance_ready else "REVISION_MISMATCH",
                         "expected_fingerprint": expected_h3, "actual_fingerprint": actual_h3,
-                        "commit": lock_h3.get("commit") or h3_entry.get("commit"),
+                        "managed_runtime_fingerprint_ready": fingerprint_ready,
+                        "commit": actual_commit or h3_entry.get("commit"),
+                        "upstream_commit": actual_commit,
+                        "upstream_ready": upstream_ready,
+                        "upstream_status": "READY" if upstream_ready else ("MISSING" if not actual_commit else "WRONG_REVISION"),
                         "expected_commit": expected_commit,
                         "project_patch_sha256": lock_h3.get("project_patch_sha256") or expected_patch,
                         "expected_project_patch_sha256": expected_patch,
+                        "project_patch_ready": project_patch_ready,
+                        "patches": patch_status,
+                        "patches_ready": patches_ready,
                         "lock_file": str(lock_path), "lock_matches_release": lock_matches},
                 "video": {"status": "READY" if actual_vhs == expected_vhs else "REVISION_MISMATCH",
                           "expected_fingerprint": expected_vhs, "actual_fingerprint": actual_vhs,
@@ -760,8 +807,31 @@ class EnvironmentService:
                 return False
         return True
 
+    @staticmethod
+    def _free_commit_policy(free_commit: float, profile: Optional[str]) -> Dict[str, Any]:
+        """Classify commit headroom without reviving the old INT8 gate.
+
+        Compatibility uses the proven NVFP4/pruned-DiT path.  A low but
+        measured headroom is a warning for that profile, not an automatic
+        environment BLOCK.  A non-positive value is still a real probe
+        failure and remains a block-level condition.
+        """
+        value = float(free_commit or 0.0)
+        normalized = str(profile or "AUTO").upper()
+        if value <= 0:
+            return {"status": "BLOCK", "profile": normalized, "free_commit_gb": value,
+                    "reason": "Free Commit could not be measured or is exhausted."}
+        warning_threshold = 30.0 if normalized != "COMPATIBILITY" else 20.0
+        return {
+            "status": "READY" if value >= warning_threshold else "WARNING",
+            "profile": normalized,
+            "free_commit_gb": value,
+            "warning_threshold_gb": warning_threshold,
+            "reason": "Compatibility profile uses the validated NVFP4/pruned-DiT memory contract."
+        }
+
     def _overall(self, system, runtime, models, support, skill, gates) -> str:
-        if not system["gpu_ready"] or system["free_commit"] < 30:
+        if not system["gpu_ready"]:
             return "BLOCK"
         if not (gates["native_root_configured"] and gates["comfyui_present"]
                 and gates["models_4of4"] and gates["pread_present"]
@@ -863,13 +933,108 @@ class EnvironmentService:
         bat = launcher_root.parent / "Open_Native_ComfyUI.bat" if launcher_root else None
         if bat is None or not bat.is_file():
             raise ValueError("Open_Native_ComfyUI.bat not found")
+        handoff = self.current_workflow()
+        query = "?h3_refresh=" + str(int(datetime.now(timezone.utc).timestamp() * 1000))
+        if handoff.get("job_id"):
+            query += "&h3_job=" + str(handoff["job_id"])
+        if handoff.get("snapshot_id"):
+            query += "&h3_snapshot=" + str(handoff["snapshot_id"])
         return {
             "advanced_entry": str(bat),
-            # Force a fresh document request after a model-path repair.  This
-            # does not clear user workflows or local settings; it only avoids
-            # reusing a stale ComfyUI document/navigation cache.
-            "url": "http://127.0.0.1:8189/?h3_refresh=" + str(int(datetime.now(timezone.utc).timestamp() * 1000)),
+            # The desktop shell owns an app-local WebView profile and loads
+            # the current Studio workflow after navigation.  The query token
+            # is a handoff identity, not a browser-cache workaround.
+            "url": "http://127.0.0.1:8189/" + query,
+            "current_workflow": {
+                "job_id": handoff.get("job_id"),
+                "workflow_id": handoff.get("workflow_id"),
+                "file_name": handoff.get("file_name"),
+                "snapshot_id": handoff.get("snapshot_id"),
+                "workflow_hash": handoff.get("workflow_hash"),
+            },
             "note": "Advanced / Developer only; the managed launcher owns this service",
+        }
+
+    def current_workflow(self, job_id: str = "") -> Dict[str, Any]:
+        """Return the current Job workflow for an explicit ComfyUI handoff.
+
+        ComfyUI localStorage and open tabs are deliberately not consulted.
+        The frozen UI workflow is copied in memory and its user-visible
+        widgets are updated from the selected Job/profile before the desktop
+        shell asks ComfyUI to load it.
+        """
+        selected_project = None
+        selected_job = None
+        if job_id:
+            selected_project, selected_job = self.store.find_job(job_id)
+        else:
+            candidates = []
+            for project in self.store.list_projects():
+                for job in self.store.load_jobs(project["id"]).values():
+                    candidates.append((str(job.get("created_at", "")), project["id"], job))
+            if candidates:
+                _, selected_project, selected_job = sorted(candidates, reverse=True)[0]
+        if not selected_job:
+            return {"job_id": "", "workflow_id": "", "file_name": "", "workflow": None}
+
+        persisted = selected_job.get("workflow_snapshot") or {}
+        if isinstance(persisted.get("workflow"), dict):
+            # A Job snapshot is authoritative.  It is immutable for this
+            # diagnostic handoff and cannot be replaced by Comfy localStorage.
+            return {
+                "job_id": str(selected_job.get("id")),
+                "project_id": selected_project,
+                "workflow_id": str(persisted.get("workflow_id") or selected_job.get("workflow") or ""),
+                "file_name": str(persisted.get("file_name") or ""),
+                "workflow": persisted["workflow"],
+                "snapshot_id": str(persisted.get("snapshot_id") or selected_job.get("workflow_snapshot_id") or ""),
+                "workflow_hash": str(persisted.get("workflow_hash") or selected_job.get("workflow_hash") or ""),
+                "asset_hash": str(persisted.get("asset_hash") or selected_job.get("asset_hash") or ""),
+                "prompt_hash": str(persisted.get("prompt_hash") or selected_job.get("prompt_hash") or ""),
+            }
+
+        workflow_id = str(selected_job.get("workflow") or "")
+        workflow_path = REPO_ROOT / "workflows" / f"{workflow_id}.json"
+        if not workflow_path.is_file():
+            raise ValueError(f"当前任务 workflow 不存在：{workflow_id}")
+        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+
+        # Model selection is the same profile contract used by the real API
+        # payload.  No model is loaded and no file is copied here.
+        from runtime.adapters.production_workflow_binding import production_model_contract
+        models = production_model_contract(
+            os.environ.get("H3_DEPLOYMENT_PROFILE", "COMPATIBILITY"),
+            gpu_vram_gb=os.environ.get("H3_GPU_VRAM_GB"),
+            system_ram_gb=os.environ.get("H3_SYSTEM_RAM_GB"),
+        )
+        params = selected_job.get("generation_parameters") or {}
+        refs = [r for r in self.store.load_references(selected_project).values()
+                if r.get("state") == "APPROVED"]
+        reference_name = str((refs[0] if refs else {}).get("filename") or "reference.png")
+        for node in workflow.get("nodes", []):
+            node_type = str(node.get("type") or "")
+            widgets = list(node.get("widgets_values") or [])
+            if node_type == "LoadImage" and widgets:
+                widgets[0] = Path(reference_name).name
+            elif node_type == "UNETLoader" and widgets:
+                widgets[0] = models["dit"]
+            elif node_type == "CLIPLoader" and widgets:
+                widgets[0] = models["text_encoder"]
+            elif node_type == "VAELoader" and widgets:
+                widgets[0] = models["video_vae"]
+            elif node_type == "EmptyLatentImage" and len(widgets) >= 2:
+                resolution = str(params.get("resolution") or "").split("x")
+                if len(resolution) == 2:
+                    widgets[0], widgets[1] = int(resolution[0]), int(resolution[1])
+            elif node_type == "KSampler" and widgets and params.get("seed") is not None:
+                widgets[0] = int(params["seed"])
+            node["widgets_values"] = widgets
+        return {
+            "job_id": str(selected_job.get("id")),
+            "project_id": selected_project,
+            "workflow_id": workflow_id,
+            "file_name": workflow_path.name,
+            "workflow": workflow,
         }
 
     def restart_comfyui(self) -> Dict[str, Any]:

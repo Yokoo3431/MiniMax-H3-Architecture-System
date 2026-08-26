@@ -42,7 +42,18 @@
       "source": "https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/transformer/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
       "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
       "required": true,
-      "task_association": ["T2VA", "FL2VA", "Ref2VA"]
+      "task_association": ["T2VA", "FL2VA", "Ref2VA"],
+      "profiles": ["COMPATIBILITY", "BALANCED"],
+      "alternatives": [
+        {
+          "filename": "MiniMax-H3-FL2VA-int8_convrot.safetensors",
+          "format": "int8_convrot",
+          "expected_size": 33982530325,
+          "profiles": ["QUALITY"],
+          "runtime_compatibility": "verified historical full-INT8 path; not for 12GB compatibility mode",
+          "memory_profile": "quality"
+        }
+      ]
     },
     "text_encoder": {
       "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
@@ -52,7 +63,18 @@
       "source": "https://huggingface.co/MiniMaxAI/MiniMax-H3/resolve/42ed227ee7df40d41602854ae760620d6eb651fe/text_encoder/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
       "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
       "required": true,
-      "task_association": ["T2VA", "FL2VA", "Ref2VA"]
+      "task_association": ["T2VA", "FL2VA", "Ref2VA"],
+      "profiles": ["COMPATIBILITY", "BALANCED"],
+      "alternatives": [
+        {
+          "filename": "qwen3-vl-32b-int8_convrot.safetensors",
+          "format": "int8_convrot",
+          "expected_size": 27141373256,
+          "profiles": ["QUALITY"],
+          "runtime_compatibility": "verified historical full-INT8 path; requires a high-memory host",
+          "memory_profile": "quality"
+        }
+      ]
     },
     "video_vae": {
       "filename": "minimax_h3_video_vae_fp16.safetensors",

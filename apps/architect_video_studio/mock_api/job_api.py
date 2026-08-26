@@ -15,6 +15,10 @@ from __future__ import annotations
 import threading
 import time
 import shutil
+import hashlib
+import json
+import os
+import inspect
 from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
 
@@ -24,11 +28,21 @@ from ..state_machine.machine import (
 )
 from .store import StudioStore
 from .study_state import build_study_state
+from ._paths import REPO_ROOT
 from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
-from runtime.adapters.comfyui_client import ComfyUIOfflineError
+from runtime.adapters.comfyui_client import (
+    ComfyUICommunicationTimeout,
+    ComfyUIOfflineError,
+)
 from runtime.product_hardening import unique_comfy_filename
 from runtime.product_hardening import estimate_eta
 from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.generation_capabilities import (
+    estimate_generation_range,
+    lifecycle_state,
+    validate_workflow_parameters,
+    weighted_progress,
+)
 from runtime.workflow_motion import WorkflowParameterError, normalize_camera_motion
 
 # rough expected real-run duration used to derive UI stages while executing
@@ -107,10 +121,14 @@ class JobAPI:
         if self.runtime_adapter is not None and self.runtime_paths is not None:
             self.runtime_paths.validate_for_job()
 
-        approved = [r for r in self.store.load_references(project_id).values()
-                    if r["state"] == "APPROVED"]
-        if not approved:
-            raise ValueError("Reference Approval Gate: no approved reference")
+        refs_by_id = self.store.load_references(project_id)
+        current_reference_id = project.get("current_reference_asset_id")
+        current_reference = refs_by_id.get(current_reference_id)
+        if not current_reference_id or not current_reference:
+            raise ValueError("REFERENCE_REQUIRED: 请先选择当前参考图")
+        if current_reference.get("state") != "APPROVED":
+            raise ValueError("REFERENCE_CONFIGURATION_ERROR: 当前参考图尚未批准")
+        approved = [current_reference]
 
         prompt = self.store.load_prompt(project_id)
         if prompt is None:
@@ -133,7 +151,8 @@ class JobAPI:
                 raise ValueError(f"MODEL_PATH_ERROR: 模型路径或工作流绑定未通过预检。{exc}") from exc
 
         try:
-            params = normalize_generation_parameters(generation_parameters, seed=int(seed))
+            params = validate_workflow_parameters(
+                prompt["workflow"], generation_parameters, seed=int(seed))
         except ValueError as exc:
             raise ValueError(f"参数不符合 H3 生成契约: {exc}") from exc
 
@@ -163,7 +182,19 @@ class JobAPI:
             "step": None,
             "total_steps": None,
             "eta_seconds": None,
+            "prompt_id": None,
+            "submission_state": "NOT_STARTED",
+            "execution_workflow_sha256": None,
+            "lifecycle_state": "CREATED",
+            "progress_message": "准备参考图",
+            "runtime_output_path": "",
+            "final_output_path": "",
         }
+        history = self.store.load_jobs(project_id).values()
+        job["estimated_time"] = estimate_generation_range(
+            history, workflow_id=job["workflow"], duration=params["duration"],
+            fps=params["fps"], resolution=params["resolution"],
+            steps=params["steps"], cold_start=True)
         jobs = self.store.load_jobs(project_id)
         jobs[job_id] = job
         self.store.save_jobs(project_id, jobs)
@@ -187,6 +218,8 @@ class JobAPI:
                                           params, normalized_motion)
             self.runtime_adapter.progress_callback = lambda event: self._record_progress(
                 project_id, job_id, event)
+            self.runtime_adapter.submission_callback = lambda info: self._record_submission(
+                project_id, job_id, info)
             thread = threading.Thread(
                 target=self._run_real_job,
                 args=(project_id, job_id, request),
@@ -196,12 +229,47 @@ class JobAPI:
             thread.start()
         return self.get_job(job_id)
 
+    def _build_workflow_snapshot(self, request: Any,
+                                 approved_refs: List[dict],
+                                 execution_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Persist the exact API graph used for the real Comfy submission."""
+        from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
+        workflow_id = str(request.workflow_id)
+        workflow = json.loads(json.dumps(execution_payload, ensure_ascii=False))
+        workflow_hash = canonical_workflow_sha256(workflow)
+        asset_hash = hashlib.sha256("|".join(
+            str(item.get("sha256") or item.get("id") or "")
+            for item in approved_refs
+        ).encode("utf-8")).hexdigest()
+        prompt_hash = str((request.prompt_payload or {}).get("prompt_hash") or "")
+        snapshot_id = hashlib.sha256(
+            f"{workflow_hash}:{asset_hash}:{prompt_hash}".encode("utf-8")
+        ).hexdigest()[:24]
+        return {
+            "snapshot_id": snapshot_id,
+            "workflow_id": workflow_id,
+            "file_name": f"golden/{workflow_id}.json",
+            "workflow": workflow,
+            "execution_payload": workflow,
+            "execution_workflow_sha256": workflow_hash,
+            "workflow_hash": workflow_hash,
+            "asset_hash": asset_hash,
+            "prompt_hash": prompt_hash,
+            "reference_filenames": [
+                str(item.get("path_or_ref") or item.get("filename") or "")
+                for item in approved_refs
+            ],
+        }
+
     # ------------------------------------------------------------------ #
     def get_job(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
         if job.get("runtime") == "mock" and not self.allow_mock_jobs:
             return _decorate_job(_mock_runtime_blocked_job(job))
         if job.get("runtime") == "native":
+            if self._should_reconcile(job):
+                self.reconcile_job(job_id, start_observer=True)
+                project_id, job = self.store.find_job(job_id)
             if job["state"] in ("COMPLETED", "FAILED", "GPU_FAILED", "CANCELLED"):
                 if job["state"] == "COMPLETED" and not _real_output_exists(
                         self.store, project_id, job):
@@ -220,8 +288,12 @@ class JobAPI:
     def get_job_detail(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
         project = self.store.load_project(project_id)
-        refs = [r for r in self.store.load_references(project_id).values()
-                if r.get("state") == "APPROVED"]
+        refs_by_id = self.store.load_references(project_id)
+        current_reference = refs_by_id.get(project.get("current_reference_asset_id"))
+        # Job detail mirrors execution: historical approved references are
+        # history only; the current Study reference is the sole active input.
+        refs = ([current_reference] if current_reference
+                and current_reference.get("state") == "APPROVED" else [])
         prompt = self.store.load_prompt(project_id) or {}
         detail = (_decorate_job(_mock_runtime_blocked_job(job))
                   if job.get("runtime") == "mock" and not self.allow_mock_jobs
@@ -246,12 +318,22 @@ class JobAPI:
                 "workflow": detail.get("workflow", ""),
                 "output_path": detail.get("output_path", ""),
                 "source_output_path": detail.get("source_output_path", ""),
+                "runtime_output_path": detail.get("runtime_output_path", ""),
+                "final_output_path": detail.get("final_output_path", ""),
             },
         })
         return detail
 
     def retry_job(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
+        if job.get("runtime") == "native" and self._should_reconcile(job):
+            self.reconcile_job(job_id, start_observer=True)
+            project_id, job = self.store.find_job(job_id)
+            if job.get("state") in ("PREPARING", "LOADING_MODEL", "SAMPLING",
+                                      "DECODING", "EXPORTING", "RECONCILING"):
+                raise ValueError("原任务仍在 ComfyUI 中运行，已重新连接，不会重复提交")
+            if job.get("state") == "COMPLETED":
+                return _decorate_job(job)
         effective_state = job.get("state")
         if (job.get("runtime") == "mock" and not self.allow_mock_jobs
                 and effective_state == "COMPLETED"):
@@ -272,6 +354,199 @@ class JobAPI:
         for job in self.store.load_jobs(project_id).values():
             out.append(self.get_job(job["id"]))
         return sorted(out, key=lambda j: j["created_at"], reverse=True)
+
+    def estimate(self, project_id: str,
+                 generation_parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        project = self.store.load_project(project_id)
+        prompt = self.store.load_prompt(project_id) or {}
+        intent = self.store.load_intent(project_id) or {}
+        workflow = str(prompt.get("workflow") or intent.get("selected_workflow")
+                       or "05_Slow_Walkthrough")
+        params = validate_workflow_parameters(workflow, generation_parameters)
+        return estimate_generation_range(
+            self.store.load_jobs(project_id).values(), workflow_id=workflow,
+            duration=params["duration"], fps=params["fps"],
+            resolution=params["resolution"], steps=params["steps"],
+            cold_start=not any(j.get("state") in ("COMPLETED", "SUCCEEDED")
+                               for j in self.store.load_jobs(project_id).values())) | {
+            "workflow": workflow, "parameters": params,
+            "project_id": project.get("id"),
+        }
+
+    def _should_reconcile(self, job: Dict[str, Any]) -> bool:
+        """Identify accepted/unknown work, including legacy false failures."""
+        if job.get("runtime") != "native" or job.get("cancelled"):
+            return False
+        if job.get("submission_state") in ("SUBMISSION_UNKNOWN", "RECONCILING"):
+            return True
+        if job.get("prompt_id") and job.get("state") not in (
+                "COMPLETED", "CANCELLED"):
+            return True
+        if job.get("state") not in ("FAILED", "GPU_FAILED"):
+            return False
+        code = str(job.get("failure_code") or job.get("error_category") or "")
+        text = str(job.get("technical_details") or job.get("failure_reason") or "").lower()
+        return code in ("COMFYUI_CRASHED", "COMFY_COMMUNICATION_TIMEOUT") and (
+            "timed out" in text or "timeout" in text or "acknowledgement" in text
+            or "offline" in text)
+
+    def _record_submission(self, project_id: str, job_id: str,
+                           info: Dict[str, Any]) -> None:
+        project_id_found, job = self.store.find_job(job_id)
+        if project_id_found != project_id:
+            return
+        job["prompt_id"] = info.get("prompt_id")
+        job["submission_state"] = "ACKNOWLEDGED"
+        job["failure_code"] = ""
+        job["error_category"] = ""
+        job["failure_reason"] = ""
+        job["technical_details"] = ""
+        if job.get("state") not in ("CANCELLED", "COMPLETED"):
+            job["state"] = "LOADING_MODEL"
+            job["current_stage"] = "加载 H3 模型"
+            job["lifecycle_state"] = "QUEUED"
+            if "LOADING_MODEL" not in job.get("stages", []):
+                job.setdefault("stages", []).append("LOADING_MODEL")
+        self._save_job(project_id, job)
+
+    def reconcile_job(self, job_id: str, *, start_observer: bool = False) -> Dict[str, Any]:
+        """Reconcile local state with queue/history without submitting again."""
+        project_id, job = self.store.find_job(job_id)
+        client = getattr(self.runtime_adapter, "client", None)
+        reconcile = getattr(client, "reconcile_prompt", None)
+        if client is None or reconcile is None:
+            return job
+        job["submission_state"] = "RECONCILING"
+        self._save_job(project_id, job)
+        try:
+            found = reconcile(
+                prompt_id=job.get("prompt_id"),
+                avs_job_id=job.get("id"),
+                execution_workflow_sha256=job.get("execution_workflow_sha256"),
+                legacy_seed=job.get("seed"),
+            )
+        except ComfyUICommunicationTimeout as exc:
+            job["submission_state"] = "SUBMISSION_UNKNOWN"
+            job["failure_code"] = "COMFY_COMMUNICATION_TIMEOUT"
+            job["error_category"] = "COMFY_COMMUNICATION_TIMEOUT"
+            job["user_message"] = "生成中 · 正在同步任务状态"
+            job["technical_details"] = f"{type(exc).__name__}: {exc}"
+            self._save_job(project_id, job)
+            return job
+        except ComfyUIOfflineError as exc:
+            # A genuinely offline engine is not a lost acknowledgement. Keep
+            # the existing terminal state readable and avoid turning a GET
+            # /jobs refresh into an HTTP 500.
+            job["failure_code"] = "COMFYUI_CRASHED"
+            job["error_category"] = "COMFYUI_CRASHED"
+            job["user_message"] = "生成引擎意外退出，请重新启动服务。"
+            job["technical_details"] = f"reconciliation unavailable: {exc}"
+            self._save_job(project_id, job)
+            return job
+        status = found.get("status")
+        if status in ("RUNNING", "COMPLETED") and found.get("prompt_id"):
+            job["prompt_id"] = found["prompt_id"]
+            job["submission_state"] = "ACKNOWLEDGED"
+            job["failure_code"] = ""
+            job["error_category"] = ""
+            job["failure_reason"] = ""
+            job["technical_details"] = ""
+            if status == "RUNNING":
+                job["state"] = "SAMPLING"
+                job["current_stage"] = "同步 ComfyUI 任务"
+                job["lifecycle_state"] = "RUNNING"
+                job["user_message"] = "生成中 · 正在同步进度"
+                if "SAMPLING" not in job.get("stages", []):
+                    job.setdefault("stages", []).append("SAMPLING")
+            self._save_job(project_id, job)
+            if start_observer and status == "RUNNING":
+                self._start_reattach_observer(project_id, job_id, job["prompt_id"])
+            elif status == "COMPLETED":
+                self._finish_reconciled_job(project_id, job_id, found.get("entry") or {})
+        elif status == "FAILED":
+            entry = found.get("entry") or {}
+            detail = json.dumps(entry.get("status", {}).get("messages", entry),
+                                ensure_ascii=False)[:2000]
+            job["state"] = "FAILED"
+            job["lifecycle_state"] = "FAILED"
+            job["submission_state"] = "ACKNOWLEDGED"
+            job["failure_code"] = "COMFYUI_ERROR"
+            job["error_category"] = "COMFYUI_ERROR"
+            job["user_message"] = "ComfyUI 执行失败，请查看任务详情。"
+            job["technical_details"] = detail
+            job["failure_reason"] = detail
+            self._save_job(project_id, job)
+            self._sync_project_failed(project_id, job, detail)
+        else:
+            job["submission_state"] = "SUBMISSION_UNKNOWN"
+            job["failure_code"] = "COMFY_COMMUNICATION_TIMEOUT"
+            job["error_category"] = "COMFY_COMMUNICATION_TIMEOUT"
+            job["user_message"] = "生成中 · 正在同步任务状态"
+            job["technical_details"] = "No matching queue/history entry yet; no duplicate submitted."
+            self._save_job(project_id, job)
+        return self.store.find_job(job_id)[1]
+
+    def _start_reattach_observer(self, project_id: str, job_id: str,
+                                 prompt_id: str) -> None:
+        thread = self._threads.get(job_id)
+        if thread and thread.is_alive():
+            return
+        thread = threading.Thread(target=self._reattach_job,
+                                  args=(project_id, job_id, prompt_id), daemon=True)
+        self._threads[job_id] = thread
+        thread.start()
+
+    def _reattach_job(self, project_id: str, job_id: str, prompt_id: str) -> None:
+        try:
+            state = self.runtime_adapter.poll(
+                prompt_id, timeout_seconds=1800.0, poll_interval=5.0,
+                on_event=lambda event: self._record_progress(project_id, job_id, event))
+            if state.get("status") != "COMPLETED":
+                raise RuntimeError(f"ComfyUI execution failed: {state.get('messages')}")
+            self._finish_reconciled_job(project_id, job_id,
+                                        self.runtime_adapter.client.get_history(prompt_id))
+        except Exception as exc:  # noqa: BLE001 - observer boundary
+            project, job = self.store.find_job(job_id)
+            category, friendly = _classify_failure(exc)
+            job["state"] = "FAILED"
+            job["failure_code"] = category
+            job["error_category"] = category
+            job["user_message"] = friendly
+            job["technical_details"] = f"{type(exc).__name__}: {exc}"
+            job["failure_reason"] = job["technical_details"]
+            self._save_job(project, job)
+            self._sync_project_failed(project, job, job["technical_details"])
+
+    def _finish_reconciled_job(self, project_id: str, job_id: str,
+                               history: Dict[str, Any]) -> None:
+        project_id, job = self.store.find_job(job_id)
+        project = self.store.load_project(project_id)
+        refs = self.store.load_references(project_id)
+        current = refs.get(project.get("current_reference_asset_id"))
+        prompt = self.store.load_prompt(project_id) or {}
+        request = self._build_request(
+            project_id, project, prompt, [current] if current else [],
+            dict(job.get("generation_parameters") or {}), job.get("camera_motion"))
+        output = self.runtime_adapter.client.collect_output(
+            history, job_id, job.get("workflow", ""), {})
+        self.output_api.build_real_output_package(project_id, job, output, request)
+        package_video = self.store.package_dir(project_id) / "output" / "video.mp4"
+        final_video = self.output_api.copy_to_study_output(project_id, job,
+                                                           output.get("video_path", package_video))
+        job["runtime_output_path"] = str(output.get("video_path", ""))
+        job["final_output_path"] = str(final_video)
+        job["output_path"] = str(final_video)
+        job["source_output_path"] = str(output.get("video_path", ""))
+        job["state"] = "COMPLETED"
+        job["lifecycle_state"] = "SUCCEEDED"
+        job["submission_state"] = "ACKNOWLEDGED"
+        job["progress"] = 100.0
+        job["current_stage"] = "保存视频"
+        job["eta_seconds"] = 0.0
+        job.setdefault("stages", []).append("COMPLETED")
+        job["package_built"] = True
+        self._save_job(project_id, job)
+        self._sync_project_complete(project_id, job)
 
     def advance(self, job_id: str, elapsed_seconds: float) -> Dict[str, Any]:
         """Explicit deterministic progression (mock tests only)."""
@@ -345,7 +620,33 @@ class JobAPI:
             return
         try:
             self._stage_refs_to_comfy_input(project_id, request)
-            snapshot = self.runtime_adapter.generate(request)
+            prepared = (self.runtime_adapter.prepare(request)
+                         if hasattr(self.runtime_adapter, "prepare") else None)
+            if prepared is not None and hasattr(self.runtime_adapter, "attach_job_identity"):
+                prepared = self.runtime_adapter.attach_job_identity(prepared, job_id)
+            job = self.store.load_jobs(project_id).get(job_id) or job
+            approved = list(request.reference_assets)
+            job["workflow_snapshot"] = self._build_workflow_snapshot(
+                request, approved,
+                prepared["translated_payload"] if prepared else {}
+            )
+            job["workflow_snapshot_id"] = job["workflow_snapshot"]["snapshot_id"]
+            job["workflow_hash"] = job["workflow_snapshot"]["workflow_hash"]
+            job["execution_workflow_sha256"] = job["workflow_snapshot"]["execution_workflow_sha256"]
+            job["asset_hash"] = job["workflow_snapshot"]["asset_hash"]
+            self._save_job(project_id, job)
+            generate = self.runtime_adapter.generate
+            if prepared is not None and "prepared" in inspect.signature(generate).parameters:
+                snapshot = generate(request, prepared=prepared)
+            else:
+                # CPU/test adapters from older contract revisions do not need
+                # the prepared graph.  Real NativeRuntimeAdapter always takes
+                # the exact object persisted above.
+                snapshot = generate(request)
+            submitted_sha = snapshot.get("execution_workflow_sha256")
+            if submitted_sha and submitted_sha != job["execution_workflow_sha256"]:
+                raise RuntimeError("EXECUTION_WORKFLOW_IDENTITY_MISMATCH: prepared graph "
+                                   "differs from submitted graph")
             # re-read the latest record: user may have cancelled mid-run
             job = self.store.load_jobs(project_id).get(job_id) or job
             if job.get("cancelled") or job["state"] == "CANCELLED":
@@ -354,9 +655,14 @@ class JobAPI:
             self.output_api.build_real_output_package(
                 project_id, job, output, request)
             package_video = self.store.package_dir(project_id) / "output" / "video.mp4"
-            job["output_path"] = str(package_video)
+            final_video = self.output_api.copy_to_study_output(
+                project_id, job, output.get("video_path", package_video))
+            job["runtime_output_path"] = str(output.get("video_path", ""))
+            job["final_output_path"] = str(final_video)
+            job["output_path"] = str(final_video)
             job["source_output_path"] = str(output.get("video_path", ""))
             job["state"] = "COMPLETED"
+            job["lifecycle_state"] = "SUCCEEDED"
             job["progress"] = 100.0
             job["current_stage"] = "保存视频"
             job["eta_seconds"] = 0.0
@@ -374,7 +680,23 @@ class JobAPI:
             message = str(exc).lower()
             runtime_mismatch = "missing_node_type" in message or "node type" in message and "not found" in message
             category, friendly = _classify_failure(exc, runtime_mismatch=runtime_mismatch)
+            if isinstance(exc, ComfyUICommunicationTimeout):
+                # A transport timeout is ambiguous. The server may have
+                # accepted the prompt, so keep the Job reconnectable instead
+                # of poisoning it as a GPU/engine failure.
+                job["state"] = "RECONCILING"
+                job["submission_state"] = "SUBMISSION_UNKNOWN"
+                job["failure_code"] = category
+                job["error_category"] = category
+                job["user_message"] = friendly
+                job["technical_details"] = f"{type(exc).__name__}: {exc}"
+                job["failure_reason"] = job["technical_details"]
+                if "RECONCILING" not in job.get("stages", []):
+                    job.setdefault("stages", []).append("RECONCILING")
+                self._save_job(project_id, job)
+                return
             job["state"] = "GPU_FAILED" if category == "GPU_ERROR" else "FAILED"
+            job["lifecycle_state"] = "FAILED"
             job["failure_code"] = category
             job["error_category"] = category
             job["user_message"] = friendly
@@ -396,6 +718,7 @@ class JobAPI:
         if not job or job.get("state") in ("FAILED", "GPU_FAILED", "CANCELLED", "COMPLETED"):
             return
         job["current_stage"] = event.get("stage") or job.get("current_stage", "执行工作流")
+        job["elapsed"] = round(max(0.0, self.clock() - float(job.get("started_at") or self.clock())), 3)
         state = {"准备参考图": "PREPARING", "加载 H3 模型": "LOADING_MODEL",
                  "视频采样": "SAMPLING", "视频解码": "DECODING",
                  "保存视频": "EXPORTING", "生成失败": "FAILED"}.get(
@@ -406,9 +729,14 @@ class JobAPI:
                 job["stages"].append(state)
         job["step"] = event.get("step")
         job["total_steps"] = event.get("total_steps")
-        if event.get("progress") is not None:
-            job["progress"] = round(float(event["progress"]), 2)
-            job["eta_seconds"] = estimate_eta(float(job.get("elapsed") or 0), job["progress"])
+        job["lifecycle_state"] = lifecycle_state(job["current_stage"])
+        job["progress_message"] = event.get("message") or job["current_stage"]
+        calculated = weighted_progress(
+            job["lifecycle_state"], job.get("step"), job.get("total_steps"),
+            event.get("progress"))
+        if calculated is not None:
+            job["progress"] = calculated
+            job["eta_seconds"] = estimate_eta(float(job.get("elapsed") or 0), calculated)
         self._save_job(project_id, job)
 
     def _stage_refs_to_comfy_input(self, project_id: str, request: Any) -> Dict[str, str]:
@@ -522,6 +850,11 @@ class JobAPI:
             "detail": {"job_id": job["id"], "reason": reason,
                         "job_state_only": True},
         })
+        # Rebuild the durable Study projection immediately.  Previously the
+        # project record was restored but study_state.json kept the old
+        # GENERATING/PREPARING fields, so the next generation was blocked or
+        # appeared to be running forever after a memory failure.
+        build_study_state(self.store, project_id)
 
     def _save_job(self, project_id: str, job: Dict[str, Any]) -> None:
         jobs = self.store.load_jobs(project_id)
@@ -601,6 +934,8 @@ def _classify_failure(exc: Exception, *, runtime_mismatch: bool = False) -> tupl
         return "ENVIRONMENT_ERROR", "运行环境路径无效，请前往环境修复。"
     if isinstance(exc, FileNotFoundError):
         return "INPUT_ERROR", "参考图文件不可用，请重新上传并批准参考图。"
+    if isinstance(exc, ComfyUICommunicationTimeout):
+        return "COMFY_COMMUNICATION_TIMEOUT", "生成中 · 正在同步任务状态"
     if isinstance(exc, ComfyUIOfflineError):
         return "COMFYUI_CRASHED", "生成引擎意外退出，请重新启动服务。"
     if isinstance(exc, WorkflowParameterError):
@@ -618,10 +953,9 @@ def _classify_failure(exc: Exception, *, runtime_mismatch: bool = False) -> tupl
         return "GPU_ERROR", "GPU 执行失败，请检查显存和硬件支持。"
     if "comfyui" in message or "prompt_id" in message or "offline" in message:
         return "COMFYUI_ERROR", "ComfyUI 执行失败，请查看任务详情。"
-    # A runtime exception with no filesystem/signature evidence remains a
-    # genuine execution failure; keep the historical GPU_FAILED lifecycle only
-    # for this final unknown-runtime category.
-    return "GPU_ERROR", "GPU 执行失败，请查看任务详情。"
+    # Unknown adapter/service failures are not proof of CUDA/model execution.
+    # Keep GPU_ERROR reserved for direct CUDA/OOM evidence.
+    return "COMFYUI_ERROR", "生成引擎执行失败，请查看任务详情。"
 
 
 def _decorate_job(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -631,11 +965,20 @@ def _decorate_job(job: Dict[str, Any]) -> Dict[str, Any]:
     if not category and "FileNotFoundError" in str(out.get("failure_reason", "")):
         category = "ENVIRONMENT_ERROR"
     out["error_category"] = category
+    out["lifecycle_state"] = out.get("lifecycle_state") or {
+        "PREPARING": "CREATED", "LOADING_MODEL": "QUEUED",
+        "ENCODING": "ENCODING", "SAMPLING": "RUNNING",
+        "DECODING": "DECODING", "EXPORTING": "FINALIZING",
+        "COMPLETED": "SUCCEEDED", "FAILED": "FAILED",
+        "GPU_FAILED": "FAILED", "CANCELLED": "FAILED",
+        "RECONCILING": "SUBMISSION_UNKNOWN",
+    }.get(out.get("state"), "RUNNING")
     out["status_label"] = {
         "COMPLETED": "完成", "PREPARING": "准备中", "LOADING_MODEL": "加载模型",
         "SAMPLING": "生成中", "ENCODING": "编码中", "DECODING": "视频解码",
         "EXPORTING": "导出中",
         "FAILED": "生成失败", "GPU_FAILED": "生成失败", "CANCELLED": "已取消",
+        "RECONCILING": "同步任务状态",
     }.get(out.get("state"), "生成中")
     if out.get("user_message"):
         out["friendly_reason"] = out["user_message"]
@@ -649,6 +992,7 @@ def _decorate_job(job: Dict[str, Any]) -> Dict[str, Any]:
         out["friendly_reason"] = {
             "WORKFLOW_ERROR": "工作流不可用", "MODEL_ERROR": "模型不可用",
         "COMFYUI_ERROR": "ComfyUI 执行失败", "COMFYUI_CRASHED": "生成引擎意外退出",
+        "COMFY_COMMUNICATION_TIMEOUT": "生成中 · 正在同步任务状态",
         "OUTPUT_ERROR": "输出失败", "WORKFLOW_PARAMETER_ERROR": "参数配置错误",
         }.get(category, "生成失败")
     else:

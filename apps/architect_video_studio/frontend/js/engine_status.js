@@ -20,7 +20,13 @@
   }
   button.addEventListener('click', async () => {
     button.disabled = true; button.textContent = '启动中…';
-    try { await post('/api/system/restart-comfyui', {}); } catch (_) {}
+    try {
+      const result = await post('/api/system/restart-comfyui', {});
+      label.textContent = result.message || '生成引擎：就绪';
+    } catch (error) {
+      label.textContent = '生成引擎：重启失败';
+      holder.title = error.message || 'ComfyUI 重启失败';
+    }
     button.disabled = false; button.textContent = '重新启动生成引擎'; refresh();
   });
   refresh();

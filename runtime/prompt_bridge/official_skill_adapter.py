@@ -272,29 +272,30 @@ class OfficialSkillAdapter:
         amp = "large amplitude" if intent.amplitude == "large" else "small amplitude, slow speed"
         base_geo = "preserve geometry, 保持几何"
         base_mat = "keep materials"
+        user_focus = f"user intent focus: {intent.scene.strip()}" if intent.scene.strip() else ""
 
         if vt == "material_detail" or pt == "material":
             # Avoid scene words like "facade" that would mis-select the hero camera
             # phrase in the skill keyword layer; material phrases map to the
             # close-up / static camera profile verified in W03.
             return (
-                f"material close-up, 特写, 细节, static shot, 固定, {amp}, "
+                f"{user_focus}, material close-up, 特写, 细节, static shot, 固定, {amp}, "
                 f"material fidelity over motion, {base_geo}, {base_mat}, calm"
             )
         if vt == "day_night_transition" or pt == "lighting":
             return (
-                "static shot, 固定, continuous environmental lighting transition, "
+                f"{user_focus}, static shot, 固定, continuous environmental lighting transition, "
                 "keep camera and building geometry fixed, "
                 f"{base_geo}, {base_mat}, calm"
             )
         if vt == "drone_aerial" or pt in ("aerial", "landscape"):
             return (
-                f"aerial, 鸟瞰, subtle reveal, {amp}, "
+                f"{user_focus}, aerial, 鸟瞰, subtle reveal, {amp}, "
                 f"{base_geo}, {base_mat}, calm"
             )
         if vt == "slow_walkthrough" or pt == "interior":
             return (
-                f"walkthrough, 漫游, 推近, {amp}, spatial stability, "
+                f"{user_focus}, walkthrough, 漫游, 推近, {amp}, spatial stability, "
                 f"{base_geo}, {base_mat}, calm"
             )
         # exterior (default)

@@ -577,6 +577,7 @@ pre.prompt {
 .mb { margin-bottom: 10px; }
 .small { font-size: 12px; }
 .error-banner { background: #f8e0dc; border: 1px solid var(--err); color: #7c241b; border-radius: 5px; padding: 10px; margin: 10px 0; }
+.notice-banner { background: #e4f3e7; border: 1px solid var(--ok); color: #245b31; border-radius: 5px; padding: 10px; margin: 10px 0; }
 .ok-banner { background: #e0f0e2; border: 1px solid var(--ok); color: #24592f; border-radius: 5px; padding: 10px; margin: 10px 0; }
 
 /* ------------------------------------------------------------------ */
@@ -613,6 +614,12 @@ pre.prompt {
 .job-strip-stage span:last-child { color:var(--accent-strong); font-weight:700; }
 .job-strip-time { color:var(--muted); }
 .job-progress-line { display:flex; justify-content:space-between; gap:10px; }
+.estimate-note { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); background: #f7fafc; color: var(--muted); font-size: 12px; }
+.output-location-panel { margin-top: 14px; }
+.output-location-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.output-location-row code { flex:1; min-width:260px; overflow-wrap:anywhere; color: var(--ink); }
+.task-actions { display:flex; gap:6px; margin-top: 10px; }
+.task-actions .danger { color: #a33; }
 .viewport { min-height:calc(100vh - 180px); }
 .viewport .v-body { min-height:calc(100vh - 270px); }
 .viewport .v-body img.preview { max-height:calc(100vh - 300px); }

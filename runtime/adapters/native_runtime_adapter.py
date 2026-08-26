@@ -29,8 +29,10 @@ from runtime.yaml_compat import safe_load
 
 from runtime.adapters.comfyui_client import (
     ComfyUIClient,
+    ComfyUICommunicationTimeout,
     ComfyUIExecutionError,
     ComfyUIOfflineError,
+    ComfyUISubmissionUnknown,
     GenerationTimeoutError,
     WorkflowNotFoundError,
 )
@@ -44,14 +46,19 @@ from runtime.adapters.runtime_adapter import (
     validate_request,
 )
 from runtime.adapters.production_workflow_binding import (
-    build_production_payload, load_registry, production_model_contract,
-    validate_all_ui_workflow_model_bindings,
+    build_production_payload, canonical_workflow_sha256, load_registry,
+    production_model_contract,
+    validate_production_payload,
+)
+from runtime.adapters.golden_workflow_binding import (
+    bind_golden_workflow, golden_entry,
 )
 from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
 from runtime.h3_model_root import validate_h3_model_contract
 from runtime.product_hardening import map_comfy_event
 
 WORKFLOW_MAPPING = REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml"
+GOLDEN_05_PATH = REPO_ROOT / "production_workflows" / "golden" / "05_Slow_Walkthrough.json"
 
 SUPPORTED_WORKFLOWS = (
     "01_Exterior_Hero",
@@ -125,6 +132,8 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         self.production_binding = bool(production_binding)
         self.runtime_paths = runtime_paths
         self.jobs: Dict[str, Dict[str, Any]] = {}
+        self.progress_callback = None
+        self.submission_callback = None
 
     # ------------------------------------------------------------------ #
     # prepare
@@ -148,10 +157,30 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 )
         health = self.client.health_check()
         object_info = self.client.object_info()
-        binding = validate_all_ui_workflow_model_bindings(object_info)
+        golden_results = {}
+        for workflow_id in SUPPORTED_WORKFLOWS:
+            try:
+                payload = bind_golden_workflow({
+                    "reference_assets": [
+                        {"path_or_ref": "preflight-first.png"},
+                        {"path_or_ref": "preflight-last.png"},
+                    ][:int(golden_entry(workflow_id)["required_reference_count"])],
+                    "generation_parameters": {
+                        "resolution": "1344x768", "fps": 24, "duration": 4.0,
+                        "quality": "diagnostic", "seed": 42,
+                    },
+                    "prompt_payload": {"prompt": "preflight"},
+                }, workflow_id)
+                golden_results[workflow_id] = validate_production_payload(
+                    payload, object_info)
+            except Exception as exc:  # noqa: BLE001 - normalized below
+                golden_results[workflow_id] = {"ready": False, "errors": [str(exc)]}
+        binding = {"ready": all(item.get("ready") for item in golden_results.values()),
+                   "workflows": golden_results}
         if not binding["ready"]:
             raise ComfyUIExecutionError(
-                "WORKFLOW_BINDING_ERROR: " + json.dumps(binding, ensure_ascii=False))
+                "WORKFLOW_BINDING_ERROR: Golden graph validation failed: "
+                + json.dumps(binding, ensure_ascii=False))
         return {"ready": True, "health": health, "object_info": object_info,
                 "model_bindings": binding}
 
@@ -184,7 +213,35 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             raise ValueError(
                 f"camera_motion {data.get('camera_motion')!r} not supported by "
                 f"{workflow_id}: {sorted(supported_cameras)}")
-        if self.production_binding:
+        golden = golden_entry(workflow_id)
+        payload = bind_golden_workflow(data, workflow_id)
+        source = str(golden["golden_path"])
+        return {
+            "job_id": f"native-{uuid.uuid4().hex[:12]}",
+            "study_id": data["study_id"],
+            "workflow_id": workflow_id,
+            "workflow_asset": source,
+            "translated_payload": payload,
+            "execution_workflow_sha256": canonical_workflow_sha256(payload),
+            "binding": {
+                "source_of_truth": source,
+                "canonical_source": source,
+                "parameter_binder": golden["binder"],
+                "base_structure_hash": golden.get("base_structure_hash"),
+                "browser_state_ignored": True,
+            },
+            "control": {
+                "submit_timeout_seconds": 60.0,
+                "poll_interval_seconds": 5.0,
+                "history_timeout_seconds": 1800.0,
+            },
+        }
+        # 05_Slow_Walkthrough is the historical, real native-runtime proof.
+        # Keep it on the exact frozen 15-node UI asset and the existing
+        # NativeRuntimeAdapter binder.  The production binding builder is
+        # intentionally bypassed for this workflow so diagnostics and /prompt
+        # cannot drift into a second RH loader graph.
+        if self.production_binding and workflow_id != "05_Slow_Walkthrough":
             production_entry = load_registry()["workflows"][workflow_id]
             asset_rel = production_entry["canonical_source"]
             asset_path = REPO_ROOT / asset_rel
@@ -197,11 +254,16 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 "workflow_id": workflow_id,
                 "workflow_asset": asset_rel,
                 "translated_payload": payload,
+                "execution_workflow_sha256": canonical_workflow_sha256(payload),
                 "binding": {
                     "source_of_truth": "configs/production_workflow_registry.json",
                     "canonical_source": asset_rel,
                     "payload_template": production_entry["payload_template"],
-                    "model_bindings": production_model_contract(),
+                    "model_bindings": production_model_contract(
+                        data.get("h3_profile") or data.get("model_profile")
+                        or data.get("hardware_profile") or "COMPATIBILITY",
+                        gpu_vram_gb=data.get("gpu_vram_gb"),
+                        system_ram_gb=data.get("system_ram_gb")),
                     "browser_state_ignored": True,
                 },
                 "control": {
@@ -216,12 +278,25 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             raise WorkflowNotFoundError(f"native workflow asset missing: {asset_path}")
 
         payload = self._build_comfy_payload(data, workflow_id, asset_path)
+        source_of_truth = (
+            "production_workflows/golden/05_Slow_Walkthrough.json"
+            if workflow_id == "05_Slow_Walkthrough" and GOLDEN_05_PATH.is_file()
+            else asset_rel
+        )
         return {
             "job_id": f"native-{uuid.uuid4().hex[:12]}",
             "study_id": data["study_id"],
             "workflow_id": workflow_id,
-            "workflow_asset": asset_rel,
+            "workflow_asset": source_of_truth,
             "translated_payload": payload,
+            "execution_workflow_sha256": canonical_workflow_sha256(payload),
+            "binding": {
+                "source_of_truth": source_of_truth,
+                "canonical_source": source_of_truth,
+                "parameter_binder": "NativeRuntimeAdapter._build_comfy_payload",
+                "browser_state_ignored": True,
+                "historical_native_contract": "PATCH2.7-C2-B / 05 I2VA",
+            },
             "control": {
                 "submit_timeout_seconds": 60.0,
                 "poll_interval_seconds": 5.0,
@@ -248,6 +323,29 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         fps = float(params.get("fps", 24))
         ref_names = [Path(r.get("path_or_ref", "reference.png")).name
                      for r in request["reference_assets"]]
+
+        # After the owner-authorized historical run succeeds, the exact API
+        # graph becomes the sole 05 source.  Only the proven mutable controls
+        # are rebound; node types, links, loader classes and topology remain
+        # frozen in the captured graph.
+        if workflow_id == "05_Slow_Walkthrough" and GOLDEN_05_PATH.is_file():
+            prompt_payload = json_load(GOLDEN_05_PATH)
+            classes = [node.get("class_type") for node in prompt_payload.values()]
+            if len(prompt_payload) != 15 or "RHMiniMaxH3TextEncoderLoader" in classes:
+                raise WorkflowNotFoundError("05 golden workflow contract is invalid")
+            prompt_payload["1"]["inputs"]["image"] = ref_names[0]
+            prompt_payload["6"]["inputs"].update({
+                "prompt": prompt,
+                "width": width,
+                "height": height,
+                "length": length,
+            })
+            prompt_payload["9"]["inputs"]["noise_seed"] = seed
+            prompt_payload["14"]["inputs"]["fps"] = fps
+            prompt_payload["15"]["inputs"]["filename_prefix"] = (
+                f"video/{workflow_id}_C2B_{seed}"
+            )
+            return prompt_payload
 
         widgets: Dict[str, list] = {}
         for node in ui.get("nodes", []):
@@ -292,11 +390,60 @@ class NativeRuntimeAdapter(RuntimeAdapter):
     # ------------------------------------------------------------------ #
     # lifecycle
     # ------------------------------------------------------------------ #
+    def attach_job_identity(self, native_request: Dict[str, Any],
+                            avs_job_id: str) -> Dict[str, Any]:
+        """Bind correlation to the already-built graph without changing topology."""
+        payload = native_request["translated_payload"]
+        save_nodes = [node for node in payload.values()
+                      if node.get("class_type") == "SaveVideo"]
+        if save_nodes:
+            inputs = save_nodes[0].setdefault("inputs", {})
+            prefix = str(inputs.get("filename_prefix") or "video/output")
+            if avs_job_id not in prefix:
+                inputs["filename_prefix"] = f"{prefix}_{avs_job_id}"
+        native_request["avs_job_id"] = str(avs_job_id)
+        native_request["execution_workflow_sha256"] = canonical_workflow_sha256(payload)
+        return native_request
+
     def submit(self, native_request: Dict[str, Any]) -> str:
-        result = self.client.submit_workflow(
-            native_request["translated_payload"],
-            client_id=str(uuid.uuid4()),
-        )
+        kwargs = {
+            "client_id": str(uuid.uuid4()),
+            "avs_job_id": native_request.get("avs_job_id"),
+            "execution_workflow_sha256": native_request.get(
+                "execution_workflow_sha256"),
+        }
+        try:
+            result = self.client.submit_workflow(
+                native_request["translated_payload"], **kwargs)
+        except TypeError:
+            # Keep CPU/legacy duck-typed clients usable while the production
+            # client carries the correlation metadata.
+            result = self.client.submit_workflow(
+                native_request["translated_payload"],
+                client_id=kwargs["client_id"],
+            )
+        except ComfyUISubmissionUnknown as exc:
+            reconcile = getattr(self.client, "reconcile_prompt", None)
+            if reconcile is None:
+                raise
+            found = reconcile(
+                avs_job_id=native_request.get("avs_job_id"),
+                execution_workflow_sha256=native_request.get(
+                    "execution_workflow_sha256"),
+                legacy_seed=(native_request.get("translated_payload", {})
+                             .get("9", {}).get("inputs", {}).get("noise_seed")),
+            )
+            if found.get("status") in ("RUNNING", "COMPLETED") and found.get("prompt_id"):
+                result = {"prompt_id": found["prompt_id"],
+                          "reconciled": True, "reconciliation": found}
+            elif found.get("status") == "FAILED":
+                raise ComfyUIExecutionError(
+                    "ComfyUI accepted the task but reported failure during "
+                    f"reconciliation: {found.get('entry')}") from exc
+            else:
+                raise ComfyUICommunicationTimeout(
+                    "ComfyUI prompt acknowledgement was lost and the task "
+                    "could not yet be found in queue/history") from exc
         return result["prompt_id"]
 
     def poll(self, prompt_id: str, timeout_seconds: float = 1800.0,
@@ -318,8 +465,11 @@ class NativeRuntimeAdapter(RuntimeAdapter):
     # ------------------------------------------------------------------ #
     # RuntimeAdapter interface
     # ------------------------------------------------------------------ #
-    def generate(self, request: Any) -> Dict[str, Any]:
-        native_req = self.prepare(request)
+    def generate(self, request: Any, prepared: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        native_req = prepared or self.prepare(request)
+        if native_req.get("execution_workflow_sha256") != canonical_workflow_sha256(
+                native_req["translated_payload"]):
+            raise ComfyUIExecutionError("EXECUTION_WORKFLOW_IDENTITY_MISMATCH")
         job_id = native_req["job_id"]
         self.jobs[job_id] = {
             "id": job_id,
@@ -338,6 +488,14 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             self.jobs[job_id]["stages"].append("PREPARING")
             prompt_id = self.submit(native_req)
             self.jobs[job_id]["prompt_id"] = prompt_id
+            self.jobs[job_id]["submission_state"] = "ACKNOWLEDGED"
+            callback = getattr(self, "submission_callback", None)
+            if callback is not None:
+                callback({"prompt_id": prompt_id,
+                          "avs_job_id": native_req.get("avs_job_id"),
+                          "execution_workflow_sha256": native_req.get(
+                              "execution_workflow_sha256"),
+                          "status": "ACKNOWLEDGED"})
             self.jobs[job_id]["status"] = "EXECUTING"
             self.jobs[job_id]["stages"].append("EXECUTING")
             state = self.poll(
@@ -367,6 +525,10 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             self.jobs[job_id]["output"] = output
             self.jobs[job_id]["status"] = "COMPLETED"
             self.jobs[job_id]["stages"].append("COMPLETED")
+        except ComfyUICommunicationTimeout as exc:
+            self._fail(job_id, "communication timeout; reconciliation required",
+                       "COMFY_COMMUNICATION_TIMEOUT", str(exc))
+            raise
         except ComfyUIOfflineError as exc:
             self._fail(job_id, "ComfyUI offline", "", str(exc))
             raise
@@ -404,6 +566,9 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             "step": job.get("step"),
             "total_steps": job.get("total_steps"),
             "eta_seconds": job.get("eta_seconds"),
+            "execution_workflow_sha256": (
+                job.get("request", {}).get("execution_workflow_sha256")
+            ),
         }
 
     def cancel(self, job_id: str) -> Dict[str, Any]:

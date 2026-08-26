@@ -27,6 +27,7 @@
         <p id="task-meta" class="muted">参考图 → 视频类型 → 意图 → 参数 → 生成</p>
       </div>
       <a class="btn ghost" href="jobs.html">查看任务与输出</a>
+      <button class="btn ghost" id="rename-study-btn" type="button">重命名 Study</button>
     </section>
 
     <section class="studio-layout">
@@ -72,6 +73,16 @@
           <div class="section-title"><span>3. 生成意图</span></div>
           <label for="intent-text">你希望镜头如何展示空间？</label>
           <textarea id="intent-text" placeholder="例如：镜头从入口缓慢推进，突出建筑尺度、材质和自然光"></textarea>
+          <label for="prompt-engine">Prompt Engine</label>
+          <select id="prompt-engine">
+            <option value="AUTO" selected>自动（离线优先）</option>
+            <option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</option>
+            <option value="CLI_BRIDGE">已配置 CLI Provider</option>
+            <option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</option>
+            <option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</option>
+          </select>
+          <div class="muted small">离线模式不需要 LLM，也不会进行 AI 图像理解。</div>
+          <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 允许将参考图发送给选定 AI 服务</label>
           <button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
           <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
           <details id="prompt-details" class="prompt-details" style="display:none">
@@ -85,9 +96,10 @@
           <div class="param-grid">
             <div><label for="param-duration">时长</label><select id="param-duration"></select></div>
             <div><label for="param-resolution">分辨率</label><select id="param-resolution"></select></div>
+            <div><label for="param-fps">帧率</label><select id="param-fps"><option value="24">24 fps（已验证）</option></select></div>
             <div><label for="param-aspect">画幅</label><select id="param-aspect"><option value="auto">自动</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></div>
             <div><label for="param-quality">质量</label><select id="param-quality"><option value="draft">Draft</option><option value="standard" selected>Standard</option><option value="high">High</option></select></div>
-            <div class="wide"><label for="param-speed">生成速度</label><select id="param-speed"><option value="standard">Standard（基准）</option><option value="auto">Auto Accelerated</option></select></div>
+          <div class="wide"><label for="param-speed">生成速度</label><select id="param-speed"><option value="standard">Standard（Golden 已验证）</option></select></div>
           </div>
           <details class="advanced-settings mt">
             <summary>高级设置</summary>
@@ -103,10 +115,17 @@
 
         <section class="control-section generate-section">
           <div id="gate-note" class="gate-note">请先上传并审批参考图</div>
+          <div id="estimate-note" class="estimate-note">预计生成时间：历史数据不足，时间仅供参考</div>
           <button class="btn primary generate-button" id="generate-btn" type="button" disabled>开始生成</button>
           <label class="check-row small"><input type="checkbox" id="risk-check"> 我已确认参考图与设置</label>
         </section>
       </aside>
+    </section>
+
+    <section class="panel output-location-panel">
+      <div class="section-title"><span>视频保存位置</span><span class="muted small">Study 专属</span></div>
+      <div class="output-location-row"><code id="output-directory">默认产品目录</code><button class="btn" id="choose-output-folder" type="button">选择文件夹</button></div>
+      <div class="muted small">生成成功后会先校验 Managed Runtime 输出，再复制到此目录。</div>
     </section>
 
     <section class="current-job-strip panel" id="current-job-strip">

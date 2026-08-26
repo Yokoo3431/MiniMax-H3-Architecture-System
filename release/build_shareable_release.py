@@ -33,7 +33,8 @@ ROOT_FILES = (
     "native_env.path.example", "distribution_config.yaml",
 )
 DIRECTORIES = (
-    "launcher", "apps", "runtime", "configs", "models", "workflows", "assets",
+    "launcher", "apps", "runtime", "configs", "models", "workflows",
+    "production_workflows", "assets",
     "references", "samples", "skills",
 )
 RELEASE_WORKFLOW_FILES = (
@@ -48,6 +49,9 @@ DOC_FILES = (
 )
 HARDENING_FILES = (
     "patches/support_layers/minimax_h3_vae_offload_sync.patch",
+    "patches/support_layers/minimax_h3_nvfp4_native_loader.patch",
+    "patches/support_layers/minimax_h3_production_windows.patch",
+    "scripts/reconcile_h3_runtime_unification.py",
 )
 EXCLUDED_PARTS = {
     ".git", "__pycache__", "userdata", "Logs", "logs", "screenshots",
@@ -279,6 +283,15 @@ def main() -> int:
         "package": package.name,
         "payload_files": files,
         "models_bundled": False,
+        "hardware_profile_selection": {
+            "config": "configs/h3_runtime_profiles.json",
+            "mode": "AUTO",
+            "policy": json.loads(
+                (ROOT / "configs" / "h3_runtime_profiles.json")
+                .read_text(encoding="utf-8")
+            )["selection_policy"],
+            "profiles": ["COMPATIBILITY", "BALANCED", "QUALITY"],
+        },
         "gpu_product_acceptance": "PENDING_OWNER_AUTHORIZATION",
         "hardware_policy": {"supported_vram_gb": 24, "lower_vram": "EXPERIMENTAL"},
         "runtime_contract": json.loads(

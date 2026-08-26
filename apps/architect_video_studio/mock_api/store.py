@@ -10,6 +10,7 @@ import json
 import shutil
 import time
 import uuid
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -82,6 +83,50 @@ class StudioStore:
         project["updated_at"] = self.timestamp()
         self.save_json(self.project_file(project["id"]), project)
         return project
+
+    @staticmethod
+    def _safe_study_name(name: str) -> str:
+        value = re.sub(r"[<>:\"/\\|?*]", "_", str(name or "Study")).strip(" .")
+        return value[:80] or "Study"
+
+    def default_output_directory(self, project: Dict[str, Any]) -> Path:
+        """Product-owned default; never expose the internal Comfy output root."""
+        documents = Path.home() / "Documents"
+        return documents / "Architect Video Studio" / self._safe_study_name(project.get("name"))
+
+    def output_directory(self, project: Dict[str, Any]) -> Path:
+        configured = str(project.get("output_directory") or "").strip()
+        return Path(configured) if configured else self.default_output_directory(project)
+
+    def delete_project(self, project_id: str, *, delete_outputs: bool = False) -> None:
+        """Delete one Study without treating completed output as an edit lock.
+
+        Final outputs may live outside the Study tree, so collect only the
+        explicitly persisted final output files before deleting project data.
+        Runtime output is intentionally never deleted here.
+        """
+        root = self.project_dir(project_id)
+        if not root.is_dir():
+            raise KeyError(f"project not found: {project_id}")
+        final_outputs: list[Path] = []
+        if delete_outputs:
+            jobs = self.load_json(root / "jobs.json", {}) or {}
+            for job in jobs.values():
+                value = str(job.get("final_output_path") or "").strip()
+                if value:
+                    path = Path(value).expanduser()
+                    if path.is_file():
+                        final_outputs.append(path)
+        shutil.rmtree(root)
+        if delete_outputs:
+            for path in final_outputs:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    # Study deletion is complete; an output that is locked by
+                    # another application remains recoverable and is reported
+                    # by the caller only as a best-effort cleanup result.
+                    continue
 
     # ------------------------------------------------------------------ #
     # references

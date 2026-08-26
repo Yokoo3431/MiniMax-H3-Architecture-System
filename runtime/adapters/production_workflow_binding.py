@@ -9,13 +9,19 @@ source of truth for the five user-facing workflow identities.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import hashlib
 from pathlib import Path
 from typing import Any, Mapping
 
 from runtime.adapters.runtime_adapter import REPO_ROOT
 from runtime.support_layer import FROZEN_NODE_NAMES
 from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.h3_low_memory_profiles import (
+    AUTO, model_selection, resolve_available_selection, select_profile,
+    validate_profile_loader_contract,
+)
 
 
 REGISTRY_PATH = REPO_ROOT / "configs" / "production_workflow_registry.json"
@@ -37,6 +43,13 @@ class ProductionBindingError(ValueError):
     """Raised when a production payload cannot satisfy the frozen contract."""
 
 
+def canonical_workflow_sha256(payload: Mapping[str, Any]) -> str:
+    """Hash the exact API graph that is about to cross the /prompt boundary."""
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                            separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def load_registry() -> dict:
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
@@ -45,14 +58,46 @@ def _link(node: str, output: int = 0) -> list:
     return [str(node), output]
 
 
-def _model_contract() -> dict:
+def _model_contract(profile: str = "COMPATIBILITY", *,
+                    gpu_vram_gb: Any = None,
+                    system_ram_gb: Any = None) -> dict:
     baseline = json.loads((REPO_ROOT / "configs" / "native_production_baseline.json").read_text(encoding="utf-8"))
-    return {key: value.get("filename") for key, value in baseline.get("models", {}).items()}
+    selection = model_selection(profile, gpu_vram_gb=gpu_vram_gb,
+                                system_ram_gb=system_ram_gb)
+    contract = {key: value.get("filename")
+                for key, value in baseline.get("models", {}).items()}
+    contract.update({
+        "dit": selection["transformer"],
+        "text_encoder": selection["text_encoder"],
+        "video_vae": selection["video_vae"],
+        "audio_vae": selection["audio_vae"],
+    })
+    return contract
 
 
-def production_model_contract() -> dict:
+def production_model_contract(profile: str = "COMPATIBILITY", *,
+                              gpu_vram_gb: Any = None,
+                              system_ram_gb: Any = None) -> dict:
     """Return the frozen project model filenames for audit/trace metadata."""
-    return dict(_model_contract())
+    return dict(_model_contract(profile, gpu_vram_gb=gpu_vram_gb,
+                                system_ram_gb=system_ram_gb))
+
+
+def _request_model_selection(request: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+    requested = (request.get("h3_profile") or request.get("model_profile")
+                 or request.get("hardware_profile") or AUTO)
+    hardware = request.get("hardware") or {}
+    vram = request.get("gpu_vram_gb", hardware.get("gpu_vram_gb"))
+    ram = request.get("system_ram_gb", hardware.get("system_ram_gb"))
+    selected = select_profile(requested=str(requested), gpu_vram_gb=vram,
+                              system_ram_gb=ram)
+    selection = model_selection(selected, gpu_vram_gb=vram,
+                                system_ram_gb=ram)
+    return selected, resolve_available_selection(
+        selection,
+        request.get("models_root") or os.environ.get("H3_MODELS_ROOT")
+        or os.environ.get("MINIMAX_H3_MODEL_ROOTS"),
+    )
 
 
 def _object_info_options(object_info: Mapping[str, Any], node_type: str,
@@ -109,6 +154,20 @@ def validate_all_ui_workflow_model_bindings(object_info: Mapping[str, Any]) -> d
 
 
 def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> dict:
+    # Production authority is the Golden API graph plus its value-only binder.
+    # Keep the historical implementation below only as inert source context;
+    # no caller may reach it.
+    if workflow_id not in CANONICAL_WORKFLOWS:
+        raise ProductionBindingError(f"unknown production workflow: {workflow_id}")
+    try:
+        from runtime.adapters.golden_workflow_binding import bind_golden_workflow
+        return bind_golden_workflow(request, workflow_id)
+    except ProductionBindingError:
+        raise
+    except (ValueError, KeyError, OSError) as exc:
+        raise ProductionBindingError(str(exc)) from exc
+    # Legacy RH graph builder retained below for historical test fixtures only.
+    # It is unreachable from production and must not be used for new bindings.
     registry = load_registry().get("workflows", {})
     entry = registry.get(workflow_id)
     if not entry or workflow_id not in CANONICAL_WORKFLOWS:
@@ -130,6 +189,24 @@ def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> di
     duration = float(params["duration"])
     seed = int(params["seed"])
     prompt = str((request.get("prompt_payload") or {}).get("prompt") or "")
+    profile, models = _request_model_selection(request)
+    contract = validate_profile_loader_contract(models)
+    if not contract["ready"]:
+        raise ProductionBindingError(
+            f'{contract["code"]}: {contract["model"]} requires '
+            f'{contract["loader"]}; {contract["reason"]}'
+        )
+    if workflow_id == "05_Slow_Walkthrough":
+        # Delegate to the same historical native binder used by the live job
+        # path.  This compatibility entry point must never reconstruct a RH
+        # graph of its own.
+        from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter
+        asset_path = REPO_ROOT / "workflows" / "05_Slow_Walkthrough_NATIVE.json"
+        if not asset_path.is_file():
+            raise ProductionBindingError(f"historical native workflow missing: {asset_path}")
+        return NativeRuntimeAdapter()._build_comfy_payload(
+            dict(request), workflow_id, asset_path
+        )
     names = [Path(str(ref.get("path_or_ref") or "reference.png")).name for ref in refs]
     # This is an API-format graph, not a saved UI workflow.  Node classes and
     # links are explicit so a browser graph cannot influence Studio execution.
@@ -137,16 +214,16 @@ def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> di
         "1": {"class_type": "LoadImage", "inputs": {"image": names[0]}},
         "2": {"class_type": "RHMiniMaxH3ModelLoader", "inputs": {
             "partition": "FL2VA", "model_root": "MiniMax-H3", "dtype": "auto",
-            "transformer_path": "MiniMax-H3-FL2VA-int8_convrot.safetensors",
+            "transformer_path": models["transformer"],
         }},
         "3": {"class_type": "RHMiniMaxH3TextEncoderLoader", "inputs": {
             "model_root": "MiniMax-H3", "dtype": "auto",
-            "text_encoder_path": "qwen3-vl-32b-int8_convrot.safetensors",
+            "text_encoder_path": models["text_encoder"],
         }},
         "4": {"class_type": "RHMiniMaxH3VAELoader", "inputs": {
             "model_root": "MiniMax-H3",
-            "video_vae_path": "MiniMax-H3-video_vae.safetensors",
-            "audio_vae_path": "MiniMax-H3-audio_vae.safetensors",
+            "video_vae_path": models["video_vae"],
+            "audio_vae_path": models["audio_vae"],
         }},
         "5": {"class_type": "RHMiniMaxH3FL2VAFirstFrameCondition", "inputs": {
             "first_frame": _link("1"),

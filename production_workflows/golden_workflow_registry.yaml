@@ -1,0 +1,76 @@
+schema_version: 1
+source_of_truth: golden_api_graph_plus_value_only_binder
+runtime_contract:
+  managed_runtime_fingerprint: "22167e28e6fb11c016397c9fdbb545a9f0a386fe4cef48d235942d6c3af80f9d"
+  native_runtime_evidence: configs/native_production_baseline.json
+  historical_validation: configs/rc33_patch24_workflow_validation_matrix.json
+workflows:
+  01_Exterior_Hero:
+    display_name: Exterior Hero
+    golden_path: production_workflows/golden/01_Exterior_Hero.json
+    golden_base_sha256: 9a2fa172dc9c3cb9350a117601d0b8845cc55d1b38a87194e241cbb1615ab7fc
+    base_structure_hash: 85cd54c70d3b651ab392220700f4c9a58d5367d3c700f34f5c6df47c72dcaa12
+    mode: I2VA
+    required_reference_count: 1
+    binder: i2va_standard
+    allowed_camera_motion: [slow_push, slow_pull, slow_pan, slow_arc]
+    allowed_mutations: [reference, prompt, width, height, length, seed, steps, sampler, fps, filename_prefix]
+    historical_evidence: configs/rc33_patch24_r3_workflow01_api_prompt.json
+    historical_gpu_proven: true
+    current_runtime_reconciled: true
+    current_runtime_gpu_proven: false
+  02_Day_Night_Transition:
+    display_name: Day / Night Transition
+    golden_path: production_workflows/golden/02_Day_Night_Transition.json
+    golden_base_sha256: 1e1653ec16e1a644ea3962c8dd39496d252e7ff87a73f44ee0c1afe41dbe6218
+    base_structure_hash: a109f5e5697a2f13651467353eff373e65759cfacfd63401fd6ce5494969cccc
+    mode: FL2VA
+    required_reference_count: 2
+    binder: fl2va_standard
+    allowed_camera_motion: [static]
+    allowed_mutations: [first_reference, last_reference, prompt, width, height, length, seed, steps, sampler, fps, filename_prefix]
+    historical_evidence: configs/rc33_patch24_02_day_night_api_prompt.json
+    historical_gpu_proven: true
+    current_runtime_reconciled: true
+    current_runtime_gpu_proven: false
+  03_Material_Detail:
+    display_name: Material Detail
+    golden_path: production_workflows/golden/03_Material_Detail.json
+    golden_base_sha256: 3071f0041f94773674429b14fd14d89ce8e953b6eec653c1d77a215bfd45f998
+    base_structure_hash: 85cd54c70d3b651ab392220700f4c9a58d5367d3c700f34f5c6df47c72dcaa12
+    mode: I2VA
+    required_reference_count: 1
+    binder: i2va_standard
+    allowed_camera_motion: [static]
+    allowed_mutations: [reference, prompt, width, height, length, seed, steps, sampler, fps, filename_prefix]
+    historical_evidence: configs/rc33_patch24_03_material_detail_api_prompt.json
+    historical_gpu_proven: true
+    current_runtime_reconciled: true
+    current_runtime_gpu_proven: false
+  04_Drone_Aerial:
+    display_name: Drone Aerial
+    golden_path: production_workflows/golden/04_Drone_Aerial.json
+    golden_base_sha256: 8f480fee9d9a6d1306957029a0e68108487818a009afcd641c3e4aa702730405
+    base_structure_hash: 85cd54c70d3b651ab392220700f4c9a58d5367d3c700f34f5c6df47c72dcaa12
+    mode: I2VA
+    required_reference_count: 1
+    binder: i2va_standard
+    allowed_camera_motion: [aerial_reveal]
+    allowed_mutations: [reference, prompt, width, height, length, seed, steps, sampler, fps, filename_prefix]
+    historical_evidence: configs/native_production_baseline.json
+    historical_gpu_proven: true
+    current_runtime_reconciled: true
+    current_runtime_gpu_proven: false
+  05_Slow_Walkthrough:
+    display_name: Slow Walkthrough
+    golden_path: production_workflows/golden/05_Slow_Walkthrough.json
+    golden_base_sha256: fea5c09516aa0de314096c96c8820d72cdb9522e1de7e906d9c9499888f4dcf0
+    mode: I2VA
+    required_reference_count: 1
+    binder: i2va_standard
+    allowed_camera_motion: [walkthrough]
+    allowed_mutations: [reference, prompt, width, height, length, seed, steps, sampler, fps, filename_prefix]
+    historical_evidence: configs/rc33_patch24_05_slow_walkthrough_api_prompt.json
+    historical_gpu_proven: true
+    current_runtime_reconciled: true
+    current_runtime_gpu_proven: true

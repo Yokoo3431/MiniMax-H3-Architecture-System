@@ -54,9 +54,42 @@ async function loadTasks() {
               <span>${esc(p.updated_at)}</span>
               ${prompt ? `<span class="mono">#${esc(prompt.prompt_hash.slice(0, 8))}</span>` : ''}
             </div>
+            <div class="task-actions" onclick="event.stopPropagation()">
+              <button class="btn small ghost" data-action="rename" data-project="${esc(p.id)}">重命名</button>
+              <button class="btn small ghost" data-action="duplicate" data-project="${esc(p.id)}">复制</button>
+              <button class="btn small ghost danger" data-action="delete" data-project="${esc(p.id)}">删除</button>
+            </div>
           </div>`;
         }).join('')
       : '<div class="muted">还没有 Study，点击 "+ New Study" 开始。</div>';
+    tasksEl.querySelectorAll('[data-action]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const id = button.dataset.project;
+        try {
+          if (button.dataset.action === 'rename') {
+            const current = projects.find((item) => item.id === id);
+            const name = window.prompt('Study 名称', current?.name || '');
+            if (!name || !name.trim()) return;
+            await post(`/api/projects/${encodeURIComponent(id)}/rename`, {name: name.trim()});
+          } else if (button.dataset.action === 'duplicate') {
+            await post(`/api/projects/${encodeURIComponent(id)}/duplicate`, {});
+          } else if (button.dataset.action === 'delete') {
+            const current = projects.find((item) => item.id === id);
+            const activeJob = (await get(`/api/projects/${encodeURIComponent(id)}`)).current_job;
+            if (activeJob) {
+              if (!window.confirm('该项目仍有正在执行的任务。\n确定取消任务并删除 Study？')) return;
+              await post(`/api/jobs/${encodeURIComponent(activeJob.id)}/cancel`, {});
+            }
+            if (!window.confirm(`删除此 Study「${current?.name || ''}」？`)) return;
+            const keepOutputs = window.confirm('保留已生成视频？\n确定=保留输出；取消=同时删除已生成视频。');
+            const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirm: true, delete_outputs: !keepOutputs})});
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.error || '删除失败');
+          }
+          await loadTasks();
+        } catch (e) { showErr(e.message); }
+      });
+    });
   } catch (e) { showErr(e.message); }
 }
 

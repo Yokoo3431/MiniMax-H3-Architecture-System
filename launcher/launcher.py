@@ -2,7 +2,7 @@
 
 Double-click flow:
     launcher -> env check -> restart stale owned services -> start Native
-    ComfyUI -> health -> start Studio -> open browser -> READY
+    ComfyUI -> health -> start Studio -> desktop shell READY
 
     Safety: runtime.lock (single instance); shutdown/cleanup/update blocked while a
     GPU job is running. Only recognizable ComfyUI/Studio processes are restarted;
@@ -258,11 +258,11 @@ class Launcher:
                     self.lock.release()
                     return 1
                 url = "http://127.0.0.1:8788"
-                opened = False if self.no_browser or self.dry_run else _open_browser(url + "/setup.html")
+                # Normal startup is owned by the desktop shell; never open a
+                # system browser implicitly.
+                opened = False
                 print(f"[SETUP_REQUIRED] Studio running in Setup Mode ({url})")
                 print(f"Architect Video Studio is running at: {url}")
-                if not opened and not self.no_browser and not self.dry_run:
-                    print("Browser did not open automatically; open the URL above manually.")
                 print("  请完成 Environment Center 配置后继续。日志：Logs\\launcher.log")
                 return self._serve()
 
@@ -292,11 +292,11 @@ class Launcher:
             print("[OK] Architect Video Studio RUNNING (8788)")
 
             url = "http://127.0.0.1:8788"
-            opened = False if self.no_browser or self.dry_run else _open_browser(url)
+            # Retain the URL for diagnostics, but do not create a browser
+            # window from the production launcher.
+            opened = False
             print(f"[READY] {url}  (Ctrl+C to stop)")
             print(f"Architect Video Studio is running at: {url}")
-            if not opened and not self.no_browser and not self.dry_run:
-                print("Browser did not open automatically; open the URL above manually.")
             self.logger.info("READY")
             return self._serve()
         except KeyboardInterrupt:
@@ -404,10 +404,9 @@ class Launcher:
                 self.lock.release()
                 return 1
             url = "http://127.0.0.1:8189"
-            opened = False if self.no_browser or self.dry_run else _open_browser(url)
+            # Native ComfyUI is an explicit Advanced diagnostic surface.
+            opened = False
             print(f"[READY] Native ComfyUI is running at: {url}")
-            if not opened and not self.no_browser and not self.dry_run:
-                print("Browser did not open automatically; open the URL above manually.")
             return self._serve()
         except KeyboardInterrupt:
             return self._shutdown()

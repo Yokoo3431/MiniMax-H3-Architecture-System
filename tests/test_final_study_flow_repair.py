@@ -74,6 +74,11 @@ class TestStudyStateRecovery(unittest.TestCase):
             # The failure belongs to the Job record, never to the editable
             # project gate.  A fresh intent cycle must remain possible.
             self.assertNotEqual(h.store.load_project(pid)["state"], "GPU_FAILED")
+            persisted = json.loads(
+                h.store.study_state_file(pid).read_text(encoding="utf-8"))
+            self.assertNotEqual(persisted["generation_status"], "GENERATING")
+            self.assertIsNone(persisted["active_job_id"])
+            self.assertEqual(persisted["last_job_status"], "GPU_FAILED")
             h.intent.analyze_intent(pid, "镜头从庭院缓慢漫游到水池边")
             h.prompt.generate_prompt(pid)
 
@@ -140,6 +145,43 @@ class TestTrustedAssetEndpoint(unittest.TestCase):
                 body = response.read()
                 self.assertEqual(response.headers.get_content_type(), "image/png")
                 self.assertTrue(body.startswith(b"\x89PNG"))
+
+            project_url = f"http://127.0.0.1:{server.server_address[1]}/api/projects/{pid}"
+            with urllib.request.urlopen(project_url, timeout=3) as response:
+                detail = json.loads(response.read().decode("utf-8"))["data"]
+            self.assertEqual(detail["project"]["id"], pid)
+            self.assertIsNone(detail["current_reference_asset_id"])
+            self.assertEqual(detail["study"]["current_state"], "REFERENCE_PENDING")
+
+            payload = json.dumps({
+                "filename": "approved.png", "role": "first_frame",
+                "data_base64": tiny_png_b64(),
+            }).encode("utf-8")
+            approve_url = project_url + "/references/upload-approve"
+            request = urllib.request.Request(
+                approve_url, data=payload, method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=3) as response:
+                approved = json.loads(response.read().decode("utf-8"))["data"]
+            self.assertEqual(approved["reference"]["state"], "APPROVED")
+            self.assertEqual(approved["current_reference_asset_id"], approved["reference"]["id"])
+
+            # Uploading identical bytes again reuses the approved asset rather
+            # than creating another execution reference.
+            payload = json.dumps({
+                "filename": "same-bytes-different-name.png", "role": "first_frame",
+                "data_base64": tiny_png_b64(),
+            }).encode("utf-8")
+            request = urllib.request.Request(
+                approve_url, data=payload, method="POST",
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=3) as response:
+                reused = json.loads(response.read().decode("utf-8"))["data"]
+            self.assertEqual(reused["reference"]["id"], approved["reference"]["id"])
+            with urllib.request.urlopen(project_url, timeout=3) as response:
+                hydrated = json.loads(response.read().decode("utf-8"))["data"]
+            self.assertEqual(hydrated["current_reference_asset_id"], approved["reference"]["id"])
+            self.assertTrue(hydrated["study"]["reference_approved"])
         finally:
             if server is not None:
                 server.shutdown()

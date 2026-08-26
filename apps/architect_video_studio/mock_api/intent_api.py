@@ -29,9 +29,9 @@ class IntentAPI:
         if project["state"] != "REFERENCE_APPROVED":
             # Failed/completed Jobs do not poison the editable Study.  Rebuild
             # the reference gate before analyzing the new current intent.
-            approved = any(r.get("state") == "APPROVED"
-                           for r in self.store.load_references(project_id).values())
-            if not approved:
+            current_id = project.get("current_reference_asset_id")
+            current = self.store.load_references(project_id).get(current_id)
+            if not current or current.get("state") != "APPROVED":
                 raise ValueError(
                     f"analyze_intent requires REFERENCE_APPROVED; project is {project['state']}"
                 )

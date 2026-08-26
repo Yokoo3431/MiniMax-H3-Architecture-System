@@ -8,6 +8,13 @@ DEPRECATED and intentionally NOT exported from this package. Forensic tests may
 still import the legacy module directly, but production code must never import
 or call it (enforced by tests/test_patch25a_hardening.py).
 """
-from .architect_h3_prompt_bridge import H3PromptBridge
+def __getattr__(name):
+    # Lazy export avoids importing the legacy bridge while the independent
+    # offline Prompt Engine is loading its pinned Skill metadata.
+    if name == "H3PromptBridge":
+        from .architect_h3_prompt_bridge import H3PromptBridge
+        return H3PromptBridge
+    raise AttributeError(name)
+
 
 __all__ = ["H3PromptBridge"]

@@ -14,6 +14,8 @@ import shutil
 from pathlib import Path
 from typing import Any, Sequence
 
+from runtime.h3_prompt_engine import _semantic_directives
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RULES = Path(__file__).resolve().parent / "skill_registry" / "minimax_h3_skill_rules.json"
 _CATALOG = _REPO_ROOT / "configs" / "workflow_catalog.json"
@@ -79,6 +81,10 @@ class H3PromptBridge:
             "geometry": {"phrase": geometry},
             "material": {"phrase": material},
             "atmosphere": {"phrase": atmosphere, "environment": cat["atmosphere"]["environment_default"], "weather": cat["atmosphere"]["weather_default"]},
+            # The official structure remains unchanged.  Deterministic known
+            # concepts are converted into English scene directives; arbitrary
+            # user text is not pasted into a pseudo-schema field.
+            "semantic_directives": _semantic_directives(text),
         }
 
     def build_fl2va_prompt(self, intent: str, workflow_name: str, duration_seconds: float = 5.0,
@@ -102,6 +108,7 @@ class H3PromptBridge:
         )
         description = (
             f"[Shot 1] {fields['camera']['phrase']}. {fields['camera']['movement']}. "
+            f"The requested architectural direction is applied through {'; '.join(fields['semantic_directives']) or 'the selected workflow controls'}. "
             f"{fields['lighting']['phrase']}. {fields['geometry']['phrase']}. "
             f"{fields['material']['phrase']}. {fields['motion']['temporal_consistency']} "
             "The scene transitions continuously from the DAY reference (Picture 1) to the NIGHT reference (Picture 2), "
@@ -145,6 +152,7 @@ class H3PromptBridge:
         alignment = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
         description = (
             f"[Shot 1] {fields['camera']['phrase']}. {fields['camera']['movement']}. "
+            f"The requested architectural direction is applied through {'; '.join(fields['semantic_directives']) or 'the selected workflow controls'}. "
             f"{fields['lighting']['phrase']}. {fields['geometry']['phrase']}. "
             f"{fields['material']['phrase']}. {fields['motion']['temporal_consistency']} "
             f"Environment: {fields['atmosphere']['environment']}; weather: {fields['atmosphere']['weather']}; "

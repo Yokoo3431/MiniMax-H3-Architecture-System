@@ -24,6 +24,7 @@ from runtime.h3_model_root import (
     h3_process_environment,
     write_comfy_model_paths_config,
 )
+from runtime.h3_low_memory_profiles import detect_hardware_facts, profile_runtime_flags, select_profile
 
 
 class PortManager:
@@ -216,15 +217,41 @@ class ProcessManager:
         if "comfyui" not in self.services:
             comfy_env = {"H3_WINDOWS_SAFE_LOAD": "pread"}
             configured_models = os.environ.get("H3_MODELS_ROOT", "").strip()
+            requested_profile = os.environ.get("H3_DEPLOYMENT_PROFILE", "AUTO")
+            vram_gb = os.environ.get("H3_GPU_VRAM_GB")
+            ram_gb = os.environ.get("H3_SYSTEM_RAM_GB")
+            hardware_source = "environment"
+            if str(requested_profile).strip().upper() == "AUTO" and (not vram_gb or not ram_gb):
+                facts = detect_hardware_facts()
+                vram_gb = vram_gb or facts.get("gpu_vram_gb")
+                ram_gb = ram_gb or facts.get("system_ram_gb")
+                hardware_source = ",".join(facts.get("source") or []) or "conservative-fallback"
+            selected_profile = select_profile(
+                requested=requested_profile,
+                gpu_vram_gb=vram_gb,
+                system_ram_gb=ram_gb,
+            )
             command = [str(self.python), "-s", "ComfyUI\\main.py",
                        "--windows-standalone-build", "--port", str(self.COMFYUI_PORT),
-                       # The pinned H3 VAE path is not safe with ComfyUI's
-                       # asynchronous weight-offload worker on Windows/Blackwell.
-                       # Keep both transfer safety switches explicit and local
-                       # to the managed ComfyUI child; no global environment
-                       # or model/runtime mutation is required.
-                       "--disable-dynamic-vram", "--disable-async-offload",
-                       "--disable-pinned-memory"]
+                       # The profile owns the real memory policy.  In
+                       # particular, AUTO on unknown hardware is the safe
+                       # COMPATIBILITY profile and never selects the heavy
+                       # 27GB Qwen encoder through the production payload.
+                       *profile_runtime_flags(selected_profile)]
+            comfy_env["H3_DEPLOYMENT_PROFILE"] = selected_profile
+            comfy_env["H3_GPU_VRAM_GB"] = str(vram_gb or "")
+            comfy_env["H3_SYSTEM_RAM_GB"] = str(ram_gb or "")
+            comfy_env["H3_PROFILE_HARDWARE_SOURCE"] = hardware_source
+            # The Studio service is a sibling of ComfyUI, so publish the
+            # selected immutable profile to the launcher environment as well.
+            # This keeps Environment Center and the child command on one
+            # decision without making the frontend infer it from stale logs.
+            os.environ.update({
+                "H3_DEPLOYMENT_PROFILE": selected_profile,
+                "H3_GPU_VRAM_GB": str(vram_gb or ""),
+                "H3_SYSTEM_RAM_GB": str(ram_gb or ""),
+                "H3_PROFILE_HARDWARE_SOURCE": hardware_source,
+            })
             if configured_models:
                 comfy_env.update(h3_process_environment(configured_models))
                 if not self.dry_run and (Path(configured_models) / "MiniMax-H3").is_dir():
@@ -248,7 +275,7 @@ class ProcessManager:
                 cwd=self.native_root,
                 health_url=f"http://127.0.0.1:{self.COMFYUI_PORT}/system_stats",
                 log_name="comfyui.log",
-                 env_extra=comfy_env,
+                env_extra=comfy_env,
             )
         return self.services["comfyui"]
 

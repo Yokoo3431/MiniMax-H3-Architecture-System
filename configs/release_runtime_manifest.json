@@ -10,12 +10,21 @@
     "repository": "https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3.git",
     "upstream_commit": "d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad",
     "project_patch_sha256": "488ab271e68d226a690f3c1dc322a9fc15a0eba7273045e890a871de2c0196bd",
-    "managed_runtime_fingerprint": "887ddf87371e703f27c52694d849171e90ef455a52a2ae811aa3b8b934c38ae0",
+    "managed_runtime_fingerprint": "22167e28e6fb11c016397c9fdbb545a9f0a386fe4cef48d235942d6c3af80f9d",
     "vae_windows_hardening": {
       "strategy": "B",
-      "status": "SOURCE_PATCH_PREPARED_GPU_VALIDATION_REQUIRED",
+      "status": "SOURCE_RECONCILED_CPU_VALIDATED_GPU_VALIDATION_PENDING",
       "reason": "The current H3 adapter recursively moves the complete VAE with Module.to(cpu) during session teardown; this has direct Windows 0xC0000005 evidence.",
-      "public_reference": "https://github.com/Comfy-Org/ComfyUI/issues/15337"
+      "public_reference": "https://github.com/Comfy-Org/ComfyUI/issues/15337",
+      "patch": "patches/support_layers/minimax_h3_vae_offload_sync.patch",
+      "patch_sha256": "0362be1be2a4edec06cf220a000a5a65d36e529eaae0c9698e396b68d91a464f"
+    },
+    "nvfp4_native_loader": {
+      "status": "SOURCE_RECONCILED_CPU_VALIDATED_GPU_VALIDATION_PENDING",
+      "loader": "native_comfy_minimax_h3",
+      "rejects": "runninghub_int8_convrot",
+      "patch": "patches/support_layers/minimax_h3_nvfp4_native_loader.patch",
+      "patch_sha256": "99791c32240c16d60cd79401908f726a6634a45a07d6bc00a37f75d72849795e"
     },
     "strategy_a": {
       "target_dtype": "bfloat16",

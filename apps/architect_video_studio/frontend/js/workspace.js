@@ -1,4 +1,6 @@
 // Studio workspace: one simple product flow backed by canonical Study/Job state.
+// OfficialSkillAdapter remains an explicit legacy compatibility provider;
+// normal product generation uses the universal offline-first Prompt Engine.
 const projectId = qs('project');
 if (!projectId) location.href = 'index.html';
 
@@ -50,6 +52,7 @@ function currentParams() {
   const raw = {
     duration: parseFloat(value('param-duration')),
     resolution: value('param-resolution'),
+    fps: parseInt(value('param-fps'), 10),
     aspect_ratio: value('param-aspect'),
     quality: value('param-quality'),
     generation_speed: value('param-speed'),
@@ -71,14 +74,14 @@ async function refreshStudy() {
 }
 
 async function loadAll() {
-  const [p, c] = await Promise.all([get(`/api/projects/${projectId}`), get('/api/catalog')]);
-  project = p; catalog = c;
-  await refreshStudy();
-  try { refs = await get(`/api/projects/${projectId}/references`); } catch (_) { refs = []; }
-  try { intent = await get(`/api/projects/${projectId}/intent`); } catch (_) { intent = null; }
-  try { prompt = await get(`/api/projects/${projectId}/prompt`); } catch (_) { prompt = null; }
+  const [detail, c] = await Promise.all([get(`/api/projects/${projectId}`), get('/api/catalog')]);
+  project = detail.project || detail; catalog = c;
+  study = detail.study || await refreshStudy();
+  refs = detail.references || [];
+  intent = detail.intent || null;
+  prompt = detail.prompt || null;
   if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
-  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderPrompt(); updateGate();
+  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderPrompt(); renderOutputDirectory(); updateGate(); refreshEstimate();
   if (selectedRef && selectedRef.state === 'APPROVED'
       && document.getElementById('intent-text').value.trim()
       && !(study && study.prompt_current)) schedulePromptRefresh(80);
@@ -113,6 +116,7 @@ function renderParams() {
   const saved = (prompt && prompt.generation_parameters) || {};
   if (saved.duration) duration.value = String(saved.duration);
   if (saved.resolution) resolution.value = saved.resolution;
+  if (saved.fps != null) document.getElementById('param-fps').value = String(saved.fps);
   if (saved.aspect_ratio) document.getElementById('param-aspect').value = saved.aspect_ratio;
   if (saved.quality) document.getElementById('param-quality').value = saved.quality;
   if (saved.generation_speed) document.getElementById('param-speed').value = saved.generation_speed;
@@ -126,9 +130,32 @@ function renderParams() {
   syncViewportParams();
 }
 
+async function refreshEstimate() {
+  const note = document.getElementById('estimate-note');
+  if (!note || !projectId) return;
+  try {
+    const estimate = await post(`/api/projects/${projectId}/estimate`, {generation_parameters: currentParams()});
+    if (estimate.min_seconds == null) note.textContent = `预计生成时间：${estimate.label || '暂无可靠估算'}`;
+    else {
+      const min = Math.max(1, Math.round(estimate.min_seconds / 60));
+      const max = Math.max(min, Math.round(estimate.max_seconds / 60));
+      const confidence = estimate.confidence === 'history' ? '高' : '中';
+      note.textContent = `预计生成时间：约 ${min}–${max} 分钟 · 依据：${estimate.estimate_basis || '已验证成功记录'} · ${estimate.parameters?.resolution || currentParams().resolution} · ${estimate.parameters?.duration || currentParams().duration}秒 · ${estimate.parameters?.steps || currentParams().steps || 50}步 · 置信度：${confidence}`;
+    }
+  } catch (_) { note.textContent = '预计生成时间：正在估算'; }
+}
+
+function renderOutputDirectory() {
+  const el = document.getElementById('output-directory');
+  if (el) el.textContent = project?.output_directory || '默认产品目录';
+}
+
 function refUrl(ref) { return ref && ref.preview_ready ? ref.preview_url : null; }
 function renderRefs() {
-  selectedRef = refs[refs.length - 1] || refs.find((r) => r.state === 'APPROVED') || null;
+  const currentId = (study && study.current_reference_asset_id) || (project && project.current_reference_asset_id);
+  selectedRef = refs.find((r) => r.id === currentId)
+    || refs.find((r) => r.state === 'PENDING')
+    || null;
   const state = document.getElementById('reference-state');
   if (!selectedRef) {
     state.textContent = '未上传'; state.className = 'badge state';
@@ -172,14 +199,16 @@ async function uploadPending() {
   const reader = new FileReader();
   reader.onload = async () => {
     try {
-      const created = await post(`/api/projects/${projectId}/references`, {
+      const result = await post(`/api/projects/${projectId}/references/upload-approve`, {
         filename: pendingFile.name, role: 'first_frame',
         data_base64: String(reader.result).split(',')[1],
       });
-      await post(`/api/projects/${projectId}/references/${created.id}/approve`, {reason: 'Studio reference approval'});
       pendingFile = null; clearErr();
-      [project, refs] = await Promise.all([get(`/api/projects/${projectId}`), get(`/api/projects/${projectId}/references`)]);
-      await refreshStudy(); renderRefs(); renderHeader(); updateGate(); schedulePromptRefresh(80);
+      project = result.project;
+      study = result.study;
+      refs = (await get(`/api/projects/${projectId}`)).references || [];
+      intent = null; prompt = null;
+      renderRefs(); renderHeader(); updateGate(); schedulePromptRefresh(80);
     } catch (e) { showErr(e.message); }
   };
   reader.readAsDataURL(pendingFile);
@@ -189,18 +218,31 @@ function renderPrompt() {
   const card = document.getElementById('prompt-skill-card');
   const details = document.getElementById('prompt-details');
   if (!prompt) { card.style.display = 'none'; details.style.display = 'none'; return; }
-  const current = !!(study && study.prompt_current && prompt.workflow === currentWorkflow());
+  const mode = prompt.engine_mode || 'OFFLINE_COMPILER';
+  const reasoning = (mode === 'TEXT_REASONING_H3' || mode === 'MULTIMODAL_H3')
+    && prompt.skill_invoked === true && prompt.invocation_result === 'PASS';
+  const offline = mode === 'OFFLINE_COMPILER' && prompt.validator_result && prompt.validator_result.pass;
+  const official = reasoning;
+  const current = !!(study && study.prompt_current && official && prompt.workflow === currentWorkflow());
   card.style.display = 'block';
   card.innerHTML = current
-    ? '<strong>官方 H3 Prompt Skill 已优化 ✓</strong><span class="muted small">刚刚更新 · OfficialSkillAdapter → H3PromptBridge</span>'
-    : '<strong class="warn-text">正在更新当前提示词…</strong><span class="muted small">旧提示词不会用于生成</span>';
+    ? (mode === 'MULTIMODAL_H3'
+      ? '<strong>H3 Skill · 图像理解优化 ✓</strong><span class="muted small">已明确同意并使用当前参考图</span>'
+      : '<strong>H3 Skill · AI文本优化 ✓</strong><span class="muted small">已执行可选文本推理 Provider</span>')
+    : offline
+      ? '<strong>H3 官方格式编译 ✓</strong><span class="muted small">未启用 AI 图像理解 · 离线可用</span>'
+      : prompt.fallback
+        ? '<strong class="warn-text">AI优化失败，已使用 H3 官方格式编译</strong><span class="muted small">可继续生成，不会伪装成 AI 优化</span>'
+        : '<strong class="warn-text">提示词需要重新编译…</strong><span class="muted small">旧提示词不会用于生成</span>';
   details.style.display = 'block';
   const provenance = prompt.provenance || {};
   document.getElementById('prompt-detail-content').innerHTML = `
     <div class="prompt-detail-row"><span>Original Intent</span><span>${esc((intent && intent.natural_language) || '—')}</span></div>
     <div class="prompt-detail-row"><span>Optimized Prompt</span><pre class="prompt">${esc(prompt.prompt || '—')}</pre></div>
     <div class="prompt-detail-row"><span>Video Type</span><span>${esc((VIDEO_TYPES.find(([id]) => id === prompt.workflow) || [null, prompt.workflow])[1])}</span></div>
-    <div class="prompt-detail-row"><span>Provenance</span><span class="mono small">${esc(`${provenance.adapter || 'OfficialSkillAdapter'} → ${provenance.bridge || 'H3PromptBridge'}`)}</span></div>`;
+    <div class="prompt-detail-row"><span>Prompt Engine</span><span class="mono small">${esc(`${mode} · ${prompt.provider || '—'}${prompt.model ? ` · ${prompt.model}` : ''}`)}</span></div>
+    <div class="prompt-detail-row"><span>Skill specification</span><span>${esc(prompt.skill_source || '—')} · ${esc(prompt.skill_version || '—')}</span></div>
+    <div class="prompt-detail-row"><span>更新时间</span><span>${esc(prompt.completed_at || prompt.generated_at || '—')}</span></div>`;
 }
 
 async function refreshPrompt() {
@@ -211,16 +253,24 @@ async function refreshPrompt() {
   }
   try {
     document.getElementById('prompt-skill-card').style.display = 'block';
-    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在调用官方 H3 Prompt Skill…</strong><span class="muted small">OfficialSkillAdapter → H3PromptBridge</span>';
+    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在编译 H3 Prompt…</strong><span class="muted small">离线优先；可选 Provider 仅在明确选择后执行</span>';
     intent = await post(`/api/projects/${projectId}/intent`, {natural_language: text});
     intent = await post(`/api/projects/${projectId}/workflow/select`, {workflow: currentWorkflow()});
     prompt = await post(`/api/projects/${projectId}/prompt`, {
       workflow: currentWorkflow(), generation_parameters: currentParams(),
+      prompt_engine: value('prompt-engine') || 'AUTO',
+      image_consent: !!document.getElementById('prompt-image-consent')?.checked,
     });
     if (requestSerial !== promptRequestSerial) return;
     [project, study] = await Promise.all([get(`/api/projects/${projectId}`), refreshStudy()]);
     clearErr(); renderPrompt(); renderHeader(); updateGate();
-  } catch (e) { if (requestSerial === promptRequestSerial) showErr(e.message); }
+  } catch (e) {
+    if (requestSerial === promptRequestSerial) {
+      prompt = {status: 'FAILED', skill_invoked: false, invocation_result: 'FAILED',
+        official_skill_status: 'Prompt Skill 调用失败'};
+      renderPrompt(); updateGate(); showErr('Prompt Skill 调用失败：' + e.message);
+    }
+  }
 }
 
 function schedulePromptRefresh(delay = 500) {
@@ -230,7 +280,7 @@ function schedulePromptRefresh(delay = 500) {
 
 function syncViewportParams() {
   document.getElementById('v-params').textContent =
-    `${value('param-resolution').replace('x', '×')} · 24fps · ${value('param-duration')}s`;
+    `${value('param-resolution').replace('x', '×')} · ${value('param-fps')}fps · ${value('param-duration')}s`;
 }
 
 function updateGate() {
@@ -318,12 +368,46 @@ document.getElementById('analyze-btn').addEventListener('click', refreshPrompt);
 document.getElementById('intent-text').addEventListener('input', () => {
   prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
 });
+document.getElementById('prompt-engine').addEventListener('change', () => {
+  prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
+});
 document.getElementById('generate-btn').addEventListener('click', generate);
 document.getElementById('risk-check').addEventListener('change', updateGate);
+document.getElementById('param-fps').addEventListener('change', () => { syncViewportParams(); refreshEstimate(); });
+document.getElementById('rename-study-btn').addEventListener('click', async () => {
+  const name = window.prompt('Study 名称', project?.name || '');
+  if (!name || !name.trim()) return;
+  try { project = await post(`/api/projects/${projectId}/rename`, {name: name.trim()}); renderHeader(); }
+  catch (e) { showErr(e.message); }
+});
+document.getElementById('choose-output-folder').addEventListener('click', async () => {
+  try {
+    const picked = await post('/api/system/pick-folder', {});
+    if (!picked || picked.cancelled || !picked.path) return;
+    project = await patch(`/api/projects/${projectId}`, {output_directory: picked.path});
+    renderOutputDirectory();
+  } catch (e) { showErr(e.message); }
+});
 ['param-duration','param-resolution','param-aspect','param-sampler','param-steps','param-velocity','param-cache-dit'].forEach((id) => {
-  document.getElementById(id).addEventListener('change', () => { prompt = null; renderPrompt(); syncViewportParams(); updateGate(); schedulePromptRefresh(); });
+  document.getElementById(id).addEventListener('change', () => { prompt = null; renderPrompt(); syncViewportParams(); updateGate(); refreshEstimate(); schedulePromptRefresh(); });
 });
 document.getElementById('param-quality').addEventListener('change', selectQuality);
 document.getElementById('param-speed').addEventListener('change', selectSpeed);
 
-loadAll().catch((e) => showErr(e.message));
+function showHydrationFailure(error) {
+  const layout = document.querySelector('.studio-layout');
+  if (layout) {
+    layout.querySelectorAll('button, input, select, textarea').forEach((el) => { el.disabled = true; });
+    layout.style.display = 'none';
+  }
+  const strip = document.getElementById('current-job-strip');
+  if (strip) strip.style.display = 'none';
+  showErr(`项目加载失败：${error.message || error}。请重试，或返回项目列表。`);
+  errEl.innerHTML += ' <button class="btn small" id="retry-project-load" type="button">重试</button> <a class="btn small" href="index.html">返回项目列表</a>';
+  document.getElementById('retry-project-load').addEventListener('click', () => location.reload());
+}
+
+loadAll().then(() => {
+  const layout = document.querySelector('.studio-layout');
+  if (layout) layout.style.display = '';
+}).catch(showHydrationFailure);

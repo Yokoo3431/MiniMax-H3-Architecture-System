@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source": "PATCH2.7-C2-B historical real GPU validation records supplied by owner",
+  "notes": "Timing evidence only; no user paths, prompts, images, or outputs are included.",
+  "successful_runs": [
+    {"evidence_id": "patch27c2b-01", "workflow": "01_Exterior_Hero", "state": "COMPLETED", "elapsed": 924.9, "duration": 4.458333, "fps": 24, "resolution": "1344x768", "steps": 50, "profile": "historical-native"},
+    {"evidence_id": "patch27c2b-02", "workflow": "02_Day_Night_Transition", "state": "COMPLETED", "elapsed": 1076.4, "duration": 4.458333, "fps": 24, "resolution": "1344x768", "steps": 50, "profile": "historical-native"},
+    {"evidence_id": "patch27c2b-03", "workflow": "03_Material_Detail", "state": "COMPLETED", "elapsed": 866.0, "duration": 4.458333, "fps": 24, "resolution": "1344x768", "steps": 50, "profile": "historical-native"},
+    {"evidence_id": "patch27c2b-04", "workflow": "04_Drone_Aerial", "state": "COMPLETED", "elapsed": 852.7, "duration": 4.458333, "fps": 24, "resolution": "1344x768", "steps": 50, "profile": "historical-native"},
+    {"evidence_id": "patch27c2b-05", "workflow": "05_Slow_Walkthrough", "state": "COMPLETED", "elapsed": 868.4, "duration": 4.458333, "fps": 24, "resolution": "1344x768", "steps": 50, "profile": "historical-native"},
+    {"evidence_id": "golden-05-single-proof", "workflow": "05_Slow_Walkthrough", "state": "COMPLETED", "elapsed": 961.0, "duration": 4.458333, "fps": 24, "resolution": "1344x768", "steps": 50, "profile": "historical-native"}
+  ]
+}

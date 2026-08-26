@@ -29,21 +29,24 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     jobs = list(store.load_jobs(project_id).values())
 
     approved = [r for r in refs if r.get("state") == "APPROVED"]
-    reference = _latest(approved) or _latest(refs)
+    selected_id = project.get("current_reference_asset_id")
+    reference = next((r for r in approved if r.get("id") == selected_id), None)
     reference_uploaded = bool(refs)
     reference_preview_ready = bool(
         reference and reference.get("stored_path")
         and Path(reference["stored_path"]).is_file()
     )
-    reference_approved = bool(approved)
+    reference_approved = bool(reference)
     selected_workflow = intent.get("selected_workflow")
-    approved_hash = reference_asset_hash(approved)
+    current_refs = [reference] if reference and reference.get("state") == "APPROVED" else []
+    approved_hash = reference_asset_hash(current_refs)
     prompt_ready = is_current_prompt(
         prompt,
         intent=str(intent.get("natural_language") or ""),
         workflow=str(selected_workflow or ""),
         reference_hash=approved_hash,
         parameters=prompt.get("generation_parameters") if prompt else None,
+        provider=prompt.get("prompt_engine_provider") if prompt else None,
     )
     prompt_confirmed = bool(
         prompt_ready and project.get("state") in {
@@ -93,6 +96,7 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         "project_id": project_id,
         "selected_workflow": selected_workflow,
         "reference_asset_id": reference.get("id") if reference else None,
+        "current_reference_asset_id": reference.get("id") if reference else None,
         "reference_role": reference.get("role") if reference else None,
         "reference_uploaded": reference_uploaded,
         "reference_preview_ready": reference_preview_ready,

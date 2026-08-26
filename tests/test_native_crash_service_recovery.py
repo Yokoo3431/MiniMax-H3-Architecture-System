@@ -15,12 +15,20 @@ from runtime.adapters.comfyui_client import ComfyUIOfflineError
 
 class TestNativeCrashRecovery(unittest.TestCase):
     def test_managed_comfy_command_disables_async_and_pinned_offload(self):
-        with tempfile.TemporaryDirectory() as tmpd:
+        with tempfile.TemporaryDirectory() as tmpd, mock.patch(
+            "launcher.process_manager.detect_hardware_facts",
+            return_value={"gpu_vram_gb": 12.0, "system_ram_gb": 32.0,
+                          "source": ["test"], "errors": []},
+        ):
             root = Path(tmpd)
             pm = ProcessManager(root, root, python=root / "python.exe", dry_run=True)
-            command = pm.comfyui_service().command
+            service = pm.comfyui_service()
+            command = service.command
             self.assertIn("--disable-async-offload", command)
             self.assertIn("--disable-pinned-memory", command)
+            self.assertEqual(service.env_extra["H3_DEPLOYMENT_PROFILE"], "COMPATIBILITY")
+            self.assertEqual(service.env_extra["H3_PROFILE_HARDWARE_SOURCE"], "test")
+            self.assertIn("--lowvram", service.command)
 
     def test_dead_lock_is_removed_and_reclaimed(self):
         with tempfile.TemporaryDirectory() as tmpd:

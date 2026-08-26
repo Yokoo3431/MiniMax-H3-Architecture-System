@@ -277,8 +277,25 @@ function Ensure-H3ModelRootBridge([string]$Runtime, [string]$ModelsRoot) {
                 Write-Host "Keeping existing MiniMax-H3 Runtime bridge: $target -> $source"
                 return $true
             }
+            # A previous installation may leave a junction pointing at an old
+            # Models Root. Removing the link itself is safe and does not touch
+            # the destination model files; rebuild it against the selected
+            # root instead of reporting a false conflict.
+            if ($targetItem.LinkType -in @("Junction", "SymbolicLink")) {
+                Write-Host "Repairing existing MiniMax-H3 Runtime bridge: $target"
+                Remove-Item -LiteralPath $target -Force
+            } elseif ($targetItem.PSIsContainer -and
+                      @(Get-ChildItem -LiteralPath $target -Force -ErrorAction SilentlyContinue).Count -eq 0) {
+                # An empty placeholder directory is not a model library.
+                # Convert it to the canonical bridge without deleting data.
+                Remove-Item -LiteralPath $target -Force
+            } else {
+                throw "MiniMax-H3 Runtime bridge conflicts with an existing non-link path: $target. Existing files were preserved."
+            }
         } catch { }
-        throw "MiniMax-H3 Runtime bridge conflicts with an existing path: $target"
+        if (Test-Path -LiteralPath $target) {
+            throw "MiniMax-H3 Runtime bridge conflicts with an existing path: $target"
+        }
     }
     New-Item -ItemType Junction -Path $target -Target $source | Out-Null
     $sourceResolved = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $source).Path).TrimEnd([char]0x5c, [char]0x2f)
@@ -290,6 +307,21 @@ function Ensure-H3ModelRootBridge([string]$Runtime, [string]$ModelsRoot) {
     }
     Write-Host "Created MiniMax-H3 Runtime bridge: $target -> $source"
     return $true
+}
+
+function Reconcile-H3RuntimeSupport([string]$Runtime, [string]$InstallRoot) {
+    $script = Join-Path $InstallRoot "scripts\reconcile_h3_runtime_unification.py"
+    $python = Join-Path $Runtime "python_embeded\python.exe"
+    $h3 = Join-Path $Runtime "ComfyUI\custom_nodes\ComfyUI_RH_MinMaxH3"
+    $lock = Join-Path $Runtime "ComfyUI\custom_nodes\support_layer.lock.json"
+    if (-not (Test-Path -LiteralPath $script) -or -not (Test-Path -LiteralPath $python) -or
+        -not (Test-Path -LiteralPath $h3) -or -not (Test-Path -LiteralPath $lock)) {
+        Write-Host "Managed H3 support reconcile deferred until the H3 node is installed."
+        return
+    }
+    Write-Host "Reconciling Managed H3 NVFP4/VAE support layer (CPU/static only)..."
+    & $python $script --runtime-root $Runtime --repo-root $InstallRoot | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Managed H3 support reconciliation failed." }
 }
 
 function Ensure-Extractor($Config, [string]$Cache, [string]$InstallRoot, [string]$Runtime) {
@@ -543,6 +575,7 @@ Set-Content -LiteralPath (Join-Path $installRoot "native_env.path") -Value $runt
 $modelsRoot = Find-ExistingModelsRoot $installRoot $runtime
 Set-Content -LiteralPath (Join-Path $installRoot "models_env.path") -Value $modelsRoot -Encoding UTF8
 Ensure-H3ModelRootBridge $runtime $modelsRoot | Out-Null
+Reconcile-H3RuntimeSupport $runtime $installRoot
 $env:H3_PROJECT_ROOT = $installRoot
 $env:H3_NATIVE_ROOT = $runtime
 $env:H3_MODELS_ROOT = $modelsRoot

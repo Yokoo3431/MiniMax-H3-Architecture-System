@@ -16,6 +16,7 @@ async function load() {
         <div class="kv"><span class="k">时长 / 帧</span><span>4s / 107（H3 帧格）</span></div>
         <div class="kv"><span class="k">Runtime</span><span>Native v0.33.1（冻结，原型未调用）</span></div>
         <div class="kv"><span class="k">Safe Load</span><span>pread（冻结）</span></div>
+        <div class="kv"><span class="k">最终视频</span><span class="small">${esc(result.final_output_path || result.files?.video_mp4 || '—')}</span></div>
       </div>`;
 
     const report = await get(`/api/jobs/${jobId}/report`);

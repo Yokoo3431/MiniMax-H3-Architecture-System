@@ -60,6 +60,11 @@ class TestRelativePathValidation(unittest.TestCase):
         self.assertEqual(cfg.studio_port, 8788)
         self.assertEqual(cfg.runtime_mode, "real")
         self.assertEqual(cfg.safe_load, "pread")
+        self.assertEqual(
+            safe_load(CONFIG.read_text(encoding="utf-8"))["native_runtime"]["profile_selection"],
+            "AUTO",
+        )
+        self.assertTrue((DIST / "configs" / "h3_runtime_profiles.json").is_file())
 
 
 class TestLauncherPathIndependence(unittest.TestCase):

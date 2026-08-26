@@ -97,7 +97,7 @@ class TestManagedRuntimePromotion(unittest.TestCase):
         root = _managed_root()
         lock = json.loads((root / "ComfyUI/custom_nodes/support_layer.lock.json").read_text(encoding="utf-8"))
         self.assertEqual(lock["h3"]["commit"], "d6c5f7b0d4e03936ac4a9834be63ecc6b5637dad")
-        self.assertEqual(lock["h3"]["source_tree_fingerprint"], "887ddf87371e703f27c52694d849171e90ef455a52a2ae811aa3b8b934c38ae0")
+        self.assertEqual(lock["h3"]["source_tree_fingerprint"], "22167e28e6fb11c016397c9fdbb545a9f0a386fe4cef48d235942d6c3af80f9d")
         self.assertEqual(lock["h3"]["strategy_a"]["target_dtype"], "bfloat16")
         self.assertEqual(lock["h3"]["strategy_a"]["visual_dtype"], "preserved_fp32")
         self.assertEqual(lock["h3"]["memory_policy"]["name"], "static_transfer_safety_margin")
@@ -107,6 +107,8 @@ class TestManagedRuntimePromotion(unittest.TestCase):
         self.assertEqual(lock["h3"]["strategy_a"]["static_transfer_headroom_patch_sha256"], "c6342b0417f9adb8dacfb72cdacab9a6c58500a0fb7ee27192eca098148e5aeb")
         self.assertEqual(lock["h3"]["strategy_a"]["static_transfer_headroom"]["method"], "ModelPatcher.partially_unload")
         self.assertTrue(lock["h3"]["strategy_a"]["static_transfer_headroom"]["before_static_transfer"])
+        self.assertEqual(lock["h3"]["runtime_unification"]["nvfp4_loader"], "native_comfy_minimax_h3")
+        self.assertFalse(lock["h3"]["runtime_unification"]["model_files_modified"])
         self.assertEqual(lock["video_helper_suite"]["commit"], "4ee72c065db22c9d96c2427954dc69e7b908444b")
         self.assertEqual(lock["video_helper_suite"]["source_tree_fingerprint"], "5d881ddec68ee6deec3140f58c26e6b397ae82ad6a9aaa92c933c1e770101a82")
         self.assertEqual(lock["pread"]["environment"], "H3_WINDOWS_SAFE_LOAD=pread")
@@ -130,13 +132,17 @@ class TestManagedRuntimePromotion(unittest.TestCase):
             "RHMiniMaxH3FL2VAFirstFrameCondition", "RHMiniMaxH3FL2VATarget",
             "RHMiniMaxH3ModelLoader", "RHMiniMaxH3TextEncoderLoader",
             "RHMiniMaxH3T2VATextEncode", "RHMiniMaxH3VAELoader", "VHS_VideoCombine",
+            "CLIPLoader", "UNETLoader", "VAELoader", "MiniMaxH3ImageToVideo",
+            "KSamplerSelect", "BasicScheduler", "RandomNoise", "BasicGuider",
+            "SamplerCustomAdvanced", "VAEDecode", "VAEDecodeAudio", "CreateVideo",
+            "SaveVideo",
         }
         object_info = {name: {} for name in names}
         for workflow in CANONICAL_WORKFLOWS:
             payload = build_production_payload(_request(workflow), workflow)
             result = validate_production_payload(payload, object_info)
             self.assertEqual(result["unknown_node_types"], [])
-            self.assertNotIn("MiniMaxH3ImageToVideo", {n["class_type"] for n in payload.values()})
+            self.assertIn("MiniMaxH3ImageToVideo", {n["class_type"] for n in payload.values()})
 
     def test_architecture_production_is_exactly_five_and_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:

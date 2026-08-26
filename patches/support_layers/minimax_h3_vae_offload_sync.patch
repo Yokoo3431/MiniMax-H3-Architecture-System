@@ -1,6 +1,6 @@
 --- a/minimax_h3_nodes/runtime/vae_adapter/_impl.py
 +++ b/minimax_h3_nodes/runtime/vae_adapter/_impl.py
-@@ -812,6 +812,12 @@
+@@ -813,6 +813,12 @@
          if dtype is not None:
              kwargs["dtype"] = _resolve_dtype(dtype, default=torch.float32)
 +        # Windows Blackwell can fault when a VAE is recursively moved to CPU
