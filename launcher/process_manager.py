@@ -232,7 +232,8 @@ class ProcessManager:
                 system_ram_gb=ram_gb,
             )
             command = [str(self.python), "-s", "ComfyUI\\main.py",
-                       "--windows-standalone-build", "--port", str(self.COMFYUI_PORT),
+                       "--windows-standalone-build", "--disable-auto-launch",
+                       "--port", str(self.COMFYUI_PORT),
                        # The profile owns the real memory policy.  In
                        # particular, AUTO on unknown hardware is the safe
                        # COMPATIBILITY profile and never selects the heavy
@@ -340,6 +341,15 @@ class ProcessManager:
                 return service
             if _http_ok(service.health_url):
                 service.state = "RUNNING"
+                if service.name == "comfyui":
+                    # A successful fresh health check supersedes any crash
+                    # marker left by the previous child.  Otherwise the
+                    # desktop shell can surface a historical crash after a
+                    # perfectly healthy restart.
+                    try:
+                        (self.logs_dir / "comfyui.crash.json").unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 return service
             time.sleep(2)
         service.state = "FAILED"

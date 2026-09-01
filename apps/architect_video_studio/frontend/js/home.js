@@ -100,7 +100,7 @@ async function checkSystem() {
     el.innerHTML = env.overall === 'READY'
       ? '<span class="ok">System Ready</span>'
       : `<span class="${env.overall === 'BLOCK' ? 'err' : 'warn'}">System ${esc(env.overall)} — 请打开 Environment Center</span>`;
-    if (env.overall === 'SETUP_REQUIRED' || env.overall === 'BLOCK') {
+    if (env.installation_status === 'INSTALLATION_REPAIR_REQUIRED') {
       location.href = 'setup.html';
     }
   } catch (_) { /* keep silent; page still usable */ }

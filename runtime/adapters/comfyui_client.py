@@ -14,11 +14,12 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlencode
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 from pathlib import Path
 
 
@@ -57,11 +58,23 @@ def _contains_value(value: Any, needle: str) -> bool:
     return needle.lower() in json.dumps(value, ensure_ascii=False, default=str).lower()
 
 
-class ComfyUIOfflineError(RuntimeError):
+class ComfyTransportUnavailable(RuntimeError):
+    """The control-plane transport is unavailable; execution is unknown."""
+
+
+class ComfyUIOfflineError(ComfyTransportUnavailable):
     """ComfyUI server unreachable."""
 
 
-class ComfyUICommunicationTimeout(ComfyUIOfflineError):
+class ComfyTransportTimeout(RuntimeError):
+    """An observation/submission request exceeded its transport timeout."""
+
+
+class ComfyProtocolError(RuntimeError):
+    """ComfyUI returned an empty or non-JSON response."""
+
+
+class ComfyUICommunicationTimeout(ComfyTransportTimeout):
     """A bounded metadata/observation request timed out.
 
     This is deliberately different from ``ComfyUIOfflineError``: the server
@@ -128,11 +141,28 @@ class ComfyUIClient:
             "submission": self.submission_timeout,
             "observation": self.observation_timeout,
             "output": self.output_timeout,
+            "memory_release": self.health_timeout,
         }.get(operation, self.metadata_timeout)
         try:
             with urllib.request.urlopen(req, timeout=request_timeout) as resp:
-                raw = resp.read().decode("utf-8")
-                return json.loads(raw) if raw else {}
+                raw_bytes = resp.read()
+                raw = raw_bytes.decode("utf-8", errors="replace")
+                if not raw.strip():
+                    if operation == "memory_release":
+                        return {}
+                    raise ComfyProtocolError(
+                        f"ComfyUI {operation} returned empty response: "
+                        f"status={getattr(resp, 'status', 200)} "
+                        f"content_type={resp.headers.get('Content-Type', '')!r} length=0")
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    safe_prefix = raw[:80].replace("\r", " ").replace("\n", " ")
+                    raise ComfyProtocolError(
+                        f"ComfyUI {operation} returned non-JSON response: "
+                        f"status={getattr(resp, 'status', 200)} "
+                        f"content_type={resp.headers.get('Content-Type', '')!r} "
+                        f"length={len(raw_bytes)} prefix={safe_prefix!r}") from exc
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise ComfyUIExecutionError(f"ComfyUI HTTP {exc.code}: {body[:500]}") from exc
@@ -261,6 +291,116 @@ class ComfyUIClient:
         result = self._request("GET", "/queue", operation="metadata")
         return result if isinstance(result, dict) else {}
 
+    def free_memory(self) -> Dict[str, Any]:
+        """Request the pinned ComfyUI idle-memory release contract."""
+        result = self._request(
+            "POST", "/free",
+            {"unload_models": True, "free_memory": True},
+            operation="memory_release",
+        )
+        return result if isinstance(result, dict) else {}
+
+    def _websocket_url(self, client_id: str) -> str:
+        scheme = "wss" if self.base_url.startswith("https://") else "ws"
+        host = self.base_url.split("://", 1)[-1]
+        return f"{scheme}://{host}/ws?{urlencode({'clientId': client_id})}"
+
+    @staticmethod
+    def normalize_websocket_event(message: Any,
+                                   prompt_id: str) -> Optional[Dict[str, Any]]:
+        """Normalize pinned Comfy websocket events without retaining payloads."""
+        try:
+            if isinstance(message, bytes):
+                message = message.decode("utf-8", errors="replace")
+            payload = json.loads(message) if isinstance(message, str) else message
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        event_type = str(payload.get("type") or "")
+        allowed = {"status", "execution_start", "executing", "progress",
+                   "progress_state", "executed", "execution_error",
+                   "execution_success"}
+        if event_type not in allowed:
+            return None
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        event_prompt = data.get("prompt_id") or payload.get("prompt_id")
+        if event_type != "status" and event_prompt and str(event_prompt) != str(prompt_id):
+            return None
+        result: Dict[str, Any] = {"type": event_type, "event": event_type,
+                                  "prompt_id": str(event_prompt or prompt_id)}
+        node_id = data.get("node") or data.get("node_id") or data.get("display_node_id")
+        value = data.get("value")
+        maximum = data.get("max")
+        state = data.get("state")
+        if event_type == "progress_state":
+            nodes = data.get("nodes") if isinstance(data.get("nodes"), dict) else {}
+            active = next((item for item in nodes.values()
+                           if isinstance(item, dict) and item.get("state") == "running"), None)
+            if active is None:
+                active = next((item for item in nodes.values() if isinstance(item, dict)), None)
+            if isinstance(active, dict):
+                node_id = active.get("display_node_id") or active.get("node_id") or node_id
+                value = active.get("value", value)
+                maximum = active.get("max", maximum)
+                state = active.get("state", state)
+        if node_id is not None:
+            result["node_id"] = str(node_id)
+        if isinstance(value, (int, float)) and isinstance(maximum, (int, float)) and maximum > 0:
+            result["step"] = value
+            result["total_steps"] = maximum
+            result["progress"] = max(0.0, min(1.0, float(value) / float(maximum)))
+        if state is not None:
+            result["state"] = str(state)
+        return result
+
+    def observe_websocket(self, prompt_id: str, client_id: str,
+                          on_event: Optional[Callable[[Dict[str, Any]], None]],
+                          stop_event: threading.Event, max_reconnects: int = 6) -> None:
+        """Observe one prompt over Comfy's websocket; never changes job truth."""
+        try:
+            import websocket
+        except ImportError:
+            if on_event:
+                on_event({"type": "telemetry_degraded", "prompt_id": prompt_id,
+                          "message": "websocket-client unavailable"})
+            return
+        reconnects = 0
+        delay = 0.5
+        while not stop_event.is_set() and reconnects <= max_reconnects:
+            ws = None
+            try:
+                ws = websocket.create_connection(self._websocket_url(client_id), timeout=2)
+                ws.settimeout(2)
+                delay = 0.5
+                while not stop_event.is_set():
+                    try:
+                        message = ws.recv()
+                    except Exception as exc:
+                        if "timed out" in str(exc).lower():
+                            continue
+                        raise
+                    if not message:
+                        raise ConnectionError("Comfy websocket closed")
+                    event = self.normalize_websocket_event(message, prompt_id)
+                    if event and on_event:
+                        on_event(event)
+            except Exception as exc:
+                reconnects += 1
+                if on_event:
+                    on_event({"type": "telemetry_degraded", "prompt_id": prompt_id,
+                              "message": f"websocket unavailable: {type(exc).__name__}"})
+                if reconnects > max_reconnects:
+                    break
+                stop_event.wait(delay)
+                delay = min(5.0, delay * 2)
+            finally:
+                if ws is not None:
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
+
     def reconcile_prompt(self, *, prompt_id: Optional[str] = None,
                          avs_job_id: Optional[str] = None,
                          execution_workflow_sha256: Optional[str] = None,
@@ -273,7 +413,14 @@ class ComfyUIClient:
         """
         wanted = [str(value) for value in (avs_job_id, execution_workflow_sha256)
                   if value]
-        queue = self.get_queue()
+        queue_error = None
+        try:
+            queue = self.get_queue()
+        except (ComfyUICommunicationTimeout, ComfyProtocolError) as exc:
+            # /queue is observational only. Still query history so a queue
+            # timeout cannot hide a completed task.
+            queue_error = exc
+            queue = {}
         queue_seed_candidates = []
         for bucket, status in (("queue_running", "RUNNING"),
                                ("queue_pending", "RUNNING")):
@@ -293,7 +440,12 @@ class ComfyUIClient:
             return {"status": status, "prompt_id": candidate_id,
                     "source": "queue", "entry": item}
 
-        history = self.list_history()
+        try:
+            history = self.list_history()
+        except (ComfyUICommunicationTimeout, ComfyProtocolError):
+            if queue_error is not None:
+                raise queue_error
+            raise
         candidates = []
         for candidate_id, entry in history.items():
             if prompt_id and str(candidate_id) == str(prompt_id):
@@ -306,8 +458,11 @@ class ComfyUIClient:
             if len(seed_matches) == 1:
                 candidates = seed_matches
         if len(candidates) != 1:
-            return {"status": "UNKNOWN", "prompt_id": prompt_id,
-                    "source": "queue/history", "candidates": len(candidates)}
+            result = {"status": "UNKNOWN", "prompt_id": prompt_id,
+                      "source": "queue/history", "candidates": len(candidates)}
+            if queue_error is not None:
+                result["observation_error"] = f"{type(queue_error).__name__}: {queue_error}"
+            return result
         candidate_id, entry = candidates[0]
         status = entry.get("status", {}) if isinstance(entry, dict) else {}
         if status.get("status_str") == "success" and status.get("completed"):
@@ -395,24 +550,39 @@ class ComfyUIClient:
                 f"generated video is not decodable: {path}: {detail[:500]}")
 
     def wait_completion(self, prompt_id: str, timeout_seconds: float = 1500.0,
-                        poll_interval: float = 5.0, on_event=None) -> Dict[str, Any]:
-        """Poll until COMPLETED/ERROR; raises GenerationTimeoutError."""
+                        poll_interval: float = 5.0, on_event=None,
+                        client_id: Optional[str] = None) -> Dict[str, Any]:
+        """Poll terminal truth and observe telemetry over one bounded websocket."""
         deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            try:
-                state = self.get_status(prompt_id)
-            except ComfyUICommunicationTimeout:
-                # A transient metadata timeout says nothing about the child
-                # service or the accepted job. Keep the job alive and expose
-                # a syncing event until the bounded execution deadline.
+        stop_event = threading.Event()
+        observer = None
+        if client_id and on_event:
+            observer = threading.Thread(
+                target=self.observe_websocket,
+                args=(prompt_id, client_id, on_event, stop_event),
+                name=f"comfy-ws-{prompt_id[:8]}", daemon=True,
+            )
+            observer.start()
+        try:
+            while time.time() < deadline:
+                try:
+                    state = self.get_status(prompt_id)
+                except (ComfyUICommunicationTimeout, ComfyProtocolError):
+                    if on_event is not None:
+                        on_event({"type": "syncing", "prompt_id": prompt_id,
+                                  "message": "生成中 · 正在同步任务状态"})
+                    time.sleep(min(poll_interval, max(1.0, deadline - time.time())))
+                    continue
                 if on_event is not None:
-                    on_event({"type": "syncing", "message": "生成中 · 正在同步进度"})
+                    event = dict(state.get("event") or {"type": "executing"})
+                    event.setdefault("prompt_id", prompt_id)
+                    on_event(event)
+                if state["status"] in ("COMPLETED", "ERROR"):
+                    return state
                 time.sleep(min(poll_interval, max(1.0, deadline - time.time())))
-                continue
-            if on_event is not None:
-                on_event(state.get("event") or {"type": "executing"})
-            if state["status"] in ("COMPLETED", "ERROR"):
-                return state
-            time.sleep(min(poll_interval, max(1.0, deadline - time.time())))
-        raise GenerationTimeoutError(
-            f"generation timeout after {timeout_seconds:.0f}s for prompt_id {prompt_id}")
+            raise GenerationTimeoutError(
+                f"generation timeout after {timeout_seconds:.0f}s for prompt_id {prompt_id}")
+        finally:
+            stop_event.set()
+            if observer is not None:
+                observer.join(timeout=2)

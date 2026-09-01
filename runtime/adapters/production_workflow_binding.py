@@ -154,9 +154,7 @@ def validate_all_ui_workflow_model_bindings(object_info: Mapping[str, Any]) -> d
 
 
 def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> dict:
-    # Production authority is the Golden API graph plus its value-only binder.
-    # Keep the historical implementation below only as inert source context;
-    # no caller may reach it.
+    """Bind the registered Golden API graph without rebuilding topology."""
     if workflow_id not in CANONICAL_WORKFLOWS:
         raise ProductionBindingError(f"unknown production workflow: {workflow_id}")
     try:
@@ -166,104 +164,6 @@ def build_production_payload(request: Mapping[str, Any], workflow_id: str) -> di
         raise
     except (ValueError, KeyError, OSError) as exc:
         raise ProductionBindingError(str(exc)) from exc
-    # Legacy RH graph builder retained below for historical test fixtures only.
-    # It is unreachable from production and must not be used for new bindings.
-    registry = load_registry().get("workflows", {})
-    entry = registry.get(workflow_id)
-    if not entry or workflow_id not in CANONICAL_WORKFLOWS:
-        raise ProductionBindingError(f"unknown production workflow: {workflow_id}")
-    refs = list(request.get("reference_assets") or [])
-    mode = entry["input_mode"]
-    expected_refs = 2 if mode == "FL2VA" else 1
-    if len(refs) != expected_refs:
-        raise ProductionBindingError(f"{workflow_id} requires {expected_refs} reference asset(s)")
-    if not TEMPLATE_PATH.is_file():
-        raise ProductionBindingError(f"production payload template missing: {TEMPLATE_PATH}")
-
-    try:
-        params = normalize_generation_parameters(request.get("generation_parameters"))
-    except ValueError as exc:
-        raise ProductionBindingError(str(exc)) from exc
-    width, height = params["width"], params["height"]
-    fps = float(params["fps"])
-    duration = float(params["duration"])
-    seed = int(params["seed"])
-    prompt = str((request.get("prompt_payload") or {}).get("prompt") or "")
-    profile, models = _request_model_selection(request)
-    contract = validate_profile_loader_contract(models)
-    if not contract["ready"]:
-        raise ProductionBindingError(
-            f'{contract["code"]}: {contract["model"]} requires '
-            f'{contract["loader"]}; {contract["reason"]}'
-        )
-    if workflow_id == "05_Slow_Walkthrough":
-        # Delegate to the same historical native binder used by the live job
-        # path.  This compatibility entry point must never reconstruct a RH
-        # graph of its own.
-        from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter
-        asset_path = REPO_ROOT / "workflows" / "05_Slow_Walkthrough_NATIVE.json"
-        if not asset_path.is_file():
-            raise ProductionBindingError(f"historical native workflow missing: {asset_path}")
-        return NativeRuntimeAdapter()._build_comfy_payload(
-            dict(request), workflow_id, asset_path
-        )
-    names = [Path(str(ref.get("path_or_ref") or "reference.png")).name for ref in refs]
-    # This is an API-format graph, not a saved UI workflow.  Node classes and
-    # links are explicit so a browser graph cannot influence Studio execution.
-    payload = {
-        "1": {"class_type": "LoadImage", "inputs": {"image": names[0]}},
-        "2": {"class_type": "RHMiniMaxH3ModelLoader", "inputs": {
-            "partition": "FL2VA", "model_root": "MiniMax-H3", "dtype": "auto",
-            "transformer_path": models["transformer"],
-        }},
-        "3": {"class_type": "RHMiniMaxH3TextEncoderLoader", "inputs": {
-            "model_root": "MiniMax-H3", "dtype": "auto",
-            "text_encoder_path": models["text_encoder"],
-        }},
-        "4": {"class_type": "RHMiniMaxH3VAELoader", "inputs": {
-            "model_root": "MiniMax-H3",
-            "video_vae_path": models["video_vae"],
-            "audio_vae_path": models["audio_vae"],
-        }},
-        "5": {"class_type": "RHMiniMaxH3FL2VAFirstFrameCondition", "inputs": {
-            "first_frame": _link("1"),
-        }},
-        "6": {"class_type": "RHMiniMaxH3FL2VATarget", "inputs": {
-            "keyframes": _link("5"), "aspect_ratio": params["aspect_ratio"],
-            "duration_seconds": duration, "width": width, "height": height,
-        }},
-        "7": {"class_type": "RHMiniMaxH3FL2VAEncode", "inputs": {
-            "h3_text_encoder": _link("3"), "h3_vae_bundle": _link("4"),
-            "target": _link("6"), "keyframes": _link("5"), "prompt": prompt,
-        }},
-        "8": {"class_type": "RHMiniMaxH3EmptyAVLatent", "inputs": {
-            "target": _link("6"),
-        }},
-        "9": {"class_type": "RHMiniMaxH3DualSigmaSampler", "inputs": {
-            "h3_model": _link("2"), "conditioning": _link("7"),
-            "av_latent": _link("8"), "seed": seed,
-            "sigma_points": params["sigma_points"],
-            "video_shift": 12.0, "audio_shift": 3.0, "accel": params["accel"],
-            "denoise_video": True, "sampler_mode": params["sampler_mode"],
-            "cache_dit_rdt": params["cache_dit_rdt"],
-            "cache_dit_mc": params["cache_dit_mc"],
-            "cache_dit_warmup": params["cache_dit_warmup"],
-            "velocity_stride": params["velocity_stride"],
-            "allow_accel_with_res_multistep": params["allow_accel_with_res_multistep"],
-        }},
-        "10": {"class_type": "RHMiniMaxH3DecodeAV", "inputs": {
-            "h3_vae_bundle": _link("4"), "sampled_av_latent": _link("9"),
-        }},
-        "11": {"class_type": "VHS_VideoCombine", "inputs": {
-            "images": _link("10"), "frame_rate": fps, "loop_count": 0,
-            "filename_prefix": f"video/{workflow_id}_C2B_{seed}",
-            "format": "video/h264-mp4", "pingpong": False, "save_output": True,
-        }},
-    }
-    if mode == "FL2VA":
-        payload["12"] = {"class_type": "LoadImage", "inputs": {"image": names[1]}}
-        payload["5"]["inputs"]["last_frame"] = _link("12")
-    return payload
 
 
 def unknown_node_types(payload: Mapping[str, Any], object_info: Mapping[str, Any]) -> list[str]:

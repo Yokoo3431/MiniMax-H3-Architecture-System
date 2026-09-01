@@ -7,7 +7,9 @@ package under ``data_root/projects/<project_id>/``.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import threading
 import time
 import uuid
 import re
@@ -20,6 +22,8 @@ def _now() -> str:
 
 
 class StudioStore:
+    _write_lock = threading.RLock()
+
     def __init__(self, data_root: Path) -> None:
         self.data_root = Path(data_root)
         self.projects_root = self.data_root / "projects"
@@ -36,7 +40,35 @@ class StudioStore:
 
     def save_json(self, path: Path, data: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Job observers and request handlers can persist the same snapshot
+        # concurrently. Direct writes let readers see truncated/interleaved
+        # JSON. Publish a complete snapshot atomically instead.
+        temp = path.with_name(
+            f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            temp.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            # Serialize writers in the backend process. Windows can briefly
+            # deny replacing a destination while another request is publishing
+            # or inspecting the same file, so retry the atomic rename without
+            # ever exposing a partially-written destination.
+            with self._write_lock:
+                for attempt in range(5):
+                    try:
+                        os.replace(temp, path)
+                        break
+                    except PermissionError:
+                        if attempt == 4:
+                            raise
+                        time.sleep(0.02 * (attempt + 1))
+        finally:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def load_json(self, path: Path, default: Any = None) -> Any:
         if not path.is_file():

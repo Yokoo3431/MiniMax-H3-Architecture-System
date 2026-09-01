@@ -236,156 +236,18 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 "history_timeout_seconds": 1800.0,
             },
         }
-        # 05_Slow_Walkthrough is the historical, real native-runtime proof.
-        # Keep it on the exact frozen 15-node UI asset and the existing
-        # NativeRuntimeAdapter binder.  The production binding builder is
-        # intentionally bypassed for this workflow so diagnostics and /prompt
-        # cannot drift into a second RH loader graph.
-        if self.production_binding and workflow_id != "05_Slow_Walkthrough":
-            production_entry = load_registry()["workflows"][workflow_id]
-            asset_rel = production_entry["canonical_source"]
-            asset_path = REPO_ROOT / asset_rel
-            if not asset_path.is_file():
-                raise WorkflowNotFoundError(f"production workflow asset missing: {asset_path}")
-            payload = build_production_payload(data, workflow_id)
-            return {
-                "job_id": f"native-{uuid.uuid4().hex[:12]}",
-                "study_id": data["study_id"],
-                "workflow_id": workflow_id,
-                "workflow_asset": asset_rel,
-                "translated_payload": payload,
-                "execution_workflow_sha256": canonical_workflow_sha256(payload),
-                "binding": {
-                    "source_of_truth": "configs/production_workflow_registry.json",
-                    "canonical_source": asset_rel,
-                    "payload_template": production_entry["payload_template"],
-                    "model_bindings": production_model_contract(
-                        data.get("h3_profile") or data.get("model_profile")
-                        or data.get("hardware_profile") or "COMPATIBILITY",
-                        gpu_vram_gb=data.get("gpu_vram_gb"),
-                        system_ram_gb=data.get("system_ram_gb")),
-                    "browser_state_ignored": True,
-                },
-                "control": {
-                    "submit_timeout_seconds": 60.0,
-                    "poll_interval_seconds": 5.0,
-                    "history_timeout_seconds": 1800.0,
-                },
-            }
-        asset_rel = registry[workflow_id]["native_asset"]
-        asset_path = REPO_ROOT / asset_rel
-        if not asset_path.is_file():
-            raise WorkflowNotFoundError(f"native workflow asset missing: {asset_path}")
-
-        payload = self._build_comfy_payload(data, workflow_id, asset_path)
-        source_of_truth = (
-            "production_workflows/golden/05_Slow_Walkthrough.json"
-            if workflow_id == "05_Slow_Walkthrough" and GOLDEN_05_PATH.is_file()
-            else asset_rel
-        )
-        return {
-            "job_id": f"native-{uuid.uuid4().hex[:12]}",
-            "study_id": data["study_id"],
-            "workflow_id": workflow_id,
-            "workflow_asset": source_of_truth,
-            "translated_payload": payload,
-            "execution_workflow_sha256": canonical_workflow_sha256(payload),
-            "binding": {
-                "source_of_truth": source_of_truth,
-                "canonical_source": source_of_truth,
-                "parameter_binder": "NativeRuntimeAdapter._build_comfy_payload",
-                "browser_state_ignored": True,
-                "historical_native_contract": "PATCH2.7-C2-B / 05 I2VA",
-            },
-            "control": {
-                "submit_timeout_seconds": 60.0,
-                "poll_interval_seconds": 5.0,
-                "history_timeout_seconds": 1800.0,
-            },
-        }
 
     def _build_comfy_payload(self, request: Dict[str, Any],
                              workflow_id: str, asset_path: Path) -> Dict[str, Any]:
-        ui = json_load(asset_path)
-        mode = request.get("prompt_payload", {}).get("mode", "I2VA")
-        if mode == "FL2VA":
-            # 02 uses the file's own (verified consistent) links.
-            link_map = _links_from_file(ui) or dict(_LINKS)
-        else:
-            # All I2VA workflows share the identical validated 15-node graph;
-            # the template avoids depending on asset link-id corruption (04).
-            link_map = dict(_LINKS)
-        params = request["generation_parameters"]
-        prompt = request["prompt_payload"]["prompt"]
-        width, height = parse_resolution(params.get("resolution", "1344x768"))
-        length = length_for(params.get("duration", 4.0), params.get("fps", 24))
-        seed = int(params.get("seed", 42))
-        fps = float(params.get("fps", 24))
-        ref_names = [Path(r.get("path_or_ref", "reference.png")).name
-                     for r in request["reference_assets"]]
+        """Compatibility name for callers from pre-Golden revisions.
 
-        # After the owner-authorized historical run succeeds, the exact API
-        # graph becomes the sole 05 source.  Only the proven mutable controls
-        # are rebound; node types, links, loader classes and topology remain
-        # frozen in the captured graph.
-        if workflow_id == "05_Slow_Walkthrough" and GOLDEN_05_PATH.is_file():
-            prompt_payload = json_load(GOLDEN_05_PATH)
-            classes = [node.get("class_type") for node in prompt_payload.values()]
-            if len(prompt_payload) != 15 or "RHMiniMaxH3TextEncoderLoader" in classes:
-                raise WorkflowNotFoundError("05 golden workflow contract is invalid")
-            prompt_payload["1"]["inputs"]["image"] = ref_names[0]
-            prompt_payload["6"]["inputs"].update({
-                "prompt": prompt,
-                "width": width,
-                "height": height,
-                "length": length,
-            })
-            prompt_payload["9"]["inputs"]["noise_seed"] = seed
-            prompt_payload["14"]["inputs"]["fps"] = fps
-            prompt_payload["15"]["inputs"]["filename_prefix"] = (
-                f"video/{workflow_id}_C2B_{seed}"
-            )
-            return prompt_payload
-
-        widgets: Dict[str, list] = {}
-        for node in ui.get("nodes", []):
-            widgets[str(node["id"])] = list(node.get("widgets_values") or [])
-
-        prompt_payload: Dict[str, Any] = {}
-        for node in ui.get("nodes", []):
-            nid = str(node["id"])
-            cls = node["type"]
-            names = _WIDGET_INPUTS.get(cls, [])
-            inputs: Dict[str, Any] = {}
-            wv = widgets.get(nid, [])
-            for i, name in enumerate(names):
-                if i < len(wv):
-                    inputs[name] = wv[i]
-            for name, ref in link_map.get(nid, {}).items():
-                inputs[name] = ref
-            prompt_payload[nid] = {"class_type": cls, "inputs": inputs}
-
-        # ---- parameter injection (frozen asset untouched) ----
-        h3_inputs = link_map.get("6", {})
-        first_link = h3_inputs.get("first_frame")
-        last_link = h3_inputs.get("last_frame")
-        first_node = str(first_link[0]) if first_link else "1"
-        last_node = str(last_link[0]) if last_link else None
-
-        prompt_payload[first_node]["inputs"]["image"] = ref_names[0]
-        if last_node is not None:
-            prompt_payload[last_node]["inputs"]["image"] = ref_names[1]
-        prompt_payload["6"]["inputs"].update({
-            "prompt": prompt,
-            "width": width,
-            "height": height,
-            "length": length,
-        })
-        prompt_payload["9"]["inputs"]["noise_seed"] = seed
-        prompt_payload["14"]["inputs"]["fps"] = fps
-        prompt_payload["15"]["inputs"]["filename_prefix"] = (
-            f"video/{workflow_id}_C2B_{seed}")
-        return prompt_payload
+        Production code must go through the registered Golden binder.  The
+        old implementation constructed a second graph from UI workflow JSON,
+        which allowed diagnostics and /prompt to diverge.  Keep the symbol for
+        legacy tests/imports, but make it a strict value-only Golden binding.
+        """
+        del asset_path
+        return bind_golden_workflow(request, workflow_id)
 
     # ------------------------------------------------------------------ #
     # lifecycle
@@ -406,8 +268,10 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         return native_request
 
     def submit(self, native_request: Dict[str, Any]) -> str:
+        client_id = str(native_request.get("client_id") or uuid.uuid4())
+        native_request["client_id"] = client_id
         kwargs = {
-            "client_id": str(uuid.uuid4()),
+            "client_id": client_id,
             "avs_job_id": native_request.get("avs_job_id"),
             "execution_workflow_sha256": native_request.get(
                 "execution_workflow_sha256"),
@@ -447,16 +311,25 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         return result["prompt_id"]
 
     def poll(self, prompt_id: str, timeout_seconds: float = 1800.0,
-             poll_interval: float = 5.0, on_event=None) -> Dict[str, Any]:
-        if on_event is None:
-            return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval)
+             poll_interval: float = 5.0, on_event=None,
+             client_id: Optional[str] = None) -> Dict[str, Any]:
         try:
-            return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval,
-                                               on_event=lambda event: on_event(map_comfy_event(event)))
+            if on_event is None:
+                return self.client.wait_completion(
+                    prompt_id, timeout_seconds, poll_interval, client_id=client_id)
+            return self.client.wait_completion(
+                prompt_id, timeout_seconds, poll_interval,
+                on_event=lambda event: on_event(map_comfy_event(event)),
+                client_id=client_id,
+            )
         except TypeError:
-            # Preserve compatibility with the existing CPU fake clients and
-            # older third-party Comfy clients which predate the callback.
-            return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval)
+            # Preserve compatibility with CPU fake clients and older clients
+            # which predate callback/client_id support.
+            if on_event is None:
+                return self.client.wait_completion(prompt_id, timeout_seconds, poll_interval)
+            return self.client.wait_completion(
+                prompt_id, timeout_seconds, poll_interval,
+                on_event=lambda event: on_event(map_comfy_event(event)))
 
     def collect(self, history_result: Dict[str, Any], job_id: str,
                 workflow_id: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -492,6 +365,7 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             callback = getattr(self, "submission_callback", None)
             if callback is not None:
                 callback({"prompt_id": prompt_id,
+                          "client_id": native_req.get("client_id"),
                           "avs_job_id": native_req.get("avs_job_id"),
                           "execution_workflow_sha256": native_req.get(
                               "execution_workflow_sha256"),
@@ -503,6 +377,7 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 timeout_seconds=native_req["control"]["history_timeout_seconds"],
                 poll_interval=native_req["control"]["poll_interval_seconds"],
                 on_event=getattr(self, "progress_callback", None),
+                client_id=native_req.get("client_id"),
             )
             if state["status"] != "COMPLETED":
                 raise ComfyUIExecutionError(
@@ -536,7 +411,12 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             self._fail(job_id, "workflow not found", "WORKFLOW_NOT_FOUND", str(exc))
             raise
         except GenerationTimeoutError as exc:
-            self._fail(job_id, "generation timeout", "TIMEOUT_ERROR", str(exc))
+            # The poll deadline is an observation deadline. Comfy may still be
+            # executing, so this remains reconnectable rather than terminal.
+            self.jobs[job_id]["status"] = "RECONCILING"
+            self.jobs[job_id]["submission_state"] = "SUBMISSION_UNKNOWN"
+            self.jobs[job_id]["failure_reason"] = "observation timeout; reconciliation required"
+            self.jobs[job_id]["error_code"] = "COMFY_COMMUNICATION_TIMEOUT"
             raise
         except ComfyUIExecutionError as exc:
             code = self._execution_error_code(str(exc))

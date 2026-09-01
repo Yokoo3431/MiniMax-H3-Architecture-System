@@ -3,34 +3,6 @@
   "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
   "files": [
     {
-      "path": "tests/test_final_model_path_workflow_binding.py",
-      "tracked_status": "untracked",
-      "sha256": "FAE12210B2972F466C767673FFDEE33C70352622B2DF6EF301C67780FBBEB7D4",
-      "discovered_test_count": 4,
-      "classification": "CORE_REGRESSION"
-    },
-    {
-      "path": "tests/test_final_product_job_path_and_ux.py",
-      "tracked_status": "untracked",
-      "sha256": "B8D81BDA736E45023BD3CF4E3858479DBC631E14FB374B757D082D36F023F492",
-      "discovered_test_count": 7,
-      "classification": "CORE_REGRESSION"
-    },
-    {
-      "path": "tests/test_final_reference_staging.py",
-      "tracked_status": "untracked",
-      "sha256": "9CAF17CA3663E2C3C4FA48C6D953694E13D69011B1E421CFB1E47132874DBFEE",
-      "discovered_test_count": 2,
-      "classification": "CORE_REGRESSION"
-    },
-    {
-      "path": "tests/test_final_study_flow_repair.py",
-      "tracked_status": "untracked",
-      "sha256": "69177CDCE4D426948D77F7D1C3F7BEF295A4095AFB957249CFE7D9CF2FCB8D71",
-      "discovered_test_count": 3,
-      "classification": "CORE_REGRESSION"
-    },
-    {
       "path": "tests/test_acceleration_profile.py",
       "tracked_status": "tracked",
       "sha256": "5425BAB940EDBAEAB0FE684DB6AD9C322B6BFDC088556B3007495FE5B3DF2715",
@@ -109,7 +81,7 @@
     },
     {
       "path": "tests/test_comfyui_submission_reconciliation.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "AB4FFA0C3702479C7242E6F4227A1A56D34A8695BFDE435CC4ADC65C4A1023D0",
       "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
@@ -137,22 +109,22 @@
     },
     {
       "path": "tests/test_environment_discovery_reuse.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "7FCBDAB0EA2450BB6D7921F3B286517AE19CA7CE838F0B01CDABE65DD966ACD6",
       "discovered_test_count": 4,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_environment_probe.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "5810FFF6676C0BA671D88A0E3E0FD931CA58CF7BA879A83EC76709B4FD68B45D",
       "discovered_test_count": 9,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_environment_state_unification.py",
-      "tracked_status": "untracked",
-      "sha256": "68E3E6EFC23B5E268B5D3729C0DCCD522D929781FDA95EAEFCB05CC606EBBFA9",
+      "tracked_status": "tracked",
+      "sha256": "329ACB093CA2363AD06E7CD35AD434D17CA644BA39E0C05667DD8D663DD7C134",
       "discovered_test_count": 2,
       "classification": "CORE_REGRESSION"
     },
@@ -185,10 +157,38 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_final_model_path_workflow_binding.py",
+      "tracked_status": "tracked",
+      "sha256": "FAE12210B2972F466C767673FFDEE33C70352622B2DF6EF301C67780FBBEB7D4",
+      "discovered_test_count": 4,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_product_job_path_and_ux.py",
+      "tracked_status": "tracked",
+      "sha256": "7C0E75C6AC03E349BAC3B0775B4AD6B83009E2B686198570959EB18AAC73E999",
+      "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_final_production_gates.py",
       "tracked_status": "tracked",
       "sha256": "AF73336DCAC153D304299B3EFF0B1DF1B2AC9B5B3AD7497D729C860E1B3DEC66",
       "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_reference_staging.py",
+      "tracked_status": "tracked",
+      "sha256": "8B2C667D7CFB94638787D9A7419F21ED6FD734CADD805AFCFA01FC72FBCA8411",
+      "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_final_study_flow_repair.py",
+      "tracked_status": "tracked",
+      "sha256": "8295F42F7F015DBE851C405E274A8761991D6F0EB6AA26CF9C84D1811C62E765",
+      "discovered_test_count": 3,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -270,8 +270,8 @@
     },
     {
       "path": "tests/test_native_crash_service_recovery.py",
-      "tracked_status": "untracked",
-      "sha256": "108B43D899A099A808E0E0FE605372ACD14E041881728D87760442B6AE606CEA",
+      "tracked_status": "tracked",
+      "sha256": "15B9D2F1716CE06E6B8784A9386F6895AE02F6FF81575CDDCE73857D4A571A6B",
       "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     },
@@ -287,6 +287,27 @@
       "tracked_status": "tracked",
       "sha256": "448C2DF4B6A3AD0B16BC68D24B68CE06FC8587350CB5413D990152D06709DC48",
       "discovered_test_count": 8,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_owner_acceptance_harness.py",
+      "tracked_status": "untracked",
+      "sha256": "D8E234B140D7D3CE5FF523B6783C4B38E88FCAE4FA5D3F4B735EDA8A886CD7A9",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_owner_visible_product_truth.py",
+      "tracked_status": "tracked",
+      "sha256": "C31C205C283064133AD6868C36E4D23B0AA25D6A70358DBA1CCFE50D56B6C5A6",
+      "discovered_test_count": 6,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_p0_startup_projection.py",
+      "tracked_status": "untracked",
+      "sha256": "DAD2572A7BADC18C079D4D44BFE36361868C5A31B5B7B48DDEE57713C9075391",
+      "discovered_test_count": 4,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -362,7 +383,7 @@
     {
       "path": "tests/test_patch28c_runtime_distribution.py",
       "tracked_status": "tracked",
-      "sha256": "0D8D7B16A74B205D2CFAE4CA6CAF81259A402473B49E900D901E90064D5C9EBD",
+      "sha256": "2DBBA079E2EC6D8ED05DBC6DC6E3E79B05AC4F4666BED8D53D57C87B0F1C5EEE",
       "discovered_test_count": 10,
       "classification": "CORE_REGRESSION"
     },
@@ -382,175 +403,175 @@
     },
     {
       "path": "tests/test_patch28i2_installer.py",
-      "tracked_status": "untracked",
-      "sha256": "F47B7FF0ACD51EC27CFCE28B3366677A7F6E2B77347177DB83DEDE3D07C60BE0",
+      "tracked_status": "tracked",
+      "sha256": "9500A674F73F8DE1DB6B2258AC948B4B683B32AA97F1AD8B37E477F5463FF33B",
       "discovered_test_count": 40,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2a_support_layer.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "052F872621287EA642CA8FDA909A81988E61C007EB56A32FCFE9395ACE39856A",
       "discovered_test_count": 21,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b01_environment_adoption.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "ACEBB05B622D711FF902BCBA8D49C9301177F9B7E2E586FDC37DEFBBF861515C",
       "discovered_test_count": 23,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b0_user_entry.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "0634365C58EE2CABF9A77576030FCE99A0EC5CEB2C4D67837DE6B8DD5EEF3CAA",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b11_production_consolidation.py",
-      "tracked_status": "untracked",
-      "sha256": "7C286D252995EADCD6EFBD5857C3386A5E312F6BAF7762C308D949961701EC80",
+      "tracked_status": "tracked",
+      "sha256": "1119E20CD53369DB7E68DA9AA9831B0C74ADE7BB6700BF30F58AF940F670D714",
       "discovered_test_count": 10,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b12_managed_runtime.py",
-      "tracked_status": "untracked",
-      "sha256": "AC9F920E824317A1795B5E5524C9A954B363C128EDF6D3A4479F3D885BF1EF01",
+      "tracked_status": "tracked",
+      "sha256": "7BD4D8B47A296F064534F8D671CB8B58499D6B712007A21BC502E425431EBAB3",
       "discovered_test_count": 12,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b1_fresh_install.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "AA8CFCA62EFE9C5164EEC3CF493657E1B5F59C14665C6EF0823A54F3CA65DAF7",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b_fastfix_static_transfer.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "BF0ABCA521F6525C8AC9ADAF5D202724C61D4607FBA2D95F4BCA71E5DE00DB32",
       "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2b_language_boundary_instrumentation.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "94094A53CA8B9AD566532E8FF98DB3DBDBCB2F6517E6251796EC998F4A433899",
       "discovered_test_count": 9,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf1_model_root_contract.py",
-      "tracked_status": "untracked",
-      "sha256": "918F7B592A196F750ECEBFE95C0882399F220AA2A933A2FDFC7F7DA4DD89B599",
+      "tracked_status": "tracked",
+      "sha256": "147488607FC03DA5BEBF55AAFBB70E6F9522D6A4BECBF3311190C8E27D0B84A3",
       "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf21_regression_inventory.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "36E1D62CA59DD6CF3679801F2C4069796B9175B40EE37727038B79EC60601133",
       "discovered_test_count": 13,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf2_h3_sidecar_install.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "0E2475F2F979F5699D40C964B804BBF55EA7EDE40D04E0C45F812F7FBB2B9D8F",
       "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c1_context_differential.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "780D23A69B2A6FF0D11D361116BD42051B91B1C57BA71574D25E9D9FE679F6F5",
       "discovered_test_count": 23,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2_language_patcher_differential.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "49D1C6F987D8D6941DEBB8960AB020D7EB7B7ED6EB828ADF2AB07B8E67086723",
       "discovered_test_count": 25,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2f1_memory_boundary.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "5D59B07525B8DD893DA3A718FAC7F17E7ABB0098C892124182348A85F30EB7BD",
       "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2m1_f2_patcher_residency_budget.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "7CD244E89683FB06EFBBD1EC1550A3CE9305A36BE3CD8D866FE8298DED15B6E0",
       "discovered_test_count": 21,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2m1_g0_bf16_static_validation.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "7CD6D659411B3F7735CEC64F9006D1CDF7FD2D4A4152B0F774FFC8A6E8489B29",
       "discovered_test_count": 13,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2m1_i1_bf16_candidate.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "C78E469305F18A2F9B0180BC7282A3AF2AEBAEC948FFD2E86A164F19834C7F0B",
       "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2m1_i2_f1_static_inventory_reconciliation.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "9D85690F6EB63222AC02A18FA990D116D60834209AB79750D8825EB2EEFFC748",
       "discovered_test_count": 21,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2m1_i2_static_transfer_margin.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "830C356B9B83D71DCAAE2924E441A1E04DE67364F894043C774630DB068E8DAB",
       "discovered_test_count": 24,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_c2m1_memory_strategy.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "F14BB361EA3178BB78C1144CB88C45DF8994D77192057F90A8DA1AC69A7E9DA7",
       "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_qwen_visual_offload.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "C480550DA373A299514D01C6B9AD0DB6CC81D22B6600B7942F17AB9DC768F05C",
       "discovered_test_count": 13,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_r2_asset_contract.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "110D3D991B4C5B505346C98A4845DE0B0E6A9D3F4ED168A12EE6D8BB6CE01AA9",
       "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_r4_tokenizer_resolution.py",
-      "tracked_status": "untracked",
-      "sha256": "D9E2DA54457DC1092A93944D36BC4E9DF06A5B4ACE4BE860CAB75FB2548F3B38",
+      "tracked_status": "tracked",
+      "sha256": "83628426682D5EE886D018660E76B7C222136BF74D84B7CF9C9417E5D555FAB4",
       "discovered_test_count": 14,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch28i2_r2bf3_r5_processor_dtype_contract.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "D72DD5F622C6FCC67306128FF58CB51C80FD6E7C52659EB519A1B481149D4090",
       "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
@@ -564,9 +585,16 @@
     },
     {
       "path": "tests/test_product_hardening.py",
-      "tracked_status": "untracked",
-      "sha256": "5117391EAB3F0DAC0045B0F5854808BC295ADE0AFAAE24BC42B7EA0BAF1DCA87",
+      "tracked_status": "tracked",
+      "sha256": "87CE659D17E297891B020AB197E8F3DB768952C2951A55B8FE292BAA427B359D",
       "discovered_test_count": 7,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_product_lifecycle_parity.py",
+      "tracked_status": "tracked",
+      "sha256": "2506100C9F949F83EE2201126A1029FCC03AED39C4EA04EE91BA89B353EBCE8A",
+      "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -581,6 +609,13 @@
       "tracked_status": "tracked",
       "sha256": "246BBA8CE1E026525A1F723F9E7B96670A168B381437925A817832399DA12FF6",
       "discovered_test_count": 2,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_prompt_engine_closure.py",
+      "tracked_status": "untracked",
+      "sha256": "C985FB079DF21D6F23584F52DB8312A8454A568740812C4BC766F773E12BC4B1",
+      "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -605,6 +640,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_real_incident_control_plane.py",
+      "tracked_status": "untracked",
+      "sha256": "1A686260E9E560A9BAB4350D1EAA9EDE41BE427D78D02B15FFD57924FC478F0F",
+      "discovered_test_count": 5,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_reasoning_graph.py",
       "tracked_status": "tracked",
       "sha256": "5BC6DE331FACC8FC7918E312A289371534463C91D35408EEEAB6B413290C2415",
@@ -623,6 +665,13 @@
       "tracked_status": "tracked",
       "sha256": "DD23CD4BC20737DBAA3DF87A3F0A35DD76393B99787BC965A1577C3B3D3E8DB8",
       "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_universal_h3_prompt_engine.py",
+      "tracked_status": "tracked",
+      "sha256": "1D400AF94EB2C200678BE008E3D160E6F88F7A7FE869891ED7F835F4F096C73B",
+      "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -721,27 +770,6 @@
       "tracked_status": "tracked",
       "sha256": "B002AEC8DFED964EEADC230B33B2397C03F573A9B148388C603A496C921EFC2A",
       "discovered_test_count": 2,
-      "classification": "CORE_REGRESSION"
-    },
-    {
-      "path": "tests/test_product_lifecycle_parity.py",
-      "tracked_status": "untracked",
-      "sha256": "2506100C9F949F83EE2201126A1029FCC03AED39C4EA04EE91BA89B353EBCE8A",
-      "discovered_test_count": 5,
-      "classification": "CORE_REGRESSION"
-    },
-    {
-      "path": "tests/test_owner_visible_product_truth.py",
-      "tracked_status": "untracked",
-      "sha256": "C31C205C283064133AD6868C36E4D23B0AA25D6A70358DBA1CCFE50D56B6C5A6",
-      "discovered_test_count": 6,
-      "classification": "CORE_REGRESSION"
-    },
-    {
-      "path": "tests/test_universal_h3_prompt_engine.py",
-      "tracked_status": "untracked",
-      "sha256": "1D400AF94EB2C200678BE008E3D160E6F88F7A7FE869891ED7F835F4F096C73B",
-      "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     }
   ],

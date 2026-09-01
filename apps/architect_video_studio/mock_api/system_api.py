@@ -37,14 +37,17 @@ class SystemAPI:
     def repair_model_paths(self) -> Dict[str, Any]:
         return self.service.repair_model_paths()
 
-    def open_comfyui(self) -> Dict[str, Any]:
-        return self.service.open_comfyui()
+    def open_comfyui(self, job_id: str = "") -> Dict[str, Any]:
+        return self.service.open_comfyui(job_id)
 
     def current_workflow(self, job_id: str = "") -> Dict[str, Any]:
         return self.service.current_workflow(job_id)
 
     def restart_comfyui(self) -> Dict[str, Any]:
         return self.service.restart_comfyui()
+
+    def runtime_update_status(self) -> Dict[str, Any]:
+        return self.service.runtime_update_status()
 
     def engine_status(self) -> Dict[str, Any]:
         return self.service.engine_status()

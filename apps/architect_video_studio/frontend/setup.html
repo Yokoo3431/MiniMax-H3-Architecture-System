@@ -94,6 +94,14 @@
       <label class="check-row"><input type="checkbox" id="tray-minimized"> 启动后最小化到托盘（需要桌面壳支持）</label>
       <button class="btn mt" id="save-desktop-settings-btn">保存桌面设置</button>
       <span id="desktop-settings-status" class="small muted"></span>
+      <div class="small muted mt" id="idle-memory-policy">自动释放空闲模型内存 ✓（队列为空且无活动任务，空闲 10 分钟后执行）</div>
+    </div>
+
+    <div class="panel mt" id="runtime-update-panel">
+      <h3>托管 Runtime 更新（高级）</h3>
+      <div id="runtime-update-status" class="small muted">正在读取候选版本状态…</div>
+      <div class="small muted mt">更新必须先在独立候选目录完成版本、能力和回滚验证；此页不会自动下载、替换 Runtime 或触碰共享模型。</div>
+      <button class="btn mt" id="refresh-runtime-update-btn">检查候选版本</button>
     </div>
 
     <div class="panel mt" id="installer-panel">

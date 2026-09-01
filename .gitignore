@@ -41,6 +41,9 @@ docs/*
 !docs/SHAREABLE_RC_COMPLETION_REPORT.md
 !docs/Troubleshooting.md
 
+# Local third-party source research for integration work (never committed)
+_research/
+
 # --- Non-public workspaces / validation tools ---
 distribution_test/
 install_test/
@@ -125,3 +128,6 @@ Thumbs.db
 *.log
 .DS_Store
 Thumbs.db
+
+# Owner-assisted acceptance evidence is local-only (hashes/status, no source artifact)
+reports/owner_acceptance/

@@ -7,12 +7,7 @@ import shutil
 from typing import Any, Dict, List
 
 from .store import StudioStore
-
-ACTIVE_JOB_STATES = {
-    "SUBMITTING", "SUBMISSION_UNKNOWN", "RECONCILING", "QUEUED", "RUNNING",
-    "PREPARING", "LOADING_MODEL", "ENCODING", "SAMPLING", "DECODING",
-    "EXPORTING", "GPU_RUNNING", "GENERATING",
-}
+from .job_state import is_job_active
 
 ALLOWED_PROJECT_TYPES = ("exterior", "interior", "material", "lighting", "aerial", "landscape", "mixed")
 ALLOWED_BUILDING_STAGES = ("方案", "扩初", "报建", "展示", "concept", "schematic", "construction", "presentation")
@@ -68,13 +63,13 @@ class ProjectAPI:
         project = self.store.load_project(project_id)
         from .reference_api import ReferenceAPI
         from .study_state import build_study_state
+        build_study_state(self.store, project_id)
 
         references = ReferenceAPI(self.store).list_references(project_id)
         intent = self.store.load_intent(project_id)
         prompt = self.store.load_prompt(project_id)
         jobs = list(self.store.load_jobs(project_id).values())
-        terminal = {"COMPLETED", "FAILED", "GPU_FAILED", "CANCELLED"}
-        active = next((job for job in jobs if job.get("state") not in terminal), None)
+        active = next((job for job in jobs if is_job_active(job)), None)
         study = build_study_state(self.store, project_id)
         return {
             **copy.deepcopy(project),
@@ -135,9 +130,10 @@ class ProjectAPI:
         if not confirm:
             raise ValueError("confirmation required before deleting a Study")
         project = self.store.load_project(project_id)
+        from .study_state import build_study_state
+        build_study_state(self.store, project_id)
         active = [job for job in self.store.load_jobs(project_id).values()
-                  if job.get("state") in ACTIVE_JOB_STATES
-                  or job.get("lifecycle_state") in ACTIVE_JOB_STATES]
+                  if is_job_active(job)]
         if active:
             raise ValueError("该项目仍有正在执行的任务，请先取消任务或选择取消任务并删除。")
         self.store.delete_project(project_id, delete_outputs=delete_outputs)

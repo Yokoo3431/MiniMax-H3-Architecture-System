@@ -77,11 +77,26 @@
           <select id="prompt-engine">
             <option value="AUTO" selected>自动（离线优先）</option>
             <option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</option>
-            <option value="CLI_BRIDGE">已配置 CLI Provider</option>
+            <option value="CODEX">Codex（本地 CLI）</option>
+            <option value="ANTIGRAVITY">Antigravity（本地 CLI）</option>
+            <option value="DEEPSEEK_HARNESS">DeepSeek Harness（本地 CLI）</option>
+            <option value="CUSTOM_CLI">自定义 CLI</option>
+            <option value="CLI_BRIDGE">通用 CLI Provider</option>
             <option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</option>
             <option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</option>
           </select>
           <div class="muted small">离线模式不需要 LLM，也不会进行 AI 图像理解。</div>
+          <details class="prompt-provider-settings mt">
+            <summary>配置可选 Prompt Provider</summary>
+            <div class="param-grid mt">
+              <div class="wide"><label for="provider-executable">CLI 可执行文件</label><input id="provider-executable" type="text" placeholder="例如 codex 或自定义路径"><button class="btn small mt" id="detect-provider-btn" type="button">自动检测</button></div>
+              <div class="wide"><label for="provider-arguments">CLI 参数（每行一个）</label><textarea id="provider-arguments" rows="2" placeholder="可选，按行填写参数模板"></textarea></div>
+              <div><label for="provider-base-url">OpenAI 兼容 Base URL</label><input id="provider-base-url" type="url" placeholder="http://127.0.0.1:1234/v1"></div>
+              <div><label for="provider-model">模型标识</label><input id="provider-model" type="text" placeholder="例如 local-model"></div>
+              <div><label for="provider-api-key-env">API Key 环境变量名</label><input id="provider-api-key-env" type="text" placeholder="只保存变量名，不保存密钥"></div>
+            </div>
+            <div class="row mt"><button class="btn small" id="save-provider-btn" type="button">保存 Provider</button><button class="btn small" id="test-provider-btn" type="button">测试连接</button><span id="provider-status" class="muted small"></span></div>
+          </details>
           <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 允许将参考图发送给选定 AI 服务</label>
           <button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
           <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>

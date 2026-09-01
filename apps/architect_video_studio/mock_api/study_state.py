@@ -12,9 +12,45 @@ from typing import Any, Dict, Iterable, Optional
 
 from .store import StudioStore
 from runtime.prompt_provenance import is_current_prompt, reference_asset_hash
+from .job_state import (
+    RECONCILIATION_GRACE_SECONDS, is_job_active, is_job_terminal,
+    normalize_terminal_record,
+)
 
-TERMINAL_JOB_STATES = {"COMPLETED", "FAILED", "GPU_FAILED", "CANCELLED"}
 
+def _job_age_seconds(job: Dict[str, Any]) -> float:
+    from .job_state import job_age_seconds
+    return job_age_seconds(job)
+
+
+def converge_stale_reconciliation(store: StudioStore, project_id: str) -> bool:
+    """Close unrecoverable, old reconciliation records without a prompt id."""
+    jobs = store.load_jobs(project_id)
+    changed = False
+    for job in jobs.values():
+        if job.get("state") != "RECONCILING" or job.get("prompt_id"):
+            continue
+        if _job_age_seconds(job) < RECONCILIATION_GRACE_SECONDS:
+            continue
+        job["state"] = "SUBMISSION_LOST"
+        job["lifecycle_state"] = "SUBMISSION_LOST"
+        job["submission_state"] = "SUBMISSION_LOST"
+        job["failure_code"] = job.get("failure_code") or "COMFY_COMMUNICATION_TIMEOUT"
+        job["error_category"] = job.get("error_category") or "COMFY_COMMUNICATION_TIMEOUT"
+        job["failure_reason"] = "未能在重试窗口内确认 ComfyUI 已接受任务"
+        job["user_message"] = "任务提交未被 ComfyUI 确认，可重新生成"
+        job["finished_at"] = job.get("finished_at") or store.timestamp()
+        job["terminal_normalized_at"] = job["finished_at"]
+        job["reconciliation_terminal_reason"] = "no prompt_id or durable accepted submission after grace period"
+        stages = list(job.get("stages") or [])
+        if "SUBMISSION_LOST" not in stages:
+            stages.append("SUBMISSION_LOST")
+        job["stages"] = stages
+        job["updated_at"] = store.timestamp()
+        changed = True
+    if changed:
+        store.save_jobs(project_id, jobs)
+    return changed
 
 def _latest(records: Iterable[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     values = list(records)
@@ -23,10 +59,18 @@ def _latest(records: Iterable[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     project = store.load_project(project_id)
+    converge_stale_reconciliation(store, project_id)
     refs = list(store.load_references(project_id).values())
     intent = store.load_intent(project_id) or {}
     prompt = store.load_prompt(project_id) or {}
-    jobs = list(store.load_jobs(project_id).values())
+    jobs_by_id = store.load_jobs(project_id)
+    jobs = list(jobs_by_id.values())
+    normalized = False
+    for job in jobs:
+        if is_job_terminal(job):
+            normalized = normalize_terminal_record(job, store.timestamp()) or normalized
+    if normalized:
+        store.save_jobs(project_id, jobs_by_id)
 
     approved = [r for r in refs if r.get("state") == "APPROVED"]
     selected_id = project.get("current_reference_asset_id")
@@ -54,7 +98,7 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
             "GPU_FAILED", "QUALITY_FAILED"
         }
     )
-    active_job = _latest(j for j in jobs if j.get("state") not in TERMINAL_JOB_STATES)
+    active_job = _latest(j for j in jobs if is_job_active(j))
     last_job = _latest(jobs)
     intent_ready = bool(intent and not intent.get("requires_user_confirmation"))
 

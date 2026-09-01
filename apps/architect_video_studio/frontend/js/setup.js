@@ -12,6 +12,19 @@ async function loadDesktopSettings() {
   } catch (_) { /* optional settings must not block Environment Center */ }
 }
 
+async function loadRuntimeUpdateStatus() {
+  const target = document.getElementById('runtime-update-status');
+  if (!target) return;
+  try {
+    const status = await get('/api/system/runtime-update/status');
+    const candidate = status.candidate_root
+      ? `候选：${status.candidate_ready ? '已通过形态检查' : '未就绪'}`
+      : '暂无候选版本';
+    const rollback = status.rollback_available ? '可回滚' : '无回滚槽';
+    target.textContent = `当前 Runtime：${status.active_root_exists ? '存在' : '缺失'} · ${candidate} · ${rollback} · 共享模型：未触碰`;
+  } catch (e) { target.textContent = `候选版本检查失败：${e.message || '未知错误'}`; }
+}
+
 async function saveDesktopSettings() {
   const status = document.getElementById('desktop-settings-status');
   try {
@@ -410,6 +423,7 @@ async function openComfyUI() {
 }
 
 document.getElementById('open-comfy-btn').addEventListener('click', openComfyUI);
+document.getElementById('refresh-runtime-update-btn')?.addEventListener('click', loadRuntimeUpdateStatus);
 
 document.getElementById('refresh-plan-btn').addEventListener('click', () => loadPlan(true));
 
@@ -452,4 +466,5 @@ document.getElementById('cancel-install-btn').addEventListener('click', async ()
 
 document.getElementById('save-desktop-settings-btn')?.addEventListener('click', saveDesktopSettings);
 loadDesktopSettings();
+loadRuntimeUpdateStatus();
 loadEnv();

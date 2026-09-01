@@ -8,10 +8,13 @@ execution.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Dict, List
 
 from ..state_machine.machine import ProjectStateMachine
 from .store import StudioStore
+from .study_state import build_study_state
 from runtime.h3_generation_parameters import normalize_generation_parameters
 from runtime.prompt_provenance import (
     generation_parameters_hash,
@@ -20,7 +23,11 @@ from runtime.prompt_provenance import (
     stable_hash,
 )
 from runtime.workflow_motion import normalize_camera_motion
-from runtime.h3_prompt_engine import PromptReasoningRequest, UniversalPromptEngine
+from runtime.h3_prompt_engine import (
+    CLIReasoningProvider, OpenAICompatibleProvider, PromptReasoningRequest,
+    CLI_PROVIDER_IDS, UniversalPromptEngine, discover_providers, provider_summary,
+    test_provider_configuration,
+)
 
 FROZEN_WORKFLOWS = (
     "01_Exterior_Hero",
@@ -62,6 +69,82 @@ class PromptAPI:
             adapter = OfficialSkillAdapter()
         self.adapter = adapter
         self.engine = UniversalPromptEngine()
+        self.providers_path = Path(self.store.data_root) / "prompt_providers.json"
+
+    def _provider_configs(self) -> Dict[str, Dict[str, Any]]:
+        try:
+            value = self.store.load_json(self.providers_path, {}) or {}
+        except (OSError, ValueError, TypeError):
+            value = {}
+        return value if isinstance(value, dict) else {}
+
+    def _effective_provider_config(self, provider: str, body: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """Merge saved settings with live discovery; blank legacy values must not hide a valid executable."""
+        provider = str(provider or "").upper()
+        discovered = next((item for item in discover_providers()
+                           if str(item.get("provider", "")).upper() == provider), {})
+        config = dict(discovered)
+        saved = self._provider_configs().get(provider, {})
+        for source in (saved, body or {}):
+            for key, value in dict(source).items():
+                if key == "provider" or value is None or value == "":
+                    continue
+                config[key] = value
+        config["provider"] = provider
+        return config
+
+    def provider_catalog(self) -> List[Dict[str, Any]]:
+        """Expose provider identity/configuration without secrets or prompt data."""
+        configured = self._provider_configs()
+        result = []
+        for item in discover_providers():
+            provider = str(item.get("provider") or "").upper()
+            result.append({**item, **provider_summary(self._effective_provider_config(provider))})
+        for name in configured:
+            if not any(str(item.get("provider") or "").upper() == str(name).upper()
+                       for item in result):
+                result.append(provider_summary(self._effective_provider_config(name)))
+        return result
+
+    def configure_provider(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        provider = str(body.get("provider") or "").upper()
+        if provider not in set(CLI_PROVIDER_IDS) | {"OFFLINE_COMPILER", "OPENAI_COMPATIBLE_HTTP", "LOCAL_OPENAI_COMPATIBLE"}:
+            raise ValueError("不支持的 Prompt Provider")
+        config = {"provider": provider}
+        for key in ("executable", "base_url", "model", "api_key_env", "timeout"):
+            if body.get(key) not in (None, ""):
+                config[key] = body[key]
+        if body.get("arguments") is not None:
+            config["arguments"] = list(body.get("arguments") or [])
+        config["multimodal_capable"] = bool(body.get("multimodal_capable", False))
+        configs = self._provider_configs()
+        configs[provider] = config
+        self.providers_path.parent.mkdir(parents=True, exist_ok=True)
+        self.providers_path.write_text(json.dumps(configs, ensure_ascii=False, indent=2), encoding="utf-8")
+        return provider_summary(config)
+
+    def test_provider(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        provider = str(body.get("provider") or "").upper()
+        config = self._effective_provider_config(provider, body)
+        return test_provider_configuration(config)
+
+    def _configured_engine(self) -> UniversalPromptEngine:
+        providers = {}
+        names = set(self._provider_configs()) | {
+            str(item.get("provider") or "").upper()
+            for item in discover_providers()
+        }
+        for name in names:
+            config = self._effective_provider_config(name)
+            if name in CLI_PROVIDER_IDS:
+                providers[name] = CLIReasoningProvider(config.get("executable"), config.get("arguments") or [],
+                    timeout=int(config.get("timeout", 120)), multimodal_capable=bool(config.get("multimodal_capable")),
+                    provider_name=name)
+            elif name in ("OPENAI_COMPATIBLE_HTTP", "LOCAL_OPENAI_COMPATIBLE"):
+                providers[name] = OpenAICompatibleProvider(str(config.get("base_url") or ""),
+                    str(config.get("model") or ""), api_key_env=config.get("api_key_env"),
+                    multimodal_capable=bool(config.get("multimodal_capable")), timeout=int(config.get("timeout", 120)))
+        return UniversalPromptEngine(providers)
 
     def generate_prompt(self, project_id: str,
                         workflow: str | None = None,
@@ -69,7 +152,8 @@ class PromptAPI:
                         prompt_engine: str = "AUTO",
                         image_consent: bool = False) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
-        if project["state"] == "GPU_RUNNING":
+        # Gate on canonical Job activity, not a stale project.state value.
+        if build_study_state(self.store, project_id).get("active_job_id"):
             raise ValueError(
                 "当前任务正在生成，完成后才能更新 Prompt"
             )
@@ -135,7 +219,7 @@ class PromptAPI:
                 })
             else:
                 mode = "FL2VA" if workflow == "02_Day_Night_Transition" else "I2VA"
-                prompt = self.engine.generate(
+                prompt = self._configured_engine().generate(
                     PromptReasoningRequest(
                         mode=mode,
                         duration=float(params["duration"]),
@@ -249,6 +333,7 @@ class PromptAPI:
             "user_reference_hashes": reference_hashes,
             "user_reference_approved": True,
             "generated_prompt_hash": prompt_hash,
+            "provider_evidence": prompt.get("evidence"),
             "started_at": started_at,
             "completed_at": completed_at,
         })
@@ -306,6 +391,7 @@ class PromptAPI:
             "validator_result": validation,
             "fallback": bool(prompt.get("fallback")),
             "fallback_reason": prompt.get("fallback_reason"),
+            "provider_evidence": prompt.get("evidence"),
             "created_at": created_at,
         }
         self.store.save_prompt(project_id, record)

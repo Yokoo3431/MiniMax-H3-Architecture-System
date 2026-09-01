@@ -230,6 +230,12 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                         generation_parameters=body.get("generation_parameters"),
                         prompt_engine=body.get("prompt_engine") or "AUTO",
                         image_consent=bool(body.get("image_consent"))))
+            if path == "/api/prompt/providers" and method == "GET":
+                return self._ok(apis["prompt"].provider_catalog())
+            if path == "/api/prompt/providers/configure" and method == "POST":
+                return self._ok(apis["prompt"].configure_provider(body))
+            if path == "/api/prompt/providers/test" and method == "POST":
+                return self._ok(apis["prompt"].test_provider(body))
             m = re.fullmatch(r"/api/projects/([^/]+)/estimate", path)
             if m and method == "POST":
                 return self._ok(apis["job"].estimate(
@@ -254,6 +260,9 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/jobs/([^/]+)/retry", path)
             if m and method == "POST":
                 return self._ok(apis["job"].retry_job(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/retry-output", path)
+            if m and method == "POST":
+                return self._ok(apis["job"].retry_output_delivery(m.group(1)))
             m = re.fullmatch(r"/api/jobs/([^/]+)/cancel", path)
             if m and method == "POST":
                 return self._ok(apis["job"].cancel(m.group(1)))
@@ -282,13 +291,16 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             if path == "/api/system/recheck" and method == "POST":
                 return self._ok(apis["system"].recheck())
             if path == "/api/system/open-comfyui" and method == "POST":
-                return self._ok(apis["system"].open_comfyui())
+                return self._ok(apis["system"].open_comfyui(
+                    str(body.get("job_id") or "")))
             if path == "/api/system/current-workflow" and method == "GET":
                 values = parse_qs(query)
                 return self._ok(apis["system"].current_workflow(
                     (values.get("job_id") or [""])[0]))
             if path == "/api/system/restart-comfyui" and method == "POST":
                 return self._ok(apis["system"].restart_comfyui())
+            if path == "/api/system/runtime-update/status" and method == "GET":
+                return self._ok(apis["system"].runtime_update_status())
             if path == "/api/system/pick-folder" and method == "POST":
                 return self._ok(apis["system"].pick_folder())
             if path == "/api/system/open-path" and method == "POST":

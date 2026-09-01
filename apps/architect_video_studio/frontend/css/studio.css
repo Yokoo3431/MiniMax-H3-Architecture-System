@@ -492,6 +492,15 @@ label { display: block; margin: 8px 0 4px; color: var(--muted); font-size: 12px;
   margin-top: 6px;
 }
 .progress .bar { height: 100%; background: var(--accent); transition: width .4s ease; }
+.progress.indeterminate .bar {
+  width: 28% !important;
+  animation: avs-progress-pulse 1.25s ease-in-out infinite;
+}
+@keyframes avs-progress-pulse {
+  0% { transform: translateX(-110%); opacity: .45; }
+  50% { opacity: 1; }
+  100% { transform: translateX(360%); opacity: .45; }
+}
 
 /* ------------------------------------------------------------------ */
 /* Prompt / code / info                                                */

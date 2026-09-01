@@ -16,6 +16,7 @@ let pendingFile = null;
 let pollTimer = null;
 let promptTimer = null;
 let promptRequestSerial = 0;
+let providerCatalog = [];
 
 const VIDEO_TYPES = [
   ['01_Exterior_Hero', 'Exterior Hero'],
@@ -67,6 +68,22 @@ function currentParams() {
   return raw;
 }
 function stateLabel(state) { return STATE_LABELS[state] || '准备中'; }
+function jobIsTerminal(job) { return !!(job && job.is_terminal); }
+function jobIsActive(job) { return !!(job && job.is_active); }
+function formatEtaRange(job) {
+  const e = job && job.estimated_time;
+  if (!e || !Number.isFinite(Number(e.min_seconds)) || !Number.isFinite(Number(e.max_seconds))) return '';
+  const min = Math.max(1, Math.ceil(Number(e.min_seconds) / 60));
+  const max = Math.max(min, Math.ceil(Number(e.max_seconds) / 60));
+  return String(min) + '–' + String(max) + ' 分钟';
+}
+function formatJobEta(job) {
+  if (!job || jobIsTerminal(job)) return job && job.state === 'COMPLETED' ? '已完成' : '无需等待';
+  const range = formatEtaRange(job);
+  const live = Number.isFinite(Number(job.eta_seconds)) ? '剩余约 ' + Math.ceil(Number(job.eta_seconds)) + 's' : '';
+  if (range) return live ? live + ' · 预计总耗时：' + range : '预计总耗时：' + range;
+  return live || '正在估算剩余时间';
+}
 
 async function refreshStudy() {
   study = await get(`/api/projects/${projectId}/study`);
@@ -81,11 +98,73 @@ async function loadAll() {
   intent = detail.intent || null;
   prompt = detail.prompt || null;
   if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
+  await loadProviderCatalog();
   renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderPrompt(); renderOutputDirectory(); updateGate(); refreshEstimate();
   if (selectedRef && selectedRef.state === 'APPROVED'
       && document.getElementById('intent-text').value.trim()
       && !(study && study.prompt_current)) schedulePromptRefresh(80);
   pollJobs();
+}
+
+async function loadProviderCatalog() {
+  try {
+    providerCatalog = await get('/api/prompt/providers');
+    const selected = value('prompt-engine') || 'AUTO';
+    const config = providerCatalog.find((item) => item.provider === selected);
+    if (config) {
+      document.getElementById('provider-executable').value = config.executable || '';
+      document.getElementById('provider-arguments').value = (config.arguments || []).join('\n');
+      document.getElementById('provider-base-url').value = config.base_url || '';
+      document.getElementById('provider-model').value = config.model || '';
+      document.getElementById('provider-api-key-env').value = config.api_key_env || '';
+    }
+    const option = document.querySelector(`#prompt-engine option[value="${selected}"]`);
+    if (option && config && config.available === false && !option.dataset.unavailable) {
+      option.textContent += '（未配置）'; option.dataset.unavailable = '1';
+    }
+  } catch (_) { /* provider configuration is optional; offline mode remains usable */ }
+}
+
+function providerConfig() {
+  return {
+    provider: value('prompt-engine') === 'AUTO' ? 'OFFLINE_COMPILER' : value('prompt-engine'),
+    executable: value('provider-executable').trim(),
+    arguments: value('provider-arguments').split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+    base_url: value('provider-base-url').trim(),
+    model: value('provider-model').trim(),
+    api_key_env: value('provider-api-key-env').trim(),
+    multimodal_capable: !!document.getElementById('prompt-image-consent')?.checked,
+  };
+}
+
+async function saveProvider() {
+  const status = document.getElementById('provider-status');
+  try {
+    const saved = await post('/api/prompt/providers/configure', providerConfig());
+    status.textContent = `已保存 · ${saved.model || saved.executable || saved.provider}`;
+    providerCatalog = await get('/api/prompt/providers');
+  } catch (e) { status.textContent = e.message || '保存失败'; }
+}
+
+async function testProvider() {
+  const status = document.getElementById('provider-status');
+  try {
+    const result = await post('/api/prompt/providers/test', providerConfig());
+    status.textContent = result.ok ? `连接成功 · ${result.model || result.message}` : (result.message || '连接失败');
+  } catch (e) { status.textContent = e.message || '测试失败'; }
+}
+
+function detectProvider() {
+  const provider = value('prompt-engine');
+  const item = providerCatalog.find((entry) => entry.provider === provider);
+  const input = document.getElementById('provider-executable');
+  const status = document.getElementById('provider-status');
+  if (item && item.executable) {
+    input.value = item.executable;
+    status.textContent = item.available ? '已检测到可执行文件（尚未启动）' : '已记录，但当前不可运行';
+  } else {
+    status.textContent = '未检测到，请填写可执行文件路径';
+  }
 }
 
 function renderHeader() {
@@ -253,7 +332,7 @@ async function refreshPrompt() {
   }
   try {
     document.getElementById('prompt-skill-card').style.display = 'block';
-    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在编译 H3 Prompt…</strong><span class="muted small">离线优先；可选 Provider 仅在明确选择后执行</span>';
+    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在编译 H3 Prompt…</strong><span class="muted small">离线始终可用；已配置的本地 Provider 可在“自动”模式下使用，云端仅在明确选择并同意后执行</span>';
     intent = await post(`/api/projects/${projectId}/intent`, {natural_language: text});
     intent = await post(`/api/projects/${projectId}/workflow/select`, {workflow: currentWorkflow()});
     prompt = await post(`/api/projects/${projectId}/prompt`, {
@@ -337,23 +416,29 @@ async function pollJobs() {
   try {
     const jobs = await get(`/api/projects/${projectId}/jobs`);
     await refreshStudy();
-    const active = jobs.find((j) => !['COMPLETED','FAILED','GPU_FAILED','CANCELLED'].includes(j.state));
+    const active = jobs.find((j) => jobIsActive(j));
     const job = active || jobs[0];
     if (job) {
       const progress = job.progress == null ? null : Math.round(job.progress);
       const pct = progress == null ? 0 : progress;
-      document.getElementById('v-progress').style.width = `${pct}%`;
+      const progressBar = document.getElementById('v-progress');
+      progressBar.style.width = `${pct}%`;
+      progressBar.parentElement.classList.toggle('indeterminate', progress == null);
       document.getElementById('v-progress-label').textContent = progress == null ? '—' : `${progress}%`;
       document.getElementById('v-status').textContent = job.current_stage || stateLabel(job.state);
       document.getElementById('current-job-title').textContent = job.workflow ? '当前建筑视频任务' : job.id;
       document.getElementById('current-job-stage').textContent = job.current_stage || stateLabel(job.state);
-      document.getElementById('current-job-progress').textContent = progress == null ? '—' : `${progress}%${job.step && job.total_steps ? ` · ${job.step}/${job.total_steps}` : ''}`;
+      document.getElementById('current-job-progress').textContent = progress == null ? '—' : String(progress) + '%' + (job.step != null && job.total_steps != null ? ' · ' + job.step + '/' + job.total_steps : '');
       document.getElementById('current-job-elapsed').textContent = job.elapsed ? `已用时 ${Math.ceil(job.elapsed)}s` : '—';
-      document.getElementById('current-job-eta').textContent = job.eta_seconds == null ? '预计剩余时间计算中' : `剩余约 ${Math.ceil(job.eta_seconds)}s`;
+      document.getElementById('current-job-eta').textContent = formatJobEta(job);
     }
     renderHeader(); updateGate();
-  } catch (_) { /* the engine status control owns service errors */ }
-  pollTimer = setTimeout(pollJobs, 2000);
+    if (!job || jobIsActive(job)) pollTimer = setTimeout(pollJobs, 2000);
+    else { clearTimeout(pollTimer); pollTimer = null; }
+  } catch (_) {
+    /* the engine status control owns service errors */
+    pollTimer = setTimeout(pollJobs, 5000);
+  }
 }
 
 document.getElementById('choose-ref-btn').addEventListener('click', () => document.getElementById('ref-file').click());
@@ -393,6 +478,9 @@ document.getElementById('choose-output-folder').addEventListener('click', async 
 });
 document.getElementById('param-quality').addEventListener('change', selectQuality);
 document.getElementById('param-speed').addEventListener('change', selectSpeed);
+document.getElementById('save-provider-btn')?.addEventListener('click', saveProvider);
+document.getElementById('test-provider-btn')?.addEventListener('click', testProvider);
+document.getElementById('detect-provider-btn')?.addEventListener('click', detectProvider);
 
 function showHydrationFailure(error) {
   const layout = document.querySelector('.studio-layout');

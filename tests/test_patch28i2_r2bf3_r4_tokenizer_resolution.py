@@ -124,7 +124,8 @@ class TokenizerResolutionParityTests(unittest.TestCase):
             (component / "tokenizer.json").write_text("{}", encoding="utf-8")
             selected = _select_fast_tokenizer_component(component)
             self.assertEqual(selected, component)
-            self.assertNotIn("D:\\", str(selected))
+            # The temporary test root may itself be on D:. Equality above
+            # proves the resolver derives the selected path from its input.
 
     def test_patch_does_not_install_sentencepiece_or_tiktoken(self):
         source = PATCH.read_text(encoding="utf-8").lower()

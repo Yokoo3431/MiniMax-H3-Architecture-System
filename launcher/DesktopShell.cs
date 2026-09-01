@@ -32,7 +32,6 @@ internal sealed class DesktopShellForm : Form
     private Process backend;
     private ElementHost webViewHost;
     private WebView2 webView;
-    private Button comfyReturnButton;
     private string pendingUrl;
     private Icon appIcon;
 
@@ -56,20 +55,6 @@ internal sealed class DesktopShellForm : Form
         Icon = appIcon;
 
         pageHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, BorderStyle = BorderStyle.None, Padding = new Padding(0) };
-        comfyReturnButton = new Button {
-            Text = "返回 Architect Video Studio",
-            Width = 220,
-            Height = 34,
-            Location = new Point(12, 12),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left,
-            Visible = false,
-            TabStop = false,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(36, 105, 180),
-            ForeColor = Color.White
-        };
-        comfyReturnButton.FlatAppearance.BorderSize = 0;
-        comfyReturnButton.Click += (s, e) => Navigate(HomeUrl);
         Controls.Add(pageHost);
 
         var menu = new ContextMenuStrip();
@@ -83,7 +68,7 @@ internal sealed class DesktopShellForm : Form
         tray = new NotifyIcon { Icon = appIcon, Text = "Architect Video Studio - 正在启动", Visible = true, ContextMenuStrip = menu };
         tray.DoubleClick += (s, e) => RestoreFromTray();
 
-        pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        pollTimer = new System.Windows.Forms.Timer { Interval = 5000 };
         pollTimer.Tick += (s, e) => PollBackend();
         FormClosing += OnFormClosing;
         Resize += (s, e) => { if (WindowState == FormWindowState.Minimized) Hide(); };
@@ -175,7 +160,6 @@ internal sealed class DesktopShellForm : Form
         checking = true;
         ThreadPool.QueueUserWorkItem(delegate {
             var health = GetUrl(StudioUrl + "/api/health");
-            var environment = health == null ? null : GetUrl(StudioUrl + "/api/system/environment");
             try {
                 BeginInvoke((Action)(() => {
                     checking = false;
@@ -184,12 +168,16 @@ internal sealed class DesktopShellForm : Form
                         ShowFailure("桌面界面组件启动失败", "桌面页面组件没有在规定时间内启动，请点击“重试”或“打开日志”。", false);
                     }
                     if (health == null) { if (DateTime.UtcNow >= backendDeadline && !startupFailureShown) { Log("APP-03", "backend health timeout"); ShowFailure("服务启动失败", "本地服务未在规定时间内响应。", true); } return; }
-                    Log("APP-03", "backend health ready HTTP 200");
-                    // A stopped/crashed ComfyUI child is a recoverable engine
-                    // state, not proof that the installation is missing. Keep
-                    // the user in Studio; Environment Center remains an
-                    // explicit diagnostics route.
-                    if (!initialPageShown) { initialPageShown = true; Navigate(pendingUrl); }
+                    // Log the successful startup edge once. Repeating a
+                    // successful health line every poll creates noise and can
+                    // hide the actual lifecycle events in owner diagnostics.
+                    // A stopped/crashed ComfyUI child remains an engine
+                    // condition, not proof that installation is missing.
+                    if (!initialPageShown) {
+                        Log("APP-03", "backend health ready HTTP 200");
+                        initialPageShown = true;
+                        Navigate(pendingUrl);
+                    }
                 }));
             } catch (InvalidOperationException) { checking = false; }
         });
@@ -217,9 +205,7 @@ internal sealed class DesktopShellForm : Form
             webViewHost.Child = webView;
             pageHost.Controls.Clear();
             pageHost.Controls.Add(webViewHost);
-            pageHost.Controls.Add(comfyReturnButton);
             webViewHost.BringToFront();
-            comfyReturnButton.BringToFront();
             await webView.EnsureCoreWebView2Async(environment);
             Log("APP-06", "CoreWebView2 created");
             startupFailureShown = false;
@@ -252,7 +238,7 @@ internal sealed class DesktopShellForm : Form
             {
                 var returnUrl = (StudioUrl + "/index.html?new=1").Replace("'", "\\'");
                 var studioEndpoint = (StudioUrl + "/api/system/current-workflow?job_id=" + Uri.EscapeDataString(GetQueryValue(currentUrl, "h3_job"))).Replace("'", "\\'");
-                var script = "(() => { const token=new URL(location.href).searchParams.get('h3_refresh')||'default'; const reset='architect-video-studio-workflow-reset-v3:'+token; if (sessionStorage.getItem(reset)!=='1') { localStorage.clear(); sessionStorage.setItem(reset,'1'); location.reload(); return; } const id='architect-video-studio-return'; if (!document.getElementById(id)) { const b=document.createElement('button'); b.id=id; b.textContent='返回 Architect Video Studio'; b.style.cssText='position:fixed;z-index:2147483647;left:12px;top:12px;height:34px;padding:0 14px;border:0;border-radius:5px;background:#2469b4;color:#fff;font:14px Segoe UI,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;'; b.onclick=()=>{window.location.href='" + returnUrl + "';}; document.body.appendChild(b); } const endpoint='" + studioEndpoint + "'; fetch(endpoint,{cache:'no-store'}).then(r=>r.json()).then(x=>{ const d=x.data||{}; const wf=d.workflow; if (!wf) return; let attempts=0; const apply=()=>{ const a=window.app||globalThis.app; let ok=false; try { if (a && typeof a.loadGraphData==='function') { a.loadGraphData(wf); ok=true; } else if (a && a.graph && typeof a.graph.configure==='function') { a.graph.configure(wf); if (typeof a.graph.setDirtyCanvas==='function') a.graph.setDirtyCanvas(true,true); ok=true; } } catch(e) {} if (!ok && attempts++<8) return setTimeout(apply,750); const n=document.createElement('div'); n.textContent=ok ? ('已加载 Studio 当前任务：'+(d.workflow_id||'')) : ('当前任务工作流已准备：'+(d.file_name||'')); n.style.cssText='position:fixed;z-index:2147483647;right:18px;top:14px;padding:9px 14px;border-radius:5px;background:'+(ok?'#1f7a4d':'#8a5a00')+';color:#fff;font:14px Segoe UI,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35);'; document.body.appendChild(n); setTimeout(()=>n.remove(),5000); }; apply(); }).catch(()=>{}); })();";
+                var script = "(() => { const token=new URL(location.href).searchParams.get('h3_refresh')||'default'; const reset='architect-video-studio-workflow-reset-v3:'+token; if (sessionStorage.getItem(reset)!=='1') { localStorage.clear(); sessionStorage.setItem(reset,'1'); location.reload(); return; } const id='architect-video-studio-return'; if (!document.getElementById(id)) { const b=document.createElement('button'); b.id=id; b.textContent='返回 Studio'; b.style.cssText='position:fixed;z-index:2147483647;right:12px;top:42px;height:24px;padding:0 8px;border:1px solid rgba(255,255,255,.35);border-radius:4px;background:rgba(36,105,180,.82);color:#fff;font:12px Segoe UI,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.28);cursor:pointer;opacity:.86;'; b.onclick=()=>{window.location.href='" + returnUrl + "';}; document.body.appendChild(b); } const endpoint='" + studioEndpoint + "'; fetch(endpoint,{cache:'no-store'}).then(r=>r.json()).then(x=>{ const d=x.data||{}; const wf=d.workflow; if (!wf) return; let attempts=0; const apply=()=>{ const a=window.app||globalThis.app; let ok=false; try { if (a && typeof a.loadGraphData==='function') { a.loadGraphData(wf); ok=true; } else if (a && a.graph && typeof a.graph.configure==='function') { a.graph.configure(wf); if (typeof a.graph.setDirtyCanvas==='function') a.graph.setDirtyCanvas(true,true); ok=true; } } catch(e) {} if (!ok && attempts++<8) return setTimeout(apply,750); const hash=(d.execution_workflow_sha256||d.workflow_hash||'').slice(0,12); const n=document.createElement('div'); n.textContent=ok ? ('已加载当前任务：'+(d.workflow_id||'')+' · SHA '+hash+' · CURRENT ✓') : ('当前任务工作流已准备：'+(d.file_name||'')); n.style.cssText='position:fixed;z-index:2147483647;right:18px;top:14px;padding:7px 10px;border-radius:4px;background:'+(ok?'#1f7a4d':'#8a5a00')+';color:#fff;font:12px Segoe UI,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.28);'; document.body.appendChild(n); setTimeout(()=>n.remove(),5000); }; apply(); }).catch(()=>{}); })();";
                 await webView.ExecuteScriptAsync(script);
             }
             Log("APP-09", "page ready signal received readyState=" + state + " url=" + currentUrl);
@@ -260,12 +246,7 @@ internal sealed class DesktopShellForm : Form
         catch (Exception error) { Log("APP-09", "page ready signal exception=" + error.Message); }
     }
 
-    private void UpdateComfyReturnVisibility(string url)
-    {
-        if (comfyReturnButton == null) return;
-        comfyReturnButton.Visible = !String.IsNullOrEmpty(url) && url.StartsWith(ComfyUrl, StringComparison.OrdinalIgnoreCase);
-        if (comfyReturnButton.Visible) comfyReturnButton.BringToFront();
-    }
+    private void UpdateComfyReturnVisibility(string url) { }
 
     private static string GetQueryValue(string url, string key)
     {

@@ -197,8 +197,7 @@ class EnvironmentService:
         models["h3_runtime_status"] = "READY" if h3_model_root["ready"] else "CONFIGURATION_REQUIRED"
         models["status"] = "READY" if (
             models["ready"] == models["count"] and h3_model_root["ready"] and
-            models["h3_asset_status"].get("ready") and
-            models.get("comfy_discovery", {}).get("ready", True)
+            models["h3_asset_status"].get("ready")
         ) else "CONFIGURATION_REQUIRED"
         skill = self._skill_status()
         workflows = self._workflow_status()
@@ -217,7 +216,7 @@ class EnvironmentService:
             "h3_support_layer_ready": bool(support["h3"]["ready"]),
             "models_ready": bool(models["ready"] == models["count"] and
                                   h3_model_root["ready"] and
-                                  models.get("comfy_discovery", {}).get("ready", True)),
+                                  models["h3_asset_status"].get("ready")),
             "prompt_skill_ready": bool(skill["generation_allowed"]),
             "workflows_ready": bool(workflows["ready"] == workflows["count"]),
         })
@@ -237,8 +236,8 @@ class EnvironmentService:
             "comfyui_present": runtime["present"],
             "pread_present": runtime["pread"],
             "gpu_ready": system["gpu_ready"],
-            "models_4of4": all(m["status"] == "READY" for m in models["items"]) and
-                           bool(models.get("comfy_discovery", {}).get("ready", True)),
+            "models_4of4": bool(models["ready"] == models["count"] and
+                                  h3_model_root["ready"] and models["h3_asset_status"].get("ready")),
             "h3_model_root_ready": bool(h3_model_root["ready"]),
             "h3_assets_ready": bool(models["h3_asset_status"].get("ready")),
             "h3_support_ready": bool(support["h3"]["ready"]),
@@ -252,6 +251,14 @@ class EnvironmentService:
             "contract_valid": self._contract_valid(),
         }
 
+        installation_keys = (
+            "native_root_configured", "comfyui_present", "pread_present",
+            "models_4of4", "h3_model_root_ready", "h3_assets_ready",
+            "h3_support_ready", "video_support_ready",
+            "support_dependencies_ready", "skill_pinned_ready",
+            "workflows_5of5", "contract_valid",
+        )
+        installation_status = "INSTALLATION_READY" if all(gates.get(key) for key in installation_keys) else "INSTALLATION_REPAIR_REQUIRED"
         overall = self._overall(system, runtime, models, support, skill, gates)
         provenance = {
             "release_manifest": str(REPO_ROOT / "configs" / "release_runtime_manifest.json"),
@@ -263,6 +270,7 @@ class EnvironmentService:
             "schema_version": 1,
             "checked_at": probe.get("last_probe_finished") or "",
             "overall": overall,
+            "installation_status": installation_status,
             "paths": paths,
             "system": system,
             "runtime": runtime,
@@ -311,6 +319,7 @@ class EnvironmentService:
 
         return {
             "overall": overall,
+            "installation_status": installation_status,
             "setup_completed": setup_completed,
             "system": system,
             "runtime": runtime,
@@ -928,12 +937,12 @@ class EnvironmentService:
         except (AttributeError, OSError, ValueError):
             return False
 
-    def open_comfyui(self) -> Dict[str, Any]:
+    def open_comfyui(self, job_id: str = "") -> Dict[str, Any]:
         launcher_root = _LAUNCHER_DIR
         bat = launcher_root.parent / "Open_Native_ComfyUI.bat" if launcher_root else None
         if bat is None or not bat.is_file():
             raise ValueError("Open_Native_ComfyUI.bat not found")
-        handoff = self.current_workflow()
+        handoff = self.current_workflow(job_id)
         query = "?h3_refresh=" + str(int(datetime.now(timezone.utc).timestamp() * 1000))
         if handoff.get("job_id"):
             query += "&h3_job=" + str(handoff["job_id"])
@@ -951,6 +960,7 @@ class EnvironmentService:
                 "file_name": handoff.get("file_name"),
                 "snapshot_id": handoff.get("snapshot_id"),
                 "workflow_hash": handoff.get("workflow_hash"),
+                "execution_workflow_sha256": handoff.get("execution_workflow_sha256"),
             },
             "note": "Advanced / Developer only; the managed launcher owns this service",
         }
@@ -989,53 +999,18 @@ class EnvironmentService:
                 "workflow": persisted["workflow"],
                 "snapshot_id": str(persisted.get("snapshot_id") or selected_job.get("workflow_snapshot_id") or ""),
                 "workflow_hash": str(persisted.get("workflow_hash") or selected_job.get("workflow_hash") or ""),
+                "execution_workflow_sha256": str(persisted.get("execution_workflow_sha256") or selected_job.get("execution_workflow_sha256") or ""),
                 "asset_hash": str(persisted.get("asset_hash") or selected_job.get("asset_hash") or ""),
                 "prompt_hash": str(persisted.get("prompt_hash") or selected_job.get("prompt_hash") or ""),
             }
-
-        workflow_id = str(selected_job.get("workflow") or "")
-        workflow_path = REPO_ROOT / "workflows" / f"{workflow_id}.json"
-        if not workflow_path.is_file():
-            raise ValueError(f"当前任务 workflow 不存在：{workflow_id}")
-        workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
-
-        # Model selection is the same profile contract used by the real API
-        # payload.  No model is loaded and no file is copied here.
-        from runtime.adapters.production_workflow_binding import production_model_contract
-        models = production_model_contract(
-            os.environ.get("H3_DEPLOYMENT_PROFILE", "COMPATIBILITY"),
-            gpu_vram_gb=os.environ.get("H3_GPU_VRAM_GB"),
-            system_ram_gb=os.environ.get("H3_SYSTEM_RAM_GB"),
+        # A legacy Job without a persisted API snapshot cannot be safely
+        # reconstructed from the browser/UI workflow files: doing so was the
+        # source of the stale diagnostic graph that differed from /prompt.
+        # Refuse the handoff clearly instead of presenting an unrelated graph.
+        raise ValueError(
+            f"任务 {selected_job.get('id', '')} 缺少精确执行快照，无法打开旧版工作流；"
+            "请重新提交该任务以生成新的诊断快照。"
         )
-        params = selected_job.get("generation_parameters") or {}
-        refs = [r for r in self.store.load_references(selected_project).values()
-                if r.get("state") == "APPROVED"]
-        reference_name = str((refs[0] if refs else {}).get("filename") or "reference.png")
-        for node in workflow.get("nodes", []):
-            node_type = str(node.get("type") or "")
-            widgets = list(node.get("widgets_values") or [])
-            if node_type == "LoadImage" and widgets:
-                widgets[0] = Path(reference_name).name
-            elif node_type == "UNETLoader" and widgets:
-                widgets[0] = models["dit"]
-            elif node_type == "CLIPLoader" and widgets:
-                widgets[0] = models["text_encoder"]
-            elif node_type == "VAELoader" and widgets:
-                widgets[0] = models["video_vae"]
-            elif node_type == "EmptyLatentImage" and len(widgets) >= 2:
-                resolution = str(params.get("resolution") or "").split("x")
-                if len(resolution) == 2:
-                    widgets[0], widgets[1] = int(resolution[0]), int(resolution[1])
-            elif node_type == "KSampler" and widgets and params.get("seed") is not None:
-                widgets[0] = int(params["seed"])
-            node["widgets_values"] = widgets
-        return {
-            "job_id": str(selected_job.get("id")),
-            "project_id": selected_project,
-            "workflow_id": workflow_id,
-            "file_name": workflow_path.name,
-            "workflow": workflow,
-        }
 
     def restart_comfyui(self) -> Dict[str, Any]:
         """Reclaim only the managed ComfyUI port and start one clean child."""
@@ -1076,10 +1051,35 @@ class EnvironmentService:
             raise ValueError(f"ComfyUI 服务启动失败：{getattr(service, 'failure', service.state)}")
         return {"status": "READY", "reused": False, "message": "ComfyUI 服务已重新启动。"}
 
+    def runtime_update_status(self) -> Dict[str, Any]:
+        """Expose a read-only candidate/rollback gate for Environment Center."""
+        from runtime.safe_runtime_update import RuntimeUpdateManager
+        active = self._active_environment()
+        active_root = active.native_root or self._paths().native_root
+        candidate_value = os.environ.get("H3_RUNTIME_UPDATE_CANDIDATE", "").strip()
+        if active_root is None:
+            return {"policy": "candidate_validate_then_promote_with_rollback",
+                    "status": "UNCONFIGURED", "candidate_root": candidate_value,
+                    "models_root_untouched": True}
+        manager = RuntimeUpdateManager(Path(active_root))
+        return {"policy": "candidate_validate_then_promote_with_rollback",
+                "status": "READY" if Path(active_root).is_dir() else "MISSING",
+                **manager.status(Path(candidate_value) if candidate_value else None)}
+
     def engine_status(self) -> Dict[str, Any]:
         """Return a bounded, user-facing service state without setup redirect."""
         from launcher.process_manager import ProcessManager, PortManager, _http_ok
-        ready = _http_ok(f"http://127.0.0.1:{ProcessManager.COMFYUI_PORT}/system_stats")
+        base = f"http://127.0.0.1:{ProcessManager.COMFYUI_PORT}"
+        # The control plane can still reconcile Jobs through queue/history,
+        # but whole-engine READY has a stricter contract: the managed port
+        # must answer /system_stats.  A prompt timeout or WebSocket silence
+        # must never downgrade a healthy service by itself.
+        # Queue/history are Job observations, not service-health probes.
+        # Keep the engine indicator lightweight and independent of Job state.
+        health_sources = []
+        if _http_ok(base + "/system_stats"):
+            health_sources.append("/system_stats")
+        ready = bool(health_sources)
         crash_path = Path(os.environ.get("H3_LOGS_DIR", str(REPO_ROOT / "Logs"))) / "comfyui.crash.json"
         crash = None
         if crash_path.is_file():
@@ -1087,12 +1087,15 @@ class EnvironmentService:
                 crash = json.loads(crash_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 crash = None
+        port_in_use = PortManager.port_in_use(ProcessManager.COMFYUI_PORT)
         if ready:
             state = "READY"
-        elif crash:
+        elif crash and not port_in_use:
             state = "CRASHED"
-        elif PortManager.port_in_use(ProcessManager.COMFYUI_PORT):
+        elif port_in_use:
             state = "STARTING"
         else:
             state = "STOPPED"
-        return {"state": state, "message": "生成引擎意外退出" if state == "CRASHED" else "", "crash": crash}
+        return {"state": state, "message": "生成引擎意外退出" if state == "CRASHED" else "",
+                "crash": crash, "health_sources": health_sources,
+                "control_plane_reachable": ready}

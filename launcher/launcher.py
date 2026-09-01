@@ -159,7 +159,8 @@ class Launcher:
             setup_state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return False
-        if not setup_state.get("setup_completed"):
+        # setup_completed may be stale after a live Comfy probe ran offline.
+        if not setup_state.get("native_root") or not setup_state.get("models_root"):
             return False
         normalized = report.get("environment_state") or {}
         gates = normalized.get("gates", {})

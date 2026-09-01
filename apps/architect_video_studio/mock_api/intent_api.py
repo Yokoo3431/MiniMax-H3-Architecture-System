@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 from ..state_machine.machine import ProjectStateMachine
 from .store import StudioStore
+from .study_state import build_study_state
 
 
 class IntentAPI:
@@ -22,9 +23,9 @@ class IntentAPI:
 
     def analyze_intent(self, project_id: str, natural_language: str) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
-        active = [j for j in self.store.load_jobs(project_id).values()
-                  if j.get("state") not in {"COMPLETED", "FAILED", "GPU_FAILED", "CANCELLED"}]
-        if active:
+        # Study state is the canonical projection of Job activity.
+        # SUBMISSION_LOST is terminal and must not keep the editor locked.
+        if build_study_state(self.store, project_id).get("active_job_id"):
             raise ValueError("当前任务正在生成，完成后才能修改意图")
         if project["state"] != "REFERENCE_APPROVED":
             # Failed/completed Jobs do not poison the editable Study.  Rebuild
@@ -127,7 +128,7 @@ class IntentAPI:
     def select_workflow(self, project_id: str, workflow: str) -> Dict[str, Any]:
         """Persist a deliberate workflow change and invalidate stale Prompt data."""
         project = self.store.load_project(project_id)
-        if project["state"] == "GPU_RUNNING":
+        if build_study_state(self.store, project_id).get("active_job_id"):
             raise ValueError("当前任务正在生成，完成后才能切换视频类型")
         if project["state"] not in {"REFERENCE_APPROVED", "INTENT_ANALYSIS",
                                      "PROMPT_REVIEW", "PROMPT_NEEDS_CONFIRMATION",

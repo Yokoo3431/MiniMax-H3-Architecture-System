@@ -8,15 +8,19 @@
   bar.appendChild(holder);
   const label = holder.querySelector('.engine-label');
   const button = holder.querySelector('.engine-restart');
-  const names = {READY:'就绪', STARTING:'启动中', RUNNING:'运行中', CRASHED:'意外退出', STOPPED:'已停止'};
+  const names = {READY:'就绪', STARTING:'启动中', RUNNING:'运行中', RESTARTING:'重启中', OFFLINE:'离线', CRASHED:'意外退出', STOPPED:'已停止'};
+  let refreshing = false;
   async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
     try {
       const result = await get('/api/system/engine-status');
       const state = result.state || 'STOPPED';
       label.textContent = `生成引擎：${names[state] || state}`;
       holder.dataset.state = state;
-      button.style.display = (state === 'CRASHED' || state === 'STOPPED') ? 'inline-flex' : 'none';
+      button.style.display = (state === 'CRASHED' || state === 'STOPPED' || state === 'OFFLINE') ? 'inline-flex' : 'none';
     } catch (_) { label.textContent = '生成引擎：检查中'; }
+    finally { refreshing = false; }
   }
   button.addEventListener('click', async () => {
     button.disabled = true; button.textContent = '启动中…';
@@ -30,5 +34,5 @@
     button.disabled = false; button.textContent = '重新启动生成引擎'; refresh();
   });
   refresh();
-  setInterval(refresh, 2500);
+  setInterval(refresh, 5000);
 })();
