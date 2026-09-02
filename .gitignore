@@ -131,3 +131,5 @@ Thumbs.db
 
 # Owner-assisted acceptance evidence is local-only (hashes/status, no source artifact)
 reports/owner_acceptance/
+!docs/STUDIO_UX2_SIMPLE_WORKSPACE_REFERENCE.md
+!docs/STUDIO_UX2_REUSE_MATRIX.md

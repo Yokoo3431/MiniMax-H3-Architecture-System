@@ -731,3 +731,196 @@ pre.prompt {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* UX2-P1.5: visual foundation only; business layout and contracts stay intact. */
+:root {
+  --surface-app: #e8e9e6;
+  --surface-tool: #f8f7f3;
+  --surface-elevated: #efeee9;
+  --surface-viewport: #101719;
+  --surface-viewport-overlay: rgba(10, 14, 15, .72);
+  --border-subtle: #c9ccc7;
+  --border-strong: #aeb4ae;
+  --text-primary: #202729;
+  --text-secondary: #697375;
+  --text-muted: #87908f;
+  --text-inverse: #e5ecea;
+  --interaction-hover: #e7ebe8;
+  --interaction-selected: #dde5e1;
+  --interaction-focus: #98643f;
+  --header-height: 46px;
+  --control-height: 30px;
+  --accent: #98643f;
+  --accent-strong: #765039;
+  --accent-soft: #eee4da;
+  --viewport-2: #182224;
+  --viewport-line: #344447;
+  --viewport-text: #e5ecea;
+  --viewport-muted: #a7b8b5;
+}
+
+body { background: var(--surface-app); }
+.topbar {
+  gap: 10px;
+  padding: 6px 14px;
+  min-height: var(--header-height);
+  background: #f2f1ed;
+  box-shadow: 0 1px 0 rgba(32, 39, 41, .03);
+}
+.topbar .brand { font-size: 13px; letter-spacing: .55px; }
+.app-nav {
+  gap: 2px;
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 7px;
+}
+.app-nav a {
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.app-nav a.active, .app-nav a[aria-current="page"] {
+  border-color: var(--border-subtle);
+  background: var(--surface-tool);
+}
+.wrap { max-width: 1360px; padding: 16px 20px; }
+.wrap-wide { max-width: 1540px; }
+.panel, .task-card, .control-section { border-radius: 4px; }
+.panel { padding: 12px; }
+.task-card { padding: 12px; }
+.btn { padding: 5px 11px; }
+input[type=text], select, textarea { padding: 5px 8px; }
+
+.app-home .app-main > div:first-child {
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 10px;
+}
+.app-home .app-main > div:first-child h2 {
+  font-size: 20px;
+  letter-spacing: -.15px;
+}
+.studio-heading {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.studio-heading h1 { font-size: 24px; letter-spacing: -.25px; }
+.studio-layout { gap: 12px; }
+.control-section {
+  padding: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 3px rgba(32, 39, 41, .05);
+}
+.section-title { font-size: 13px; margin-bottom: 8px; }
+
+/* A quiet construction-grid cue makes the Study surface read as a viewport. */
+.ux2-viewport-frame {
+  border-radius: 3px;
+  border-color: #3b4b4d;
+  background-color: var(--surface-viewport);
+  background-image:
+    linear-gradient(rgba(167, 184, 181, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(167, 184, 181, .045) 1px, transparent 1px);
+  background-size: 32px 32px;
+  box-shadow: inset 0 0 0 1px rgba(229, 236, 234, .035), 0 14px 28px rgba(32, 39, 41, .16);
+}
+.ux2-viewport .v-head {
+  min-height: 34px;
+  padding: 7px 10px;
+  background: rgba(24, 34, 36, .96);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-size: 10px;
+}
+.ux2-viewport .v-body { background: rgba(16, 23, 25, .42); }
+.ux2-viewport .v-empty {
+  min-width: min(360px, 72%);
+  padding: 64px 32px;
+  border: 1px dashed #506365;
+  background: rgba(10, 14, 15, .28);
+  letter-spacing: .02em;
+}
+.ux2-viewport .v-empty::before {
+  content: "VIDEO VIEWPORT";
+  display: block;
+  margin-bottom: 10px;
+  color: #d4dfdc;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .16em;
+}
+.ux2-viewport .v-empty::after {
+  content: "REFERENCE / OUTPUT SURFACE";
+  display: block;
+  margin-top: 10px;
+  color: #718582;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+.ux2-viewport .v-chip, .ux2-viewport .v-params {
+  border-color: #506365;
+  background: rgba(10, 14, 15, .74);
+}
+.ux2-viewport .v-foot { border-color: #506365; border-radius: 3px; }
+
+@media (max-width: 1400px) {
+  .app-header > .small.muted { display: none; }
+}
+@media (max-width: 650px) {
+  .wrap { padding-left: 12px; padding-right: 12px; }
+}
+
+/* UX2-P1.6B: navigation-owned, viewport-first Study workspace. */
+.ux2-compact-topbar { min-height: var(--header-height); }
+.studio-layout {
+  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr) minmax(320px, 360px);
+  grid-template-areas: "reference viewport inspector";
+  align-items: stretch;
+}
+.reference-panel { grid-area: reference; min-width: 0; }
+.reference-panel .control-section { height: 100%; margin-bottom: 0; }
+.ux2-viewport { grid-area: viewport; min-width: 0; }
+.generation-panel { grid-area: inspector; min-width: 0; }
+.ux2-inspector-section { box-shadow: 0 1px 3px rgba(32, 39, 41, .05); }
+.ux2-reference-thumb { min-height: 154px; }
+.primary-param-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.primary-param-grid select { font-weight: 600; }
+.prompt-assistance { border-top: 1px solid var(--border-subtle); padding-top: 8px; }
+.prompt-assistance > summary,
+.advanced-settings > summary,
+.prompt-provider-settings > summary,
+.prompt-details > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--type-label);
+  font-weight: 650;
+}
+.prompt-assistance > summary::marker,
+.advanced-settings > summary::marker { color: var(--accent); }
+.prompt-assistance[open] > summary,
+.advanced-settings[open] > summary { color: var(--text-primary); }
+.reference-panel .reference-actions { flex-wrap: wrap; }
+.reference-panel .reference-actions .btn { flex: 1 1 100%; }
+
+@media (max-width: 1180px) and (min-width: 901px) {
+  .studio-layout { grid-template-columns: minmax(170px, 200px) minmax(0, 1fr) minmax(292px, 320px); gap: 10px; }
+  .studio-heading { gap: 12px; }
+  .studio-heading h1 { font-size: 21px; }
+  .generation-panel { font-size: 13px; }
+}
+
+@media (max-width: 900px) {
+  .studio-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "viewport" "inspector" "reference";
+  }
+  .reference-panel .control-section { height: auto; }
+  .generation-panel { max-height: none; overflow: visible; }
+  .ux2-viewport { min-height: 48vh; }
+}
+
+@media (max-width: 650px) {
+  .ux2-viewport .v-head { letter-spacing: .08em; }
+  .primary-param-grid { grid-template-columns: 1fr; }
+}

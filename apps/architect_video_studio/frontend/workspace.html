@@ -8,14 +8,14 @@
   <script src="js/ux2_shell.js"></script>
 </head>
 <body class="app-shell app-study">
-  <header class="topbar app-header studio-topbar">
+  <header class="topbar app-header studio-topbar ux2-compact-topbar">
     <div class="brand">Architect<span class="dot">·</span>Video Studio</div>
     <nav class="nav app-nav" aria-label="主导航">
-      <a href="index.html">Home</a>
-      <a class="active" aria-current="page" data-nav-study href="workspace.html">Study</a>
-      <a href="jobs.html">Jobs</a>
-      <a href="output.html">Outputs</a>
-      <a href="setup.html">Environment</a>
+      <a data-route="home" href="index.html">Home</a>
+      <a data-route="study" data-nav-study href="workspace.html">Study</a>
+      <a data-route="jobs" href="jobs.html">Jobs</a>
+      <a data-route="outputs" href="output.html">Outputs</a>
+      <a data-route="environment" href="setup.html">Environment</a>
     </nav>
     <span class="spacer"></span>
     <div class="study-header-context" aria-label="当前 Study">
@@ -38,6 +38,23 @@
     </section>
 
     <section class="studio-layout">
+
+      <aside class="reference-panel ux2-reference-drawer" aria-label="参考图">
+<section class="control-section reference-section ux2-inspector-section">
+            <div class="section-title"><span>1. 参考图</span><span id="reference-state" class="badge state">未上传</span></div>
+            <div id="reference-dropzone" class="reference-dropzone" tabindex="0">
+              <div id="reference-preview" class="reference-preview ux2-reference-thumb">拖拽图片到这里，或点击选择</div>
+              <input type="file" id="ref-file" accept="image/*" hidden>
+              <button class="btn" id="choose-ref-btn" type="button">选择图片</button>
+              <button class="btn ghost" id="replace-ref-btn" type="button" style="display:none">替换</button>
+            </div>
+            <div id="refs" class="reference-meta muted small"></div>
+            <div class="reference-actions">
+              <select id="ref-role" aria-label="参考图用途" hidden><option value="first_frame">first_frame</option></select>
+              <button class="btn ok" id="upload-btn" type="button" disabled>上传并审批</button>
+            </div>
+          </section>
+      </aside>
       <section class="viewport ux2-viewport-frame ux2-viewport" aria-label="预览">
         <div class="v-head">
           <span>预览</span><span class="spacer"></span>
@@ -54,77 +71,69 @@
       </section>
 
       <aside class="generation-panel ux2-tool-drawer" aria-label="生成控制">
-        <section class="control-section reference-section">
-          <div class="section-title"><span>1. 参考图</span><span id="reference-state" class="badge state">未上传</span></div>
-          <div id="reference-dropzone" class="reference-dropzone" tabindex="0">
-            <div id="reference-preview" class="reference-preview">拖拽图片到这里，或点击选择</div>
-            <input type="file" id="ref-file" accept="image/*" hidden>
-            <button class="btn" id="choose-ref-btn" type="button">选择图片</button>
-            <button class="btn ghost" id="replace-ref-btn" type="button" style="display:none">替换</button>
-          </div>
-          <div id="refs" class="reference-meta muted small"></div>
-          <div class="reference-actions">
-            <select id="ref-role" aria-label="参考图用途" hidden><option value="first_frame">first_frame</option></select>
-            <button class="btn ok" id="upload-btn" type="button" disabled>上传并审批</button>
-          </div>
-        </section>
-
-        <section class="control-section">
+        <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>2. 视频类型</span></div>
           <label for="video-type">选择一种成片方式</label>
           <select id="video-type" class="large-control"></select>
           <div id="video-type-help" class="muted small mt"></div>
         </section>
 
-        <section class="control-section">
+        <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>3. 生成意图</span></div>
           <label for="intent-text">你希望镜头如何展示空间？</label>
           <textarea id="intent-text" placeholder="例如：镜头从入口缓慢推进，突出建筑尺度、材质和自然光"></textarea>
-          <label for="prompt-engine">Prompt Engine</label>
-          <select id="prompt-engine">
-            <option value="AUTO" selected>自动（离线优先）</option>
-            <option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</option>
-            <option value="CODEX">Codex（本地 CLI）</option>
-            <option value="ANTIGRAVITY">Antigravity（本地 CLI）</option>
-            <option value="DEEPSEEK_HARNESS">DeepSeek Harness（本地 CLI）</option>
-            <option value="CUSTOM_CLI">自定义 CLI</option>
-            <option value="CLI_BRIDGE">通用 CLI Provider</option>
-            <option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</option>
-            <option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</option>
-          </select>
-          <div class="muted small">离线模式不需要 LLM，也不会进行 AI 图像理解。</div>
-          <details class="prompt-provider-settings mt">
-            <summary>配置可选 Prompt Provider</summary>
-            <div class="param-grid mt">
-              <div class="wide"><label for="provider-executable">CLI 可执行文件</label><input id="provider-executable" type="text" placeholder="例如 codex 或自定义路径"><button class="btn small mt" id="detect-provider-btn" type="button">自动检测</button></div>
-              <div class="wide"><label for="provider-arguments">CLI 参数（每行一个）</label><textarea id="provider-arguments" rows="2" placeholder="可选，按行填写参数模板"></textarea></div>
-              <div><label for="provider-base-url">OpenAI 兼容 Base URL</label><input id="provider-base-url" type="url" placeholder="http://127.0.0.1:1234/v1"></div>
-              <div><label for="provider-model">模型标识</label><input id="provider-model" type="text" placeholder="例如 local-model"></div>
-              <div><label for="provider-api-key-env">API Key 环境变量名</label><input id="provider-api-key-env" type="text" placeholder="只保存变量名，不保存密钥"></div>
-            </div>
-            <div class="row mt"><button class="btn small" id="save-provider-btn" type="button">保存 Provider</button><button class="btn small" id="test-provider-btn" type="button">测试连接</button><span id="provider-status" class="muted small"></span></div>
-          </details>
-          <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 允许将参考图发送给选定 AI 服务</label>
-          <button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
-          <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
-          <details id="prompt-details" class="prompt-details" style="display:none">
-            <summary>查看优化提示词</summary>
-            <div id="prompt-detail-content"></div>
+          <details class="prompt-assistance mt">
+            <summary>AI Prompt（可选）</summary>
+            <label for="prompt-engine">Prompt Engine</label>
+                      <select id="prompt-engine">
+                        <option value="AUTO" selected>自动（离线优先）</option>
+                        <option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</option>
+                        <option value="CODEX">Codex（本地 CLI）</option>
+                        <option value="ANTIGRAVITY">Antigravity（本地 CLI）</option>
+                        <option value="DEEPSEEK_HARNESS">DeepSeek Harness（本地 CLI）</option>
+                        <option value="CUSTOM_CLI">自定义 CLI</option>
+                        <option value="CLI_BRIDGE">通用 CLI Provider</option>
+                        <option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</option>
+                        <option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</option>
+                      </select>
+                      <div class="muted small">离线模式不需要 LLM，也不会进行 AI 图像理解。</div>
+                      <details class="prompt-provider-settings mt">
+                        <summary>配置可选 Prompt Provider</summary>
+                        <div class="param-grid mt">
+                          <div class="wide"><label for="provider-executable">CLI 可执行文件</label><input id="provider-executable" type="text" placeholder="例如 codex 或自定义路径"><button class="btn small mt" id="detect-provider-btn" type="button">自动检测</button></div>
+                          <div class="wide"><label for="provider-arguments">CLI 参数（每行一个）</label><textarea id="provider-arguments" rows="2" placeholder="可选，按行填写参数模板"></textarea></div>
+                          <div><label for="provider-base-url">OpenAI 兼容 Base URL</label><input id="provider-base-url" type="url" placeholder="http://127.0.0.1:1234/v1"></div>
+                          <div><label for="provider-model">模型标识</label><input id="provider-model" type="text" placeholder="例如 local-model"></div>
+                          <div><label for="provider-api-key-env">API Key 环境变量名</label><input id="provider-api-key-env" type="text" placeholder="只保存变量名，不保存密钥"></div>
+                        </div>
+                        <div class="row mt"><button class="btn small" id="save-provider-btn" type="button">保存 Provider</button><button class="btn small" id="test-provider-btn" type="button">测试连接</button><span id="provider-status" class="muted small"></span></div>
+                      </details>
+                      <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 允许将参考图发送给选定 AI 服务</label>
+                      <button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
+                      <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
+                      <details id="prompt-details" class="prompt-details" style="display:none">
+                        <summary>查看优化提示词</summary>
+                        <div id="prompt-detail-content"></div>
+                      </details>
           </details>
         </section>
-
-        <section class="control-section">
+        <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>4. 参数</span><span class="muted small">H3</span></div>
-          <div class="param-grid">
+                    <div class="param-grid primary-param-grid">
             <div><label for="param-duration">时长</label><select id="param-duration"></select></div>
-            <div><label for="param-resolution">分辨率</label><select id="param-resolution"></select></div>
-            <div><label for="param-fps">帧率</label><select id="param-fps"><option value="24">24 fps（已验证）</option></select></div>
-            <div><label for="param-aspect">画幅</label><select id="param-aspect"><option value="auto">自动</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></div>
             <div><label for="param-quality">质量</label><select id="param-quality"><option value="draft">Draft</option><option value="standard" selected>Standard</option><option value="high">High</option></select></div>
-          <div class="wide"><label for="param-speed">生成速度</label><select id="param-speed"><option value="standard">Standard（Golden 已验证）</option></select></div>
           </div>
           <details class="advanced-settings mt">
-            <summary>高级设置</summary>
+            <summary>高级设置 · 更多参数</summary>
+            <div class="param-grid mt secondary-param-grid">
+              <div><label for="param-resolution">分辨率</label><select id="param-resolution"></select></div>
+              <div><label for="param-fps">帧率</label><select id="param-fps"><option value="24">24 fps（已验证）</option></select></div>
+              <div><label for="param-aspect">画幅</label><select id="param-aspect"><option value="auto">自动</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></div>
+              <div><label for="param-speed">生成速度</label><select id="param-speed"><option value="standard">Standard（Golden 已验证）</option></select></div>
+            </div>
+          </details>
+          <details class="advanced-settings mt">
+            <summary>技术参数</summary>
             <div class="param-grid mt">
               <div><label for="param-seed">Seed（可选）</label><input type="text" id="param-seed" placeholder="留空随机"></div>
               <div><label for="param-steps">Sigma 点数</label><input type="number" id="param-steps" min="2" max="100" placeholder="随质量"></div>
