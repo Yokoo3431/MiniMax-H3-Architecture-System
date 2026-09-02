@@ -69,6 +69,9 @@
 * { box-sizing: border-box; }
 html { min-width: 320px; }
 html[data-ux2="off"] .ux2-only { display: none !important; }
+html[data-ux2="off"] .app-nav { display: none; }
+html[data-ux2="off"] .ux2-legacy-crumb { display: inline; }
+.ux2-legacy-crumb { display: none; }
 
 body {
   margin: 0;

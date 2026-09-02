@@ -23,6 +23,8 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("params.get('ux2') !== '0'", source)
         self.assertIn("dataset.ux2 = enabled ? 'on' : 'off'", source)
         self.assertIn("data-nav-study", source)
+        self.assertIn("restoreLegacyContext", source)
+        self.assertIn("ux2-legacy-crumb", source)
 
     def test_all_primary_pages_have_shared_shell_and_navigation(self):
         for name, body_class in PAGES.items():
