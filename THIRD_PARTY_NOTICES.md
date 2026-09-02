@@ -88,13 +88,23 @@ system `ffmpeg`/`ffprobe`; the five frozen I2VA/FL2VA workflows do not use that
 optional Ref2VA path. A future distribution component must make that optional
 requirement explicit rather than silently assuming a global binary.
 
-## 6. 使用注意
+## 6. Shoelace and Tabler Icons (Architect Video Studio frontend)
+
+| Component | License | Source / revision | Included files |
+| --- | --- | --- | --- |
+| Shoelace | MIT | https://github.com/shoelace-style/shoelace, v2.20.1 (`fb59fda70ed737c92611051b49bc7e3a5fed5dc5`) | `apps/architect_video_studio/frontend/vendor/shoelace/shoelace.js`, `dark.css`, `chunks/`, `internal/` |
+| Tabler Icons | MIT | https://github.com/tabler/tabler-icons | Selected navigation/action SVGs under `apps/architect_video_studio/frontend/vendor/tabler/` |
+
+These frontend assets are vendored for local/offline desktop use. AVS uses the
+components only as presentation primitives; they do not own Study, Job,
+engine, provider, or generation state.
+## 7. 使用注意
 
 - 若将本产品与 ComfyUI 一起分发，须遵守 GPL-3.0 相应义务（提供对应源码/许可）
 - 模型权重、H3 模型与技能的分发需单独取得授权；本仓库不包含权重
 - ffmpeg 二进制分发需按所选构建的许可（LGPL/GPL）履行义务
 
-## 7. Shareable installer notice
+## 8. Shareable installer notice
 
 `ArchitectVideoStudio-Setup.exe` is built with the Windows IExpress tool and
 contains application source/configuration plus the first-run bootstrap script.

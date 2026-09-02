@@ -48,7 +48,7 @@ function showNotice(msg) { errEl.className = 'notice-banner'; errEl.style.displa
 function badge(overall) {
   const cls = overall === 'READY' ? 'done' : overall === 'WARNING' ? 'warn'
     : overall === 'BLOCK' ? 'err' : 'state';
-  return `<span class="badge ${cls}">${esc(overall)}</span>`;
+  return `<sl-badge class="badge ${cls}" variant="${cls === 'done' ? 'success' : cls === 'err' ? 'danger' : 'neutral'}" pill>${esc(overall)}</sl-badge>`;
 }
 
 function showProbeChecking() {
@@ -338,7 +338,7 @@ function renderGroup(g) {
     const probeError = probe.probe_error || 'None — all lightweight probes passed.';
     html += `<div class="small muted">高级入口：直接打开 Native ComfyUI（节点图编辑器）。普通用户不需要。</div>
       <div class="mt">${statusRow('Native ComfyUI', r.path || '—')}</div>
-      <div class="mt"><button class="btn primary" data-open-comfy-inspector>打开 Native ComfyUI（高级）</button></div>
+      <div class="mt"><sl-button class="btn primary" data-open-comfy-inspector>打开 Native ComfyUI（高级）</sl-button></div>
       <div class="small muted mt">默认桌面入口不会自动打开网页；只有点击此按钮才会打开备用 ComfyUI 网页。</div>
       <div class="mt"><strong>Environment Probe Diagnostics</strong></div>
       ${statusRow('Runtime Python', probe.runtime_python_path || 'NOT FOUND')}

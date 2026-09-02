@@ -25,7 +25,7 @@ function formatJobEta(job) {
 }
 function badge(state, job) {
   const cls = state === 'COMPLETED' ? 'done' : ['FAILED','GPU_FAILED','CANCELLED','SUBMISSION_LOST'].includes(state) ? 'err' : 'warn';
-  return `<span class="badge ${cls}">${esc(friendlyState(job || {state}))}</span>`;
+  return `<sl-badge class="badge ${cls}" variant="${cls === 'done' ? 'success' : cls === 'err' ? 'danger' : 'neutral'}" pill>${esc(friendlyState(job || {state}))}</sl-badge>`;
 }
 function progressText(job) {
   const p = job.state === 'SUBMISSION_LOST' || job.progress == null ? '—' : `${Math.round(job.progress)}%`;
@@ -37,7 +37,7 @@ function progressText(job) {
 async function loadProjects() {
   const projects = await get('/api/projects');
   const sel = document.getElementById('project-select');
-  sel.innerHTML = projects.map((p) => `<option value="${esc(p.id)}" ${p.id === initialProjectId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+  sel.innerHTML = projects.map((p) => `<sl-option value="${esc(p.id)}" ${p.id === initialProjectId ? 'selected' : ''}>${esc(p.name)}</sl-option>`).join('');
   if (projects.length) await loadJobs(sel.value);
   sel.addEventListener('change', () => { location.href = `jobs.html?project=${encodeURIComponent(sel.value)}`; });
 }
@@ -78,12 +78,12 @@ async function openDetail(jobId, pid) {
     <div class="kv"><span class="k">提示词摘要</span><span>${esc(detail.prompt_summary || '—')}</span></div>
     ${detail.output_path ? `<div class="kv"><span class="k">视频文件</span><span class="small">${esc(detail.output_path)}</span></div>` : ''}`;
   const actions = document.getElementById('detail-actions');
-  actions.innerHTML = `${['FAILED','GPU_FAILED','CANCELLED','SUBMISSION_LOST'].includes(detail.state) ? '<button class="btn primary" id="retry-job">重试</button>' : ''}
-    ${detail.error_category === 'COMFYUI_CRASHED' ? '<button class="btn" id="restart-comfyui">重新启动服务</button>' : ''}
-    <button class="btn" id="open-current-workflow">打开当前任务工作流</button>
-    <button class="btn" id="open-study">打开 Study</button>
-    ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?job=${esc(detail.id)}">打开输出</a><button class="btn" id="open-output-folder">打开所在文件夹</button>${detail.delivery_state === 'OUTPUT_DELIVERY_FAILED' ? '<button class="btn" id="retry-output">重试复制</button>' : ''}` : ''}
-    <button class="btn" id="copy-tech">复制技术详情</button>`;
+  actions.innerHTML = `${['FAILED','GPU_FAILED','CANCELLED','SUBMISSION_LOST'].includes(detail.state) ? '<sl-button class="btn primary" id="retry-job">重试</sl-button>' : ''}
+    ${detail.error_category === 'COMFYUI_CRASHED' ? '<sl-button class="btn" id="restart-comfyui">重新启动服务</sl-button>' : ''}
+    <sl-button class="btn" id="open-current-workflow">打开当前任务工作流</sl-button>
+    <sl-button class="btn" id="open-study">打开 Study</sl-button>
+    ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?job=${esc(detail.id)}">打开输出</a><sl-button class="btn" id="open-output-folder">打开所在文件夹</sl-button>${detail.delivery_state === 'OUTPUT_DELIVERY_FAILED' ? '<sl-button class="btn" id="retry-output">重试复制</sl-button>' : ''}` : ''}
+    <sl-button class="btn" id="copy-tech">复制技术详情</sl-button>`;
   document.getElementById('detail-technical').textContent = JSON.stringify(detail.technical_details || {}, null, 2);
   document.getElementById('open-study')?.addEventListener('click', () => { location.href = `workspace.html?project=${encodeURIComponent(pid)}`; });
   document.getElementById('open-current-workflow')?.addEventListener('click', async (event) => {

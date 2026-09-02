@@ -20,7 +20,7 @@ function stateBadge(state) {
   const cls = ['COMPLETED', 'READY_TO_GENERATE'].includes(state) ? 'done'
     : ['FAILED', 'REFERENCE_REJECTED'].includes(state) ? 'err'
     : ['GENERATING', 'PROMPT_REVIEW'].includes(state) ? 'warn' : 'state';
-  return `<span class="badge ${cls}">${esc(labels[state] || state)}</span>`;
+  return `<sl-badge class="badge ${cls}" variant="${cls === 'done' ? 'success' : cls === 'err' ? 'danger' : 'neutral'}" pill>${esc(labels[state] || state)}</sl-badge>`;
 }
 
 async function loadTasks() {
@@ -48,16 +48,16 @@ async function loadTasks() {
               ${stateBadge(displayState)}
             </div>
             <div class="tags">
-              ${wf ? `<span class="tag">${esc(WF_LABEL[wf] || wf)}</span>` : '<span class="tag">未选工作流</span>'}
+              ${wf ? `<sl-tag size="small" class="tag">${esc(WF_LABEL[wf] || wf)}</sl-tag>` : '<sl-tag size="small" class="tag">未选工作流</sl-tag>'}
             </div>
             <div class="foot">
               <span>${esc(p.updated_at)}</span>
               ${prompt ? `<span class="mono">#${esc(prompt.prompt_hash.slice(0, 8))}</span>` : ''}
             </div>
             <div class="task-actions" onclick="event.stopPropagation()">
-              <button class="btn small ghost" data-action="rename" data-project="${esc(p.id)}">重命名</button>
-              <button class="btn small ghost" data-action="duplicate" data-project="${esc(p.id)}">复制</button>
-              <button class="btn small ghost danger" data-action="delete" data-project="${esc(p.id)}">删除</button>
+              <sl-button class="btn small ghost" data-action="rename" data-project="${esc(p.id)}">重命名</sl-button>
+              <sl-button class="btn small ghost" data-action="duplicate" data-project="${esc(p.id)}">复制</sl-button>
+              <sl-button class="btn small ghost danger" data-action="delete" data-project="${esc(p.id)}">删除</sl-button>
             </div>
           </div>`;
         }).join('')

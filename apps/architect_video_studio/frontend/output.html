@@ -1,20 +1,23 @@
 <!doctype html>
-<html lang="zh-CN" data-ux2="on">
+<html lang="zh-CN" data-ux2="on" class="sl-theme-dark">
 <head>
   <meta charset="utf-8">
   <title>Architect Video Studio — Output Review</title>
   <link rel="stylesheet" href="css/studio.css">
+  <link rel="stylesheet" href="vendor/shoelace/dark.css">
+  <script type="module" src="vendor/shoelace/shoelace.js"></script>
+  <script src="js/shoelace_bridge.js"></script>
   <script src="js/ux2_shell.js"></script>
 </head>
 <body class="app-shell app-output">
   <header class="topbar app-header">
     <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
     <nav class="nav app-nav" aria-label="主导航">
-      <a data-route="home" href="index.html">Home</a>
-      <a data-route="study" data-nav-study href="index.html?new=1">Study</a>
-      <a data-route="jobs" href="jobs.html">Jobs</a>
-      <a data-route="outputs" href="output.html">Outputs</a>
-      <a data-route="environment" href="setup.html">Environment</a>
+      <a data-route="home" href="index.html"><img class="avs-icon" src="vendor/tabler/home.svg" alt="" aria-hidden="true">Home</a>
+      <a data-route="study" data-nav-study href="index.html?new=1"><img class="avs-icon" src="vendor/tabler/photo.svg" alt="" aria-hidden="true">Study</a>
+      <a data-route="jobs" href="jobs.html"><img class="avs-icon" src="vendor/tabler/briefcase.svg" alt="" aria-hidden="true">Jobs</a>
+      <a data-route="outputs" href="output.html"><img class="avs-icon" src="vendor/tabler/file-description.svg" alt="" aria-hidden="true">Outputs</a>
+      <a data-route="environment" href="setup.html"><img class="avs-icon" src="vendor/tabler/settings.svg" alt="" aria-hidden="true">Environment</a>
     </nav>
     <span class="spacer"></span>
     <span class="small muted">Output review</span>

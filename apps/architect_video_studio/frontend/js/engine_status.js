@@ -4,7 +4,7 @@
   if (!bar) return;
   const holder = document.createElement('span');
   holder.className = 'engine-status small';
-  holder.innerHTML = '<span class="engine-dot"></span><span class="engine-label">生成引擎：检查中</span><button class="btn small engine-restart" style="display:none">重新启动生成引擎</button>';
+  holder.innerHTML = '<span class="engine-dot"></span><span class="engine-label">生成引擎：检查中</span><sl-button class="btn small engine-restart" style="display:none">重新启动生成引擎</sl-button>';
   bar.appendChild(holder);
   const label = holder.querySelector('.engine-label');
   const button = holder.querySelector('.engine-restart');

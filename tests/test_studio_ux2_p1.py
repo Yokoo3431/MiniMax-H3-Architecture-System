@@ -96,6 +96,26 @@ class StudioUX2P1Tests(unittest.TestCase):
         jobs_css = self.read("css/studio.css")
         self.assertIn(".jobs-table", jobs_css)
         self.assertIn("data-label", jobs_css)
+    def test_local_shoelace_kit_and_icon_contract(self):
+        for name in PAGES:
+            source = self.read(name)
+            self.assertIn('vendor/shoelace/shoelace.js', source, name)
+            self.assertIn('vendor/shoelace/dark.css', source, name)
+            self.assertIn('js/shoelace_bridge.js', source, name)
+            self.assertIn('class="sl-theme-dark"', source, name)
+            self.assertNotRegex(source, r'https?://[^" ]*(cdn|unpkg)', name)
+            for icon in ('home.svg', 'photo.svg', 'briefcase.svg', 'file-description.svg', 'settings.svg'):
+                self.assertIn(f'vendor/tabler/{icon}', source, name)
+        for path in (
+            FRONTEND / 'vendor' / 'shoelace' / 'shoelace.js',
+            FRONTEND / 'vendor' / 'shoelace' / 'dark.css',
+            FRONTEND / 'vendor' / 'tabler' / 'LICENSE',
+        ):
+            self.assertTrue(path.is_file(), path)
+        workspace = self.read('workspace.html')
+        for element in ('sl-button', 'sl-select', 'sl-option', 'sl-textarea', 'sl-details', 'sl-badge'):
+            self.assertIn(f'<{element}', workspace)
+        self.assertNotIn('<details', workspace)
     def test_no_new_backend_surface_in_p1_test_scope(self):
         changed = {
             p.relative_to(ROOT).as_posix()

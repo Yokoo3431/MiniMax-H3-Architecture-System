@@ -1,26 +1,29 @@
 <!doctype html>
-<html lang="zh-CN" data-ux2="on">
+<html lang="zh-CN" data-ux2="on" class="sl-theme-dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Architect Video Studio</title>
   <link rel="stylesheet" href="css/studio.css">
+  <link rel="stylesheet" href="vendor/shoelace/dark.css">
+  <script type="module" src="vendor/shoelace/shoelace.js"></script>
+  <script src="js/shoelace_bridge.js"></script>
   <script src="js/ux2_shell.js"></script>
 </head>
 <body class="app-shell app-study">
   <header class="topbar app-header studio-topbar ux2-compact-topbar">
     <div class="brand">Architect<span class="dot">·</span>Video Studio</div>
     <nav class="nav app-nav" aria-label="主导航">
-      <a data-route="home" href="index.html">Home</a>
-      <a data-route="study" data-nav-study href="workspace.html">Study</a>
-      <a data-route="jobs" href="jobs.html">Jobs</a>
-      <a data-route="outputs" href="output.html">Outputs</a>
-      <a data-route="environment" href="setup.html">Environment</a>
+      <a data-route="home" href="index.html"><img class="avs-icon" src="vendor/tabler/home.svg" alt="" aria-hidden="true">Home</a>
+      <a data-route="study" data-nav-study href="workspace.html"><img class="avs-icon" src="vendor/tabler/photo.svg" alt="" aria-hidden="true">Study</a>
+      <a data-route="jobs" href="jobs.html"><img class="avs-icon" src="vendor/tabler/briefcase.svg" alt="" aria-hidden="true">Jobs</a>
+      <a data-route="outputs" href="output.html"><img class="avs-icon" src="vendor/tabler/file-description.svg" alt="" aria-hidden="true">Outputs</a>
+      <a data-route="environment" href="setup.html"><img class="avs-icon" src="vendor/tabler/settings.svg" alt="" aria-hidden="true">Environment</a>
     </nav>
     <span class="spacer"></span>
     <div class="study-header-context" aria-label="当前 Study">
       <span class="context-label">STUDY</span>
-      <span id="task-state" class="badge state">准备中</span>
+      <sl-badge id="task-state" class="badge state" variant="neutral" pill>准备中</sl-badge>
     </div>
   </header>
 
@@ -34,24 +37,24 @@
         <p id="task-meta" class="muted">参考图 → 视频类型 → 意图 → 参数 → 生成</p>
       </div>
       <a class="btn ghost" href="jobs.html">查看任务与输出</a>
-      <button class="btn ghost" id="rename-study-btn" type="button">重命名 Study</button>
+      <sl-button class="btn ghost" id="rename-study-btn" type="button">重命名 Study</sl-button>
     </section>
 
     <section class="studio-layout">
 
       <aside class="reference-panel ux2-reference-drawer" aria-label="参考图">
 <section class="control-section reference-section ux2-inspector-section">
-            <div class="section-title"><span>1. 参考图</span><span id="reference-state" class="badge state">未上传</span></div>
+            <div class="section-title"><span>1. 参考图</span><sl-badge id="reference-state" class="badge state" variant="neutral" pill>未上传</sl-badge></div>
             <div id="reference-dropzone" class="reference-dropzone" tabindex="0">
               <div id="reference-preview" class="reference-preview ux2-reference-thumb">拖拽图片到这里，或点击选择</div>
               <input type="file" id="ref-file" accept="image/*" hidden>
-              <button class="btn" id="choose-ref-btn" type="button">选择图片</button>
-              <button class="btn ghost" id="replace-ref-btn" type="button" style="display:none">替换</button>
+              <sl-button class="btn" id="choose-ref-btn" type="button">选择图片</sl-button>
+              <sl-button class="btn ghost" id="replace-ref-btn" type="button" style="display:none">替换</sl-button>
             </div>
             <div id="refs" class="reference-meta muted small"></div>
             <div class="reference-actions">
-              <select id="ref-role" aria-label="参考图用途" hidden><option value="first_frame">first_frame</option></select>
-              <button class="btn ok" id="upload-btn" type="button" disabled>上传并审批</button>
+              <sl-select id="ref-role" aria-label="参考图用途" hidden><sl-option value="first_frame">first_frame</sl-option></sl-select>
+              <sl-button class="btn ok" id="upload-btn" type="button" disabled>上传并审批</sl-button>
             </div>
           </section>
       </aside>
@@ -74,80 +77,75 @@
         <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>2. 视频类型</span></div>
           <label for="video-type">选择一种成片方式</label>
-          <select id="video-type" class="large-control"></select>
+          <sl-select id="video-type" class="large-control"></sl-select>
           <div id="video-type-help" class="muted small mt"></div>
         </section>
 
         <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>3. 生成意图</span></div>
           <label for="intent-text">你希望镜头如何展示空间？</label>
-          <textarea id="intent-text" placeholder="例如：镜头从入口缓慢推进，突出建筑尺度、材质和自然光"></textarea>
-          <details class="prompt-assistance mt">
-            <summary>AI Prompt（可选）</summary>
+          <sl-textarea id="intent-text" placeholder="例如：镜头从入口缓慢推进，突出建筑尺度、材质和自然光"></sl-textarea>
+          <sl-details class="prompt-assistance mt" summary="AI Prompt（可选）">
             <label for="prompt-engine">Prompt Engine</label>
-                      <select id="prompt-engine">
-                        <option value="AUTO" selected>自动（离线优先）</option>
-                        <option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</option>
-                        <option value="CODEX">Codex（本地 CLI）</option>
-                        <option value="ANTIGRAVITY">Antigravity（本地 CLI）</option>
-                        <option value="DEEPSEEK_HARNESS">DeepSeek Harness（本地 CLI）</option>
-                        <option value="CUSTOM_CLI">自定义 CLI</option>
-                        <option value="CLI_BRIDGE">通用 CLI Provider</option>
-                        <option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</option>
-                        <option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</option>
-                      </select>
+                      <sl-select id="prompt-engine">
+                        <sl-option value="AUTO" selected>自动（离线优先）</sl-option>
+                        <sl-option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</sl-option>
+                        <sl-option value="CODEX">Codex（本地 CLI）</sl-option>
+                        <sl-option value="ANTIGRAVITY">Antigravity（本地 CLI）</sl-option>
+                        <sl-option value="DEEPSEEK_HARNESS">DeepSeek Harness（本地 CLI）</sl-option>
+                        <sl-option value="CUSTOM_CLI">自定义 CLI</sl-option>
+                        <sl-option value="CLI_BRIDGE">通用 CLI Provider</sl-option>
+                        <sl-option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</sl-option>
+                        <sl-option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</sl-option>
+                      </sl-select>
                       <div class="muted small">离线模式不需要 LLM，也不会进行 AI 图像理解。</div>
-                      <details class="prompt-provider-settings mt">
-                        <summary>配置可选 Prompt Provider</summary>
+                      <sl-details class="prompt-provider-settings mt" summary="配置可选 Prompt Provider">
                         <div class="param-grid mt">
-                          <div class="wide"><label for="provider-executable">CLI 可执行文件</label><input id="provider-executable" type="text" placeholder="例如 codex 或自定义路径"><button class="btn small mt" id="detect-provider-btn" type="button">自动检测</button></div>
-                          <div class="wide"><label for="provider-arguments">CLI 参数（每行一个）</label><textarea id="provider-arguments" rows="2" placeholder="可选，按行填写参数模板"></textarea></div>
+                          <div class="wide"><label for="provider-executable">CLI 可执行文件</label><input id="provider-executable" type="text" placeholder="例如 codex 或自定义路径"><sl-button class="btn small mt" id="detect-provider-btn" type="button">自动检测</sl-button></div>
+                          <div class="wide"><label for="provider-arguments">CLI 参数（每行一个）</label><sl-textarea id="provider-arguments" rows="2" placeholder="可选，按行填写参数模板"></sl-textarea></div>
                           <div><label for="provider-base-url">OpenAI 兼容 Base URL</label><input id="provider-base-url" type="url" placeholder="http://127.0.0.1:1234/v1"></div>
                           <div><label for="provider-model">模型标识</label><input id="provider-model" type="text" placeholder="例如 local-model"></div>
                           <div><label for="provider-api-key-env">API Key 环境变量名</label><input id="provider-api-key-env" type="text" placeholder="只保存变量名，不保存密钥"></div>
                         </div>
-                        <div class="row mt"><button class="btn small" id="save-provider-btn" type="button">保存 Provider</button><button class="btn small" id="test-provider-btn" type="button">测试连接</button><span id="provider-status" class="muted small"></span></div>
-                      </details>
+                        <div class="row mt"><sl-button class="btn small" id="save-provider-btn" type="button">保存 Provider</sl-button><sl-button class="btn small" id="test-provider-btn" type="button">测试连接</sl-button><span id="provider-status" class="muted small"></span></div>
+                      </sl-details>
                       <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 允许将参考图发送给选定 AI 服务</label>
-                      <button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
+                      <sl-button class="btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</sl-button>
                       <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
-                      <details id="prompt-details" class="prompt-details" style="display:none">
-                        <summary>查看优化提示词</summary>
+                      <sl-details id="prompt-details" class="prompt-details" summary="查看优化提示词" style="display:none">
                         <div id="prompt-detail-content"></div>
-                      </details>
-          </details>
+                      </sl-details>
+          </sl-details>
         </section>
         <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>4. 参数</span><span class="muted small">H3</span></div>
                     <div class="param-grid primary-param-grid">
-            <div><label for="param-duration">时长</label><select id="param-duration"></select></div>
-            <div><label for="param-quality">质量</label><select id="param-quality"><option value="draft">Draft</option><option value="standard" selected>Standard</option><option value="high">High</option></select></div>
+            <div><label for="param-duration">时长</label><sl-select id="param-duration"></sl-select></div>
+            <div><label for="param-quality">质量</label><sl-select id="param-quality"><sl-option value="draft">Draft</sl-option><sl-option value="standard" selected>Standard</sl-option><sl-option value="high">High</sl-option></sl-select></div>
           </div>
-          <details class="advanced-settings mt">
-            <summary>高级设置 · 更多参数</summary>
+          <sl-details class="advanced-settings mt" summary="高级设置 · 更多参数">
             <div class="param-grid mt secondary-param-grid">
-              <div><label for="param-resolution">分辨率</label><select id="param-resolution"></select></div>
-              <div><label for="param-fps">帧率</label><select id="param-fps"><option value="24">24 fps（已验证）</option></select></div>
-              <div><label for="param-aspect">画幅</label><select id="param-aspect"><option value="auto">自动</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></div>
-              <div><label for="param-speed">生成速度</label><select id="param-speed"><option value="standard">Standard（Golden 已验证）</option></select></div>
+              <div><label for="param-resolution">分辨率</label><sl-select id="param-resolution"></sl-select></div>
+              <div><label for="param-fps">帧率</label><sl-select id="param-fps"><sl-option value="24">24 fps（已验证）</sl-option></sl-select></div>
+              <div><label for="param-aspect">画幅</label><sl-select id="param-aspect"><sl-option value="auto">自动</sl-option><sl-option value="16:9">16:9</sl-option><sl-option value="9:16">9:16</sl-option><sl-option value="1:1">1:1</sl-option></sl-select></div>
+              <div><label for="param-speed">生成速度</label><sl-select id="param-speed"><sl-option value="standard">Standard（Golden 已验证）</sl-option></sl-select></div>
             </div>
-          </details>
-          <details class="advanced-settings mt">
-            <summary>技术参数</summary>
+          </sl-details>
+          <sl-details class="advanced-settings mt" summary="技术参数">
             <div class="param-grid mt">
               <div><label for="param-seed">Seed（可选）</label><input type="text" id="param-seed" placeholder="留空随机"></div>
               <div><label for="param-steps">Sigma 点数</label><input type="number" id="param-steps" min="2" max="100" placeholder="随质量"></div>
-              <div><label for="param-sampler">采样器</label><select id="param-sampler"><option value="euler">Euler</option><option value="res_multistep">Res Multi-step</option></select></div>
+              <div><label for="param-sampler">采样器</label><sl-select id="param-sampler"><sl-option value="euler">Euler</sl-option><sl-option value="res_multistep">Res Multi-step</sl-option></sl-select></div>
               <label class="check-row wide"><input type="checkbox" id="param-velocity"> Velocity-cache（手动）</label>
               <label class="check-row wide"><input type="checkbox" id="param-cache-dit"> Cache-DiT（手动）</label>
             </div>
-          </details>
+          </sl-details>
         </section>
 
         <section class="control-section generate-section">
           <div id="gate-note" class="gate-note">请先上传并审批参考图</div>
           <div id="estimate-note" class="estimate-note">预计生成时间：历史数据不足，时间仅供参考</div>
-          <button class="btn primary generate-button" id="generate-btn" type="button" disabled>开始生成</button>
+          <sl-button class="btn primary generate-button" id="generate-btn" type="button" disabled>开始生成</sl-button>
           <label class="check-row small"><input type="checkbox" id="risk-check"> 我已确认参考图与设置</label>
         </section>
       </aside>
@@ -155,7 +153,7 @@
 
     <section class="panel output-location-panel">
       <div class="section-title"><span>视频保存位置</span><span class="muted small">Study 专属</span></div>
-      <div class="output-location-row"><code id="output-directory">默认产品目录</code><button class="btn" id="choose-output-folder" type="button">选择文件夹</button></div>
+      <div class="output-location-row"><code id="output-directory">默认产品目录</code><sl-button class="btn" id="choose-output-folder" type="button">选择文件夹</sl-button></div>
       <div class="muted small">生成成功后会先校验 Managed Runtime 输出，再复制到此目录。</div>
     </section>
 
