@@ -28,12 +28,21 @@
   function resolveNavigation() {
     const route = currentRoute();
     const currentProject = params.get('project');
-    document.querySelectorAll('.app-nav a').forEach((link) => {
+    const links = document.querySelectorAll('.app-nav a');
+
+    // Navigation owns active state. Clear first so a reused DOM or history
+    // restore can never leave two routes selected.
+    links.forEach((link) => {
+      link.classList.remove('active');
+      link.removeAttribute('aria-current');
+    });
+    links.forEach((link) => {
       const linkRoute = link.dataset.route;
       const active = linkRoute === route;
-      link.classList.toggle('active', active);
-      if (active) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
+      if (active) {
+        link.classList.add('active');
+        link.setAttribute('aria-current', 'page');
+      }
 
       if (linkRoute === 'study') {
         link.href = currentProject

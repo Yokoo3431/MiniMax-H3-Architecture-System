@@ -924,3 +924,183 @@ input[type=text], select, textarea { padding: 5px 8px; }
   .ux2-viewport .v-head { letter-spacing: .08em; }
   .primary-param-grid { grid-template-columns: 1fr; }
 }
+
+/* UX2-P1.7: visual master for a compact architectural video workstation. */
+.app-shell > .topbar {
+  min-height: 44px;
+  height: 44px;
+  padding: 4px 14px;
+  background: #29302f;
+  border-bottom: 1px solid #424a48;
+  box-shadow: 0 1px 0 rgba(0,0,0,.18);
+  color: #e7ece9;
+}
+.app-shell > .topbar .brand { color: #eef3ef; font-size: 13px; letter-spacing: .7px; }
+.app-shell > .topbar .crumb,
+.app-shell > .topbar .small.muted,
+.app-shell > .topbar .context-label { color: #aab6b1; }
+.app-shell > .topbar .engine-status { color: #c5cfca; }
+.app-shell > .topbar .app-nav { border-left-color: #4a5451; padding-left: 8px; }
+.app-shell > .topbar .app-nav a {
+  color: #b9c3be;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.app-shell > .topbar .app-nav a:hover { color: #f0f4f1; background: #343d3a; }
+.app-shell > .topbar .app-nav a.active,
+.app-shell > .topbar .app-nav a[aria-current="page"] {
+  color: #fff;
+  background: #3a4541;
+  border-color: #59655f;
+  box-shadow: inset 0 -2px 0 #c18a5d;
+}
+.app-main > h2 { margin-top: 0 !important; font-size: 19px; letter-spacing: -.2px; }
+.app-home, .app-jobs, .app-output, .app-environment { background: #e2e4e0; }
+.app-home .app-main, .app-jobs .app-main, .app-output .app-main, .app-environment .app-main { padding-top: 18px; }
+.app-home .panel, .app-jobs .panel, .app-output .panel, .app-environment .panel {
+  border-color: #c2c8c3;
+  box-shadow: 0 2px 8px rgba(32,39,41,.06);
+}
+.app-home .task-grid { gap: 10px; }
+.app-home .task-card {
+  background: #f0f1ed;
+  border-color: #c2c8c3;
+  border-radius: 3px;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.65);
+}
+.app-home .task-card:hover { border-color: #98643f; box-shadow: 0 4px 12px rgba(32,39,41,.10); }
+.app-home .task-card .ttl { font-size: 14px; }
+.app-home .task-actions { border-top: 1px solid #d2d6d2; padding-top: 8px; }
+
+/* Study is the visual master: a dark work surface with docked tool zones. */
+.app-study { background: #151a1a; color: #e6ece9; }
+.app-study .app-header { background: #202625; border-bottom-color: #3b4643; }
+.app-study .app-main { max-width: none; padding: 10px 14px 18px; }
+.app-study .studio-heading {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  min-height: 52px;
+  align-items: center;
+  background: #202625;
+  border: 1px solid #3b4643;
+  border-radius: 2px;
+}
+.app-study .studio-heading h1 { color: #f0f4f1; font-size: 18px; margin: 2px 0; }
+.app-study .studio-heading .eyebrow { color: #92a19b; font-size: 9px; letter-spacing: .16em; }
+.app-study .studio-heading .muted { color: #9daba5; font-size: 11px; }
+.app-study .studio-heading .btn { margin-left: auto; }
+.app-study .studio-layout {
+  display: grid;
+  grid-template-columns: minmax(176px, 18%) minmax(0, 1fr) minmax(300px, 28%);
+  grid-template-areas: "reference viewport inspector";
+  gap: 1px;
+  padding: 1px;
+  min-height: calc(100vh - 122px);
+  background: #0d1111;
+  border: 1px solid #3b4643;
+  box-shadow: 0 12px 28px rgba(0,0,0,.22);
+}
+.app-study .reference-panel,
+.app-study .generation-panel { background: #252c2b; padding: 8px; }
+.app-study .reference-panel { border-right: 1px solid #3a4542; }
+.app-study .generation-panel { border-left: 1px solid #3a4542; max-height: calc(100vh - 122px); overflow: auto; }
+.app-study .control-section {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #3b4643;
+  border-radius: 0;
+  padding: 10px 8px;
+  margin: 0;
+  box-shadow: none;
+}
+.app-study .control-section:last-child { border-bottom: 0; }
+.app-study .section-title { color: #eef3f0; font-size: 12px; letter-spacing: .02em; }
+.app-study label { color: #aebbb5; font-size: 11px; }
+.app-study input[type=text], .app-study input[type=number], .app-study input[type=url],
+.app-study select, .app-study textarea {
+  color: #e8eeeb;
+  background: #1b2120;
+  border-color: #4b5753;
+  border-radius: 2px;
+}
+.app-study input::placeholder, .app-study textarea::placeholder { color: #76837e; }
+.app-study input:focus, .app-study select:focus, .app-study textarea:focus { border-color: #c18a5d; box-shadow: 0 0 0 2px rgba(193,138,93,.16); }
+.app-study .reference-dropzone { background: #1b2120; border-color: #566560; border-radius: 2px; padding: 7px; }
+.app-study .reference-preview { min-height: 168px; color: #9baba4; background: #121717; }
+.app-study .reference-image { max-height: 210px; }
+.app-study .ux2-viewport {
+  min-height: calc(100vh - 124px);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background-color: #101616;
+}
+.app-study .ux2-viewport .v-head { background: #171e1d; border-bottom: 1px solid #3b4643; color: #cbd6d1; }
+.app-study .ux2-viewport .v-body { min-height: calc(100vh - 214px); background: #101616; }
+.app-study .ux2-viewport .v-foot { background: #171e1d; border-top-color: #3b4643; border-radius: 0; }
+.app-study .ux2-viewport .v-empty { border-color: #53635e; background: rgba(5,8,8,.32); }
+.app-study .ux2-viewport .v-chip, .app-study .ux2-viewport .v-params { background: rgba(14,19,18,.88); border-color: #53635e; }
+.app-study .prompt-skill-card { background: #273b31; border-color: #4d765b; color: #b9d9bf; border-radius: 2px; }
+.app-study .prompt-assistance, .app-study .prompt-details { border-color: #3b4643; }
+.app-study .generate-section { background: #2a312f; border: 1px solid #4a5752; position: sticky; bottom: 0; z-index: 3; }
+.app-study .generate-button { background: #a96e46; border-color: #b98258; }
+.app-study .generate-button:hover { background: #c18459; }
+.app-study .estimate-note { background: #202826; border-color: #46534e; color: #aebbb5; }
+.app-study .output-location-panel, .app-study .current-job-strip {
+  background: #202625;
+  border-color: #3b4643;
+  border-radius: 2px;
+  color: #d9e2dd;
+}
+.app-study .current-job-strip { margin-top: 8px; }
+.app-study .current-job-strip .muted, .app-study .job-strip-time { color: #9daba5; }
+.app-study .current-job-strip .btn { color: #d9e2dd; background: transparent; border-color: #566560; }
+
+/* Environment keeps its existing behavior but reads as an instrument panel. */
+.app-environment .setup-shell { grid-template-columns: 196px minmax(0, 1fr); gap: 8px; }
+.app-environment .setup-shell > .panel,
+.app-environment .app-main > .panel { border-radius: 3px; }
+.app-environment .group-nav { gap: 2px; }
+.app-environment .group-nav button { border-radius: 2px; padding: 7px 9px; background: #eceeea; border-color: #c2c8c3; }
+.app-environment .group-nav button.on { background: #36413d; border-color: #36413d; }
+
+/* Job rows become readable compact records instead of a collapsing table. */
+.jobs-table { table-layout: fixed; }
+.jobs-table th, .jobs-table td { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .jobs-table, .jobs-table tbody { display: block; width: 100%; }
+  .jobs-table thead { display: none; }
+  .jobs-table tr.job-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 3px 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .jobs-table tr.job-row td { display: flex; min-width: 0; gap: 8px; align-items: baseline; padding: 3px 0; border: 0; }
+  .jobs-table tr.job-row td::before { content: attr(data-label); flex: 0 0 64px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .jobs-table tr.job-row td:first-child { grid-column: 1 / -1; font-family: var(--mono); }
+  .jobs-table tr.job-row td:nth-child(3), .jobs-table tr.job-row td:nth-child(6) { grid-column: 1 / -1; }
+  .jobs-table tr.job-row td > * { min-width: 0; }
+  .jobs-table tr:not(.job-row) td[colspan] { display: block; }
+}
+@media (max-width: 900px) {
+  .app-study .studio-layout { grid-template-columns: minmax(0,1fr); grid-template-areas: "viewport" "inspector" "reference"; min-height: 0; }
+  .app-study .generation-panel { max-height: none; overflow: visible; border-left: 0; }
+  .app-study .reference-panel { border-right: 0; }
+  .app-study .ux2-viewport { min-height: 54vh; }
+  .app-study .ux2-viewport .v-body { min-height: 44vh; }
+}
+@media (max-width: 650px) {
+  .app-shell > .topbar { padding-left: 9px; padding-right: 9px; }
+  .app-shell > .topbar .brand { font-size: 12px; }
+  .app-study .app-main { padding-left: 8px; padding-right: 8px; }
+  .app-study .studio-heading { min-height: 46px; }
+  .app-study .studio-heading h1 { font-size: 16px; }
+  .app-study .studio-heading .btn { padding-left: 7px; padding-right: 7px; }
+  .app-study .ux2-viewport { min-height: 46vh; }
+  .app-study .ux2-viewport .v-body { min-height: 36vh; }
+  .app-study .primary-param-grid { grid-template-columns: 1fr 1fr; }
+}

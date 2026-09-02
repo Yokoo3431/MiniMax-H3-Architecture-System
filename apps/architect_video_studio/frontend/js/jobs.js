@@ -48,9 +48,9 @@ async function loadJobs(pid) {
     const body = document.getElementById('jobs-body');
     body.innerHTML = jobs.length ? jobs.map((j) => `
       <tr class="job-row" data-job="${esc(j.id)}" tabindex="0">
-        <td>${esc(j.id)}</td><td>${esc(j.workflow)}</td><td>${badge(j.state, j)}${progressText(j)}</td>
-        <td>${esc(j.seed)}</td><td>${esc(j.created_at)}</td>
-        <td>${j.state === 'COMPLETED' ? `<a href="output.html?job=${esc(j.id)}" onclick="event.stopPropagation()">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || '运行中')}</span>`}</td>
+        <td data-label="Job">${esc(j.id)}</td><td data-label="Workflow">${esc(j.workflow)}</td><td data-label="状态">${badge(j.state, j)}${progressText(j)}</td>
+        <td data-label="Seed">${esc(j.seed)}</td><td data-label="创建时间">${esc(j.created_at)}</td>
+        <td data-label="操作">${j.state === 'COMPLETED' ? `<a href="output.html?job=${esc(j.id)}" onclick="event.stopPropagation()">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || '运行中')}</span>`}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">暂无任务</td></tr>';
     body.querySelectorAll('.job-row').forEach((row) => {
       const open = () => openDetail(row.dataset.job, pid);

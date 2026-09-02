@@ -40,6 +40,9 @@ class StudioUX2P1Tests(unittest.TestCase):
         source = self.read("workspace.html")
         for element_id in ("task-name", "task-state", "v-body", "v-progress", "current-job-strip"):
             self.assertIn(f'id="{element_id}"', source)
+        jobs_css = self.read("css/studio.css")
+        self.assertIn(".jobs-table", jobs_css)
+        self.assertIn("data-label", jobs_css)
         self.assertIn("study-identity", source)
         self.assertIn("ux2-viewport-frame", source)
         self.assertIn("ux2-tool-drawer", source)
@@ -59,7 +62,7 @@ class StudioUX2P1Tests(unittest.TestCase):
 
     def test_route_resolver_owns_active_navigation(self):
         source = self.read("js/ux2_shell.js")
-        for token in ("const ROUTES", "function currentRoute", "function resolveNavigation", "classList.toggle('active', active)"):
+        for token in ("const ROUTES", "function currentRoute", "function resolveNavigation", "link.classList.remove('active')", "link.classList.add('active')"):
             self.assertIn(token, source)
         for name in PAGES:
             page = self.read(name)
@@ -90,6 +93,9 @@ class StudioUX2P1Tests(unittest.TestCase):
             "param-quality", "prompt-engine", "analyze-btn", "generate-btn",
         ):
             self.assertIn(f'id="{element_id}"', source)
+        jobs_css = self.read("css/studio.css")
+        self.assertIn(".jobs-table", jobs_css)
+        self.assertIn("data-label", jobs_css)
     def test_no_new_backend_surface_in_p1_test_scope(self):
         changed = {
             p.relative_to(ROOT).as_posix()

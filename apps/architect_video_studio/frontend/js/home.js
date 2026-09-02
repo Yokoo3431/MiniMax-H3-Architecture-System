@@ -100,8 +100,10 @@ async function checkSystem() {
     el.innerHTML = env.overall === 'READY'
       ? '<span class="ok">System Ready</span>'
       : `<span class="${env.overall === 'BLOCK' ? 'err' : 'warn'}">System ${esc(env.overall)} — 请打开 Environment Center</span>`;
+    // Environment is owner-selected. A background health result must not
+    // steal the current surface; the Environment link remains available.
     if (env.installation_status === 'INSTALLATION_REPAIR_REQUIRED') {
-      location.href = 'setup.html';
+      el.innerHTML += ' · <a href="setup.html">需要检查 Environment</a>';
     }
   } catch (_) { /* keep silent; page still usable */ }
 }
