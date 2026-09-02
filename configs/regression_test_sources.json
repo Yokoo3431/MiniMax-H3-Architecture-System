@@ -291,7 +291,7 @@
     },
     {
       "path": "tests/test_owner_acceptance_harness.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "D8E234B140D7D3CE5FF523B6783C4B38E88FCAE4FA5D3F4B735EDA8A886CD7A9",
       "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
@@ -305,7 +305,7 @@
     },
     {
       "path": "tests/test_p0_startup_projection.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "DAD2572A7BADC18C079D4D44BFE36361868C5A31B5B7B48DDEE57713C9075391",
       "discovered_test_count": 4,
       "classification": "CORE_REGRESSION"
@@ -613,7 +613,7 @@
     },
     {
       "path": "tests/test_prompt_engine_closure.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "C985FB079DF21D6F23584F52DB8312A8454A568740812C4BC766F773E12BC4B1",
       "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
@@ -641,7 +641,7 @@
     },
     {
       "path": "tests/test_real_incident_control_plane.py",
-      "tracked_status": "untracked",
+      "tracked_status": "tracked",
       "sha256": "1A686260E9E560A9BAB4350D1EAA9EDE41BE427D78D02B15FFD57924FC478F0F",
       "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
@@ -665,6 +665,13 @@
       "tracked_status": "tracked",
       "sha256": "DD23CD4BC20737DBAA3DF87A3F0A35DD76393B99787BC965A1577C3B3D3E8DB8",
       "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_studio_ux2_p1.py",
+      "tracked_status": "tracked",
+      "sha256": "C73FB32848494036D14B90AACBC7E6CA7F4B4176ABECDC15ABB5760539318194",
+      "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },
     {

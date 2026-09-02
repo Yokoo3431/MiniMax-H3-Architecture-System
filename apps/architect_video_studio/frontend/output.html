@@ -1,20 +1,27 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ux2="on">
 <head>
   <meta charset="utf-8">
   <title>Architect Video Studio — Output Review</title>
   <link rel="stylesheet" href="css/studio.css">
+  <script src="js/ux2_shell.js"></script>
 </head>
-<body>
-  <div class="topbar">
+<body class="app-shell app-output">
+  <header class="topbar app-header">
     <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
-    <a href="index.html">Home</a>
-    <a href="jobs.html">Job Center</a>
+    <nav class="nav app-nav" aria-label="主导航">
+      <a href="index.html">Home</a>
+      <a data-nav-study href="index.html?new=1">Study</a>
+      <a href="jobs.html">Jobs</a>
+      <a class="active" aria-current="page" href="output.html">Outputs</a>
+      <a href="setup.html">Environment</a>
+    </nav>
     <span class="spacer"></span>
     <span class="small muted">Output review</span>
     <span id="job-id" class="small">…</span>
-  </div>
-  <div class="wrap">
+  </header>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <main id="main-content" class="wrap app-main">
     <h2 style="margin-top:0;">Output Review</h2>
     <div id="err" class="error-banner" style="display:none;"></div>
     <div class="workspace" style="grid-template-columns:1fr 1fr;">
@@ -32,7 +39,7 @@
       <h3>Output Package 结构</h3>
       <div class="pkg-tree" id="pkg-tree"></div>
     </div>
-  </div>
+  </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>
   <script src="js/output.js"></script>

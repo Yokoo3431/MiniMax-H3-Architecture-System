@@ -1,18 +1,26 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ux2="on">
 <head>
   <meta charset="utf-8">
   <title>Architect Video Studio — Home</title>
   <link rel="stylesheet" href="css/studio.css">
+  <script src="js/ux2_shell.js"></script>
 </head>
-<body>
-  <div class="topbar">
+<body class="app-shell app-home">
+  <header class="topbar app-header">
     <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
-    <span class="crumb">Home</span>
+    <nav class="nav app-nav" aria-label="主导航">
+      <a class="active" aria-current="page" href="index.html">Home</a>
+      <a data-nav-study href="index.html?new=1">Study</a>
+      <a href="jobs.html">Jobs</a>
+      <a href="output.html">Outputs</a>
+      <a href="setup.html">Environment</a>
+    </nav>
     <span class="spacer"></span>
     <span class="small muted">Architectural workstation</span>
-  </div>
-  <div class="wrap">
+  </header>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <main id="main-content" class="wrap app-main">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
       <h2 style="margin:0;">Recent Studies</h2>
       <span class="muted small">建筑师 AI 视频生成工作站</span>
@@ -56,7 +64,7 @@
       <span id="sys-status" class="small muted">System: …</span>
       <a href="setup.html">⚙ System / Environment</a>
     </div>
-  </div>
+  </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>
   <script src="js/home.js"></script>

@@ -1,19 +1,26 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ux2="on">
 <head>
   <meta charset="utf-8">
   <title>Architect Video Studio — Job Center</title>
   <link rel="stylesheet" href="css/studio.css">
+  <script src="js/ux2_shell.js"></script>
 </head>
-<body>
-  <div class="topbar">
+<body class="app-shell app-jobs">
+  <header class="topbar app-header">
     <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
-    <a href="index.html">Home</a>
-    <span class="crumb">Job Center</span>
+    <nav class="nav app-nav" aria-label="主导航">
+      <a href="index.html">Home</a>
+      <a data-nav-study href="index.html?new=1">Study</a>
+      <a class="active" aria-current="page" href="jobs.html">Jobs</a>
+      <a href="output.html">Outputs</a>
+      <a href="setup.html">Environment</a>
+    </nav>
     <span class="spacer"></span>
     <span class="small muted">Production jobs</span>
-  </div>
-  <div class="wrap">
+  </header>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <main id="main-content" class="wrap app-main">
     <h2 style="margin-top:0;">Job Center</h2>
     <div class="panel">
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
@@ -41,7 +48,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>
   <script src="js/jobs.js"></script>

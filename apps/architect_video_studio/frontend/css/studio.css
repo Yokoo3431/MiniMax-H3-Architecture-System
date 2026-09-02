@@ -3,21 +3,61 @@
    Dark video viewport + light tool panels + parameter tool shelf. */
 
 :root {
+  /* AVS semantic tokens; legacy aliases keep the current DOM contract. */
+  --surface-app: #eef3f8;
+  --surface-tool: #ffffff;
+  --surface-elevated: #f4f7fb;
+  --surface-viewport: #111a26;
+  --surface-viewport-overlay: rgba(0, 0, 0, .60);
+  --border-subtle: #d4dee9;
+  --border-strong: #a8bbcf;
+  --text-primary: #172231;
+  --text-secondary: #687789;
+  --text-muted: #8795a5;
+  --text-inverse: #e3edf8;
+  --status-ready: #3f7d4e;
+  --status-active: #2f6fbd;
+  --status-warning: #b7791f;
+  --status-error: #b23a2e;
+  --status-completed: #3f7d4e;
+  --status-unknown: #8795a5;
+  --interaction-hover: #eaf2fb;
+  --interaction-selected: #e2efff;
+  --interaction-focus: #2f6fbd;
+  --interaction-disabled: #b8c3ce;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --type-body: 14px;
+  --type-label: 12px;
+  --type-section: 11px;
+  --type-numeric: 12px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-panel: 8px;
+  --header-height: 48px;
+  --control-height: 34px;
+  --divider-width: 1px;
+  --tool-panel-width: 360px;
   /* light tool surface */
-  --bg: #eef3f8;
-  --panel: #ffffff;
-  --panel-2: #f4f7fb;
-  --line: #d4dee9;
-  --ink: #172231;
-  --muted: #687789;
+  --bg: var(--surface-app);
+  --panel: var(--surface-tool);
+  --panel-2: var(--surface-elevated);
+  --line: var(--border-subtle);
+  --ink: var(--text-primary);
+  --muted: var(--text-secondary);
   --accent: #2f6fbd;
   --accent-strong: #205594;
   --accent-soft: #e2efff;
-  --ok: #3f7d4e;
-  --warn: #b7791f;
-  --err: #b23a2e;
+  --ok: var(--status-ready);
+  --warn: var(--status-warning);
+  --err: var(--status-error);
   /* dark viewport */
-  --viewport: #111a26;
+  --viewport: var(--surface-viewport);
   --viewport-2: #1a2736;
   --viewport-line: #31465e;
   --viewport-text: #e3edf8;
@@ -27,6 +67,8 @@
 }
 
 * { box-sizing: border-box; }
+html { min-width: 320px; }
+html[data-ux2="off"] .ux2-only { display: none !important; }
 
 body {
   margin: 0;
@@ -46,7 +88,8 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 9px 18px;
+  min-height: var(--header-height);
+  padding: 8px 18px;
   background: #f9fbfd;
   border-bottom: 1px solid var(--line);
   position: sticky;
@@ -69,6 +112,20 @@ a:hover { text-decoration: underline; }
 .engine-restart { margin-left:4px; }
 .topbar .nav a { margin-left: 10px; font-size: 13px; color: var(--muted); }
 .topbar .nav a.active { color: var(--ink); font-weight: 600; }
+.app-shell { min-height: 100vh; }
+.app-header { gap: var(--space-4); }
+.app-header .brand { white-space: nowrap; }
+.app-nav { display:flex; align-items:center; gap:var(--space-1); min-width:0; }
+.app-nav a { margin-left:0; color:var(--text-secondary); border-bottom:2px solid transparent; padding:6px 8px; font-size:13px; white-space:nowrap; }
+.app-nav a:hover { background:var(--interaction-hover); text-decoration:none; }
+.app-nav a.active, .app-nav a[aria-current="page"] { color:var(--text-primary); border-bottom-color:var(--interaction-focus); font-weight:650; }
+.study-header-context { display:inline-flex; align-items:center; gap:var(--space-2); min-width:0; color:var(--text-secondary); }
+.study-header-context .context-label { font-size:10px; letter-spacing:1px; font-weight:700; color:var(--text-muted); }
+.skip-link { position:absolute; left:-10000px; top:8px; z-index:50; padding:8px 12px; background:var(--surface-tool); border:1px solid var(--border-strong); border-radius:var(--radius-sm); }
+.skip-link:focus { left:12px; }
+/* UX2-P1: keyboard focus baseline. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--interaction-focus); outline-offset:2px; }
+.app-main { width:100%; }
 
 .wrap { max-width: 1280px; margin: 0 auto; padding: 18px; }
 .wrap-wide { max-width: 1480px; }
@@ -140,7 +197,8 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--line);
   background: #fff;
   color: var(--ink);
-  border-radius: 4px;
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
   padding: 7px 14px;
   font-size: 13px;
   cursor: pointer;
@@ -161,7 +219,8 @@ a:hover { text-decoration: underline; }
 input[type=text], select, textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  min-height: var(--control-height);
+  border-radius: var(--radius-sm);
   padding: 7px 9px;
   font-size: 13px;
   background: #fff;
@@ -644,4 +703,28 @@ pre.prompt {
 @media (max-width:650px) {
   .studio-heading { align-items:flex-start; flex-direction:column; }
   .current-job-strip { grid-template-columns:1fr; }
+}
+
+/* UX2-P1: viewport-first shell hooks and desktop breakpoints. */
+.study-identity { min-width: 0; }
+.study-identity h1 { overflow-wrap: anywhere; }
+.ux2-viewport-frame,
+.ux2-tool-drawer { min-width: 0; }
+.ux2-viewport-frame { background: var(--surface-viewport); }
+.ux2-tool-drawer { scrollbar-gutter: stable; }
+
+@media (min-width: 1101px) and (max-width: 1365px) {
+  .studio-page { padding-left: 14px; padding-right: 14px; }
+  .studio-layout { grid-template-columns: minmax(0, 7fr) minmax(320px, 3fr); gap: 14px; }
+}
+
+@media (max-width: 650px) {
+  .app-header { padding-left: 12px; padding-right: 12px; gap: 8px; flex-wrap: wrap; }
+  .app-nav { order: 3; flex: 1 0 100%; overflow-x: auto; padding-bottom: 2px; }
+  .app-nav a { white-space: nowrap; }
+  .app-header .engine-status { margin-left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ux2="on">
 <head>
   <meta charset="utf-8">
   <title>Architect Video Studio — System Setup</title>
   <link rel="stylesheet" href="css/studio.css">
+  <script src="js/ux2_shell.js"></script>
   <style>
     .setup-shell { display: grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: start; }
     .group-nav { display: flex; flex-direction: column; gap: 4px; }
@@ -28,15 +29,21 @@
     .install-progress > div { height: 100%; background: var(--accent); transition: width .3s ease; }
   </style>
 </head>
-<body>
-  <div class="topbar">
+<body class="app-shell app-environment">
+  <header class="topbar app-header">
     <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
-    <a href="index.html">Home</a>
-    <span class="crumb">System Setup</span>
+    <nav class="nav app-nav" aria-label="主导航">
+      <a href="index.html">Home</a>
+      <a data-nav-study href="index.html?new=1">Study</a>
+      <a href="jobs.html">Jobs</a>
+      <a href="output.html">Outputs</a>
+      <a class="active" aria-current="page" href="setup.html">Environment</a>
+    </nav>
     <span class="spacer"></span>
     <span id="overall-badge" class="badge state">…</span>
-  </div>
-  <div class="wrap">
+  </header>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <main id="main-content" class="wrap app-main">
     <h2 style="margin-top:0;">System Setup / Environment Center</h2>
     <div id="err" class="error-banner" style="display:none;"></div>
 
@@ -123,7 +130,7 @@
       </div>
       <div id="install-job" class="mt" style="display:none;"></div>
     </div>
-  </div>
+  </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>
   <script src="js/setup.js"></script>

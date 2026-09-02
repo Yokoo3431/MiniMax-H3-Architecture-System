@@ -1,26 +1,33 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ux2="on">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Architect Video Studio</title>
   <link rel="stylesheet" href="css/studio.css">
+  <script src="js/ux2_shell.js"></script>
 </head>
-<body>
-  <header class="topbar studio-topbar">
+<body class="app-shell app-study">
+  <header class="topbar app-header studio-topbar">
     <div class="brand">Architect<span class="dot">·</span>Video Studio</div>
-    <nav class="nav" aria-label="主导航">
-      <a class="active" href="workspace.html">Studio</a>
-      <a href="jobs.html">任务</a>
-      <a href="setup.html">环境</a>
+    <nav class="nav app-nav" aria-label="主导航">
+      <a href="index.html">Home</a>
+      <a class="active" aria-current="page" data-nav-study href="workspace.html">Study</a>
+      <a href="jobs.html">Jobs</a>
+      <a href="output.html">Outputs</a>
+      <a href="setup.html">Environment</a>
     </nav>
     <span class="spacer"></span>
-    <span id="task-state" class="badge state">准备中</span>
+    <div class="study-header-context" aria-label="当前 Study">
+      <span class="context-label">STUDY</span>
+      <span id="task-state" class="badge state">准备中</span>
+    </div>
   </header>
 
-  <main class="wrap wrap-wide studio-page">
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <main id="main-content" class="wrap wrap-wide app-main studio-page">
     <div id="err" class="error-banner" style="display:none"></div>
-    <section class="studio-heading">
+    <section class="studio-heading study-identity">
       <div>
         <p class="eyebrow">ARCHITECTURAL VIDEO WORKSPACE</p>
         <h1 id="task-name">Architect Video Studio</h1>
@@ -31,7 +38,7 @@
     </section>
 
     <section class="studio-layout">
-      <section class="viewport" aria-label="预览">
+      <section class="viewport ux2-viewport-frame ux2-viewport" aria-label="预览">
         <div class="v-head">
           <span>预览</span><span class="spacer"></span>
           <span id="v-params" class="small">1024×576 · 24fps · 4s</span>
@@ -46,7 +53,7 @@
         </div>
       </section>
 
-      <aside class="generation-panel" aria-label="生成控制">
+      <aside class="generation-panel ux2-tool-drawer" aria-label="生成控制">
         <section class="control-section reference-section">
           <div class="section-title"><span>1. 参考图</span><span id="reference-state" class="badge state">未上传</span></div>
           <div id="reference-dropzone" class="reference-dropzone" tabindex="0">
