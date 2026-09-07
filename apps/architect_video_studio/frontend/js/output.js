@@ -3,9 +3,18 @@ const jobId = qs('job');
 const errEl = document.getElementById('err');
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
+function showContextState(msg) {
+  errEl.className = 'notice-banner';
+  errEl.style.display = 'block';
+  errEl.textContent = msg;
+}
 
 async function load() {
-  if (!jobId) { showErr('缺少 job 参数'); return; }
+  if (!jobId) {
+    document.getElementById('job-id').textContent = '—';
+    showContextState('请选择一个已有输出，或从 Jobs 中打开具体任务。');
+    return;
+  }
   document.getElementById('job-id').textContent = jobId;
   try {
     const result = await get(`/api/jobs/${jobId}/result`);

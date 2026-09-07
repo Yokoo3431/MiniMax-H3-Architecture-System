@@ -25,6 +25,9 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("data-nav-study", source)
         self.assertIn("restoreLegacyContext", source)
         self.assertIn("ux2-legacy-crumb", source)
+        theme = self.read("js/theme.js")
+        self.assertIn("STORAGE_KEY = 'avs-theme'", theme)
+        self.assertIn("localStorage", theme)
 
     def test_all_primary_pages_have_shared_shell_and_navigation(self):
         for name, body_class in PAGES.items():
@@ -40,6 +43,13 @@ class StudioUX2P1Tests(unittest.TestCase):
         source = self.read("workspace.html")
         for element_id in ("task-name", "task-state", "v-body", "v-progress", "current-job-strip"):
             self.assertIn(f'id="{element_id}"', source)
+        jobs = self.read("js/jobs.js")
+        self.assertIn("const selected = projects.find((p) => p.id === initialProjectId)?.id || projects[0]?.id || '';", jobs)
+        self.assertIn("if (!pid) { showErr('请先选择一个 Study。'); return; }", jobs)
+        self.assertNotIn('/api/projects//jobs', jobs)
+        output = self.read("js/output.js")
+        self.assertIn('showContextState', output)
+        self.assertNotIn('缺少 job 参数', output)
         jobs_css = self.read("css/studio.css")
         self.assertIn(".jobs-table", jobs_css)
         self.assertIn("data-label", jobs_css)
@@ -49,6 +59,8 @@ class StudioUX2P1Tests(unittest.TestCase):
 
     def test_semantic_tokens_and_responsive_hooks_exist(self):
         source = self.read("css/studio.css")
+        global_css = self.read("css/avs_global_theme.css")
+        theme = self.read("js/theme.js")
         for token in (
             "--surface-app", "--surface-tool", "--surface-viewport",
             "--text-primary", "--status-ready", "--status-error",
@@ -59,6 +71,15 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("UX2-P1: viewport-first shell hooks", source)
         self.assertIn("max-width: 1365px", source)
         self.assertIn("prefers-reduced-motion", source)
+        for token in (
+            "--avs-bg", "--avs-surface-1", "--avs-surface-2", "--avs-control-bg",
+            "--avs-text", "--avs-text-secondary", "--avs-text-muted",
+            "--avs-accent", "--avs-success", "--avs-warning", "--avs-danger", "--avs-focus",
+            "--avs-control-height-sm", "--avs-control-height-md", "--avs-control-height-lg",
+        ):
+            self.assertIn(token, global_css)
+        self.assertIn('html[data-theme="light"]', global_css)
+        self.assertIn("sl-theme-dark", theme)
 
     def test_route_resolver_owns_active_navigation(self):
         source = self.read("js/ux2_shell.js")
@@ -77,6 +98,8 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("params.get('project')", source)
         self.assertIn("workspace.html?project=", source)
         self.assertIn("withProject", source)
+        self.assertIn(".studio-heading a[href=\"jobs.html\"], .current-job-strip a[href=\"jobs.html\"]", source)
+        self.assertIn("link.href = withProject(link.getAttribute('href'))", source)
         engine = self.read("js/engine_status.js")
         self.assertNotRegex(engine, r"location\\.(href|assign|replace)")
 
@@ -93,15 +116,23 @@ class StudioUX2P1Tests(unittest.TestCase):
             "param-quality", "prompt-engine", "analyze-btn", "generate-btn",
         ):
             self.assertIn(f'id="{element_id}"', source)
+        jobs = self.read("js/jobs.js")
+        self.assertIn("const selected = projects.find((p) => p.id === initialProjectId)?.id || projects[0]?.id || '';", jobs)
+        self.assertIn("if (!pid) { showErr('请先选择一个 Study。'); return; }", jobs)
+        self.assertNotIn('/api/projects//jobs', jobs)
+        output = self.read("js/output.js")
+        self.assertIn('showContextState', output)
+        self.assertNotIn('缺少 job 参数', output)
         jobs_css = self.read("css/studio.css")
         self.assertIn(".jobs-table", jobs_css)
         self.assertIn("data-label", jobs_css)
     def test_local_shoelace_kit_and_icon_contract(self):
         for name in PAGES:
             source = self.read(name)
-            self.assertIn('vendor/shoelace/shoelace.js', source, name)
-            self.assertIn('vendor/shoelace/dark.css', source, name)
-            self.assertIn('js/shoelace_bridge.js', source, name)
+            if name != "workspace.html":
+                self.assertIn('vendor/shoelace/shoelace.js', source, name)
+                self.assertIn('vendor/shoelace/dark.css', source, name)
+                self.assertIn('js/shoelace_bridge.js', source, name)
             self.assertIn('class="sl-theme-dark"', source, name)
             self.assertNotRegex(source, r'https?://[^" ]*(cdn|unpkg)', name)
             for icon in ('home.svg', 'photo.svg', 'briefcase.svg', 'file-description.svg', 'settings.svg'):
@@ -113,9 +144,11 @@ class StudioUX2P1Tests(unittest.TestCase):
         ):
             self.assertTrue(path.is_file(), path)
         workspace = self.read('workspace.html')
-        for element in ('sl-button', 'sl-select', 'sl-option', 'sl-textarea', 'sl-details', 'sl-badge'):
+        for element in ('button', 'select', 'option', 'textarea', 'details'):
             self.assertIn(f'<{element}', workspace)
-        self.assertNotIn('<details', workspace)
+        for element in ('sl-button', 'sl-select', 'sl-option', 'sl-textarea', 'sl-details', 'sl-badge'):
+            self.assertNotIn(f'<{element}', workspace)
+
     def test_no_new_backend_surface_in_p1_test_scope(self):
         changed = {
             p.relative_to(ROOT).as_posix()

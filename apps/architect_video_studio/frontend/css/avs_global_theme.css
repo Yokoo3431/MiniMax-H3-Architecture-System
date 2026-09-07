@@ -1,0 +1,767 @@
+/* AVS UX2-P1.16 — one global visual system.
+   Presentation only: page layout, DOM IDs, event handlers, API and business
+   state remain in the existing AVS files. */
+
+:root {
+  --avs-bg: #17191c;
+  --avs-surface-1: #1e2125;
+  --avs-surface-2: #25292e;
+  --avs-surface-3: #2e3339;
+  --avs-control-bg: #202428;
+  --avs-preview: #0d0f11;
+  --avs-text: #f3f1ed;
+  --avs-text-secondary: #c0c1c0;
+  --avs-text-muted: #8e9499;
+  --avs-border-subtle: rgba(255, 255, 255, .12);
+  --avs-border-strong: rgba(255, 255, 255, .24);
+  --avs-accent: #e87535;
+  --avs-accent-hover: #f38a4b;
+  --avs-success: #83bc92;
+  --avs-warning: #d7a35b;
+  --avs-danger: #e08077;
+  --avs-focus: #f0a06c;
+  --avs-radius-control: 6px;
+  --avs-radius-panel: 12px;
+  --avs-radius-badge: 999px;
+  --avs-control-height-sm: 28px;
+  --avs-control-height-md: 34px;
+  --avs-control-height-lg: 40px;
+  --avs-font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --avs-font-size-xs: 11px;
+  --avs-font-size-sm: 12px;
+  --avs-font-size-md: 13px;
+  --avs-font-size-lg: 17px;
+  --avs-line-control: 1.2;
+  --avs-line-body: 1.45;
+  --avs-space-1: 4px;
+  --avs-space-2: 8px;
+  --avs-space-3: 12px;
+  --avs-space-4: 16px;
+  --avs-space-5: 24px;
+  --avs-space-6: 32px;
+  --avs-bg-rgb: 23, 25, 28;
+
+  /* Legacy aliases keep existing page CSS on the same semantic tokens. */
+  --bg: var(--avs-bg);
+  --panel: var(--avs-surface-2);
+  --panel-2: var(--avs-surface-1);
+  --line: var(--avs-border-subtle);
+  --ink: var(--avs-text);
+  --muted: var(--avs-text-secondary);
+  --accent: var(--avs-accent);
+  --accent-strong: var(--avs-accent-hover);
+  --accent-soft: rgba(232, 117, 53, .14);
+  --ok: var(--avs-success);
+  --warn: var(--avs-warning);
+  --err: var(--avs-danger);
+  --control-height: var(--avs-control-height-md);
+  --radius-sm: var(--avs-radius-control);
+  --radius-md: 8px;
+  --radius-panel: var(--avs-radius-panel);
+}
+
+html[data-theme="light"] {
+  --avs-bg: #f4f1ec;
+  --avs-surface-1: #ebe7e1;
+  --avs-surface-2: #faf8f4;
+  --avs-surface-3: #e2ddd5;
+  --avs-control-bg: #fffdf9;
+  --avs-preview: #292b2e;
+  --avs-text: #272a2d;
+  --avs-text-secondary: #5f6569;
+  --avs-text-muted: #7d8386;
+  --avs-border-subtle: rgba(39, 42, 45, .14);
+  --avs-border-strong: rgba(39, 42, 45, .26);
+  --avs-accent: #c65d26;
+  --avs-accent-hover: #aa4e1e;
+  --avs-success: #3f8153;
+  --avs-warning: #9a6c25;
+  --avs-danger: #b44d45;
+  --avs-focus: #a94d1d;
+  --avs-bg-rgb: 244, 241, 236;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { min-width: 320px; background: var(--avs-bg); color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
+
+body.app-shell {
+  margin: 0;
+  background: var(--avs-bg) !important;
+  color: var(--avs-text) !important;
+  font-family: var(--avs-font-ui);
+  font-size: var(--avs-font-size-md);
+  line-height: var(--avs-line-body);
+}
+
+/* Shared application toolbar: compact, aligned, and free of website-tab chrome. */
+.app-shell .topbar,
+.app-shell .app-header {
+  min-height: 48px;
+  height: 48px;
+  padding: 0 20px;
+  gap: var(--avs-space-3);
+  background: var(--avs-surface-1) !important;
+  border: 0 !important;
+  box-shadow: inset 0 -1px 0 var(--avs-border-subtle) !important;
+}
+.app-header .brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--avs-control-height-md);
+  color: var(--avs-text) !important;
+  font-family: var(--avs-font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  line-height: var(--avs-line-control);
+  white-space: nowrap;
+}
+.app-header .brand .dot { display: none; }
+.app-header .spacer { flex: 1 1 auto; min-width: 8px; }
+.app-header .small.muted,
+.app-header .crumb,
+.app-header .context-label,
+.app-header .engine-status { color: var(--avs-text-secondary) !important; }
+.app-nav {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+  padding-left: var(--avs-space-3);
+  border-left: 1px solid var(--avs-border-subtle);
+}
+.app-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--avs-control-height-md);
+  padding: 0 10px;
+  border: 0 !important;
+  border-radius: var(--avs-radius-control);
+  color: var(--avs-text-secondary) !important;
+  font-size: var(--avs-font-size-sm);
+  font-weight: 500;
+  line-height: var(--avs-line-control);
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+.app-nav a:hover { background: var(--avs-surface-3); color: var(--avs-text) !important; }
+.app-nav a.active,
+.app-nav a[aria-current="page"] {
+  position: relative;
+  background: rgba(232, 117, 53, .06) !important;
+  color: var(--avs-text) !important;
+  font-weight: 650;
+}
+.app-nav a.active::after,
+.app-nav a[aria-current="page"]::after {
+  position: absolute;
+  right: 12px;
+  bottom: 2px;
+  left: 12px;
+  height: 1px;
+  border-radius: 2px;
+  background: var(--avs-accent);
+  content: "";
+}
+.app-nav a .avs-icon { width: 14px; height: 14px; margin-right: 6px; opacity: .7; filter: grayscale(1) brightness(1.8); }
+.app-nav a.active .avs-icon { opacity: 1; filter: invert(61%) sepia(80%) saturate(1700%) hue-rotate(338deg) brightness(103%) contrast(100%); }
+.avs-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--avs-control-height-md);
+  height: var(--avs-control-height-md);
+  flex: 0 0 var(--avs-control-height-md);
+  padding: 0;
+  border: 0 !important;
+  border-radius: var(--avs-radius-control);
+  background: transparent !important;
+  color: var(--avs-text-secondary) !important;
+  cursor: pointer;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+}
+.avs-theme-toggle:hover { background: var(--avs-surface-3) !important; color: var(--avs-text) !important; }
+
+/* Shared text rhythm. */
+.app-shell h1, .app-shell h2, .app-shell h3, .app-shell h4,
+.app-shell p { font-family: var(--avs-font-ui); }
+.app-shell h1, .app-shell h2 { letter-spacing: -.015em; }
+.app-shell h3, .app-shell h4 { letter-spacing: 0; }
+.app-shell h3 { font-size: var(--avs-font-size-sm); font-weight: 650; line-height: 1.25; text-transform: none; }
+.app-shell .small, .app-shell .muted, .app-shell .eyebrow { color: var(--avs-text-muted) !important; }
+.app-shell .eyebrow { letter-spacing: 0; text-transform: none; }
+.app-shell a { color: var(--avs-accent) !important; }
+.app-shell .app-nav a { color: var(--avs-text-secondary) !important; }
+.app-shell .app-nav a:hover,
+.app-shell .app-nav a:focus-visible,
+.app-shell .app-nav a.active,
+.app-shell .app-nav a[aria-current="page"] { color: var(--avs-text) !important; }
+
+/* Surfaces establish hierarchy; decorative wrapper borders are removed. */
+.app-shell .panel,
+.app-shell .task-card,
+.app-shell .drawer,
+.app-shell .control-section,
+.app-shell .install-item,
+.app-shell .output-location-panel,
+.app-shell .current-job-strip,
+.app-shell .job-detail-panel,
+.app-shell .intent-card,
+.app-shell .kv-card,
+.app-shell .adv-card,
+.app-shell .strategy {
+  background: var(--avs-surface-2) !important;
+  border: 0 !important;
+  border-radius: var(--avs-radius-panel) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .16) !important;
+}
+.app-shell .panel h3,
+.app-shell .section-title,
+.app-shell .panel .section-title {
+  color: var(--avs-text-secondary) !important;
+  font-size: var(--avs-font-size-sm) !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.25 !important;
+  text-transform: none !important;
+}
+.app-shell .panel h3::after { display: none; }
+.app-shell .task-card:hover { box-shadow: 0 16px 30px rgba(0, 0, 0, .2) !important; border-color: transparent !important; }
+
+.app-shell pre,
+.app-shell code {
+  background: var(--avs-control-bg) !important;
+  color: var(--avs-text-secondary) !important;
+  border: 0 !important;
+  border-radius: var(--avs-radius-control);
+}
+
+/* One explicit geometry contract for native controls and Shoelace hosts. */
+.app-shell button,
+.app-shell .btn,
+.app-shell input[type="text"], .app-shell input[type="url"], .app-shell input[type="number"],
+.app-shell select, .app-shell textarea,
+.app-shell sl-button::part(base), .app-shell sl-select::part(combobox),
+.app-shell sl-input::part(base), .app-shell sl-textarea::part(base) {
+  box-sizing: border-box;
+  min-height: var(--avs-control-height-md);
+  border-radius: var(--avs-radius-control);
+  font-family: var(--avs-font-ui);
+  font-size: var(--avs-font-size-md);
+  line-height: var(--avs-line-control);
+}
+.app-shell button,
+.app-shell .btn,
+.app-shell sl-button::part(base) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--avs-space-2);
+  padding: 0 12px;
+  border: 1px solid var(--avs-border-subtle);
+  background: var(--avs-surface-3);
+  color: var(--avs-text);
+  cursor: pointer;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Shoelace hosts must not add a second frame around their styled base part. */
+.app-shell sl-button,
+.app-shell sl-icon-button,
+.app-shell sl-badge,
+.app-shell sl-tag {
+  display: inline-flex;
+  vertical-align: middle;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent;
+}
+.app-shell sl-button::part(base),
+.app-shell sl-icon-button::part(base),
+.app-shell sl-badge::part(base),
+.app-shell sl-tag::part(base) { box-shadow: none !important; }
+.app-shell sl-tag::part(base) {
+  border: 0 !important;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-secondary) !important;
+}
+.app-shell .video-box {
+  gap: var(--avs-space-2);
+  flex-direction: column;
+  border: 0 !important;
+}
+.app-shell .video-box-title { color: var(--avs-text); }
+.app-shell .video-box .small { color: var(--avs-text-muted) !important; }
+.app-output .notice-banner {
+  border: 0 !important;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-secondary) !important;
+}
+.app-environment #restart-comfyui-btn,
+.app-environment #restart-comfyui-btn::part(base) {
+  border: 0 !important;
+  background: rgba(224, 128, 119, .14) !important;
+  color: var(--avs-danger) !important;
+}
+.app-environment #restart-comfyui-btn:hover::part(base) { background: rgba(224, 128, 119, .22) !important; }
+.app-shell button:hover, .app-shell .btn:hover, .app-shell sl-button::part(base):hover {
+  border-color: var(--avs-border-strong);
+  background: var(--avs-surface-3);
+}
+.app-shell button:disabled, .app-shell .btn:disabled, .app-shell sl-button[disabled]::part(base) { cursor: not-allowed; opacity: .48; }
+.app-shell .btn.primary, .app-shell button.primary,
+.app-shell sl-button.btn.primary::part(base), .app-shell sl-button.generate-button::part(base) {
+  border-color: transparent !important;
+  background: var(--avs-accent) !important;
+  color: #fff !important;
+  font-weight: 650;
+}
+.app-shell .btn.primary:hover, .app-shell button.primary:hover,
+.app-shell sl-button.btn.primary::part(base):hover, .app-shell sl-button.generate-button::part(base):hover { background: var(--avs-accent-hover) !important; }
+.app-shell .btn.primary:disabled, .app-shell button.primary:disabled,
+.app-shell sl-button.btn.primary[disabled]::part(base), .app-shell sl-button.generate-button[disabled]::part(base) {
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-muted) !important;
+  border-color: transparent !important;
+}
+.app-shell .btn.ghost, .app-shell button.ghost, .app-shell sl-button.btn.ghost::part(base) { border-color: transparent !important; background: transparent !important; color: var(--avs-text-secondary) !important; }
+.app-shell .btn.danger, .app-shell button.danger, .app-shell sl-button.btn.danger::part(base) { border-color: transparent !important; background: transparent !important; color: var(--avs-danger) !important; }
+.app-shell .btn.ok, .app-shell button.ok, .app-shell sl-button.btn.ok::part(base) { border-color: transparent !important; background: var(--avs-surface-3) !important; color: var(--avs-success) !important; }
+.app-shell .btn.small, .app-shell sl-button.btn.small::part(base) { min-height: var(--avs-control-height-sm); padding: 0 9px; font-size: var(--avs-font-size-xs); }
+.app-shell .btn.full, .app-shell sl-button.btn.full { width: 100%; }
+
+.app-shell input[type="text"], .app-shell input[type="url"], .app-shell input[type="number"],
+.app-shell select, .app-shell textarea,
+.app-shell sl-input::part(base), .app-shell sl-textarea::part(base), .app-shell sl-select::part(combobox) {
+  width: 100%;
+  border: 1px solid var(--avs-border-subtle);
+  outline: 0;
+  background: var(--avs-control-bg) !important;
+  color: var(--avs-text) !important;
+}
+.app-shell input[type="text"], .app-shell input[type="url"], .app-shell input[type="number"], .app-shell select, .app-shell textarea { padding: 0 10px; }
+.app-shell textarea { min-height: 72px; padding-top: 10px; padding-bottom: 10px; line-height: var(--avs-line-body); }
+.app-shell input::placeholder, .app-shell textarea::placeholder { color: var(--avs-text-muted); opacity: 1; }
+.app-shell label { color: var(--avs-text-secondary); font-size: var(--avs-font-size-sm); line-height: 1.3; }
+.app-shell .check-row { display: inline-flex !important; align-items: center; gap: var(--avs-space-2); min-height: var(--avs-control-height-sm); line-height: var(--avs-line-body); }
+.app-shell .check-row input { flex: 0 0 auto; margin: 0; accent-color: var(--avs-accent); }
+
+.app-shell button:focus-visible, .app-shell a:focus-visible,
+.app-shell input:focus-visible, .app-shell select:focus-visible, .app-shell textarea:focus-visible,
+.app-shell sl-button:focus-visible::part(base), .app-shell sl-input:focus-within::part(base),
+.app-shell sl-select:focus-within::part(combobox) {
+  outline: 2px solid var(--avs-focus);
+  outline-offset: 2px;
+}
+
+/* One compact status treatment. State colors live on the badge itself only. */
+.app-shell .badge,
+.app-shell sl-badge.badge::part(base),
+.app-shell sl-tag.tag::part(base) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border: 0 !important;
+  border-radius: var(--avs-radius-badge) !important;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-secondary) !important;
+  font-size: var(--avs-font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+.app-shell .badge.done, .app-shell .badge.approved, .app-shell .badge.ready,
+.app-shell sl-badge.badge.done::part(base), .app-shell sl-badge.badge.approved::part(base) { background: rgba(131, 188, 146, .16) !important; color: var(--avs-success) !important; }
+.app-shell .badge.warn, .app-shell .badge.pending,
+.app-shell sl-badge.badge.warn::part(base), .app-shell sl-badge.badge.pending::part(base) { background: rgba(215, 163, 91, .16) !important; color: var(--avs-warning) !important; }
+.app-shell .badge.err, .app-shell .badge.rejected,
+.app-shell sl-badge.badge.err::part(base), .app-shell sl-badge.badge.rejected::part(base) { background: rgba(224, 128, 119, .16) !important; color: var(--avs-danger) !important; }
+
+/* Tables and old page backings inherit the same surfaces without restructuring. */
+.app-shell .table, .app-shell .jobs-table { color: var(--avs-text); border-color: var(--avs-border-subtle); }
+.app-shell .table th, .app-shell .table td { border-color: var(--avs-border-subtle) !important; }
+.app-shell .table th { color: var(--avs-text-muted); font-size: var(--avs-font-size-xs); font-weight: 650; letter-spacing: 0; text-transform: none; }
+.app-shell .table tbody tr:hover { background: rgba(255, 255, 255, .035); }
+.app-shell .video-box, .app-shell .viewport, .app-shell .ux2-viewport, .app-shell .ux2-viewport-frame { background: var(--avs-preview) !important; color: var(--avs-text); }
+.app-shell .pkg-tree { background: var(--avs-control-bg) !important; color: var(--avs-text-secondary) !important; border: 0 !important; }
+.app-shell .error-banner, .app-shell .notice-banner { border: 0 !important; border-radius: var(--avs-radius-control); background: rgba(224, 128, 119, .14) !important; color: var(--avs-danger) !important; }
+.app-shell .ok { color: var(--avs-success) !important; }
+.app-shell .warn { color: var(--avs-warning) !important; }
+.app-shell .err { color: var(--avs-danger) !important; }
+
+/* Study consumes the global tokens; P1.14 local aliases no longer fork theme. */
+.app-study {
+  --study-app: var(--avs-bg);
+  --study-shell: var(--avs-surface-1);
+  --study-panel: var(--avs-surface-2);
+  --study-panel-raised: var(--avs-surface-3);
+  --study-control: var(--avs-control-bg);
+  --study-preview: var(--avs-preview);
+  --study-ink: var(--avs-text);
+  --study-secondary: var(--avs-text-secondary);
+  --study-muted: var(--avs-text-muted);
+  --study-line: var(--avs-border-subtle);
+  --study-line-soft: rgba(255, 255, 255, .06);
+  --study-accent: var(--avs-accent);
+  --study-accent-hover: var(--avs-accent-hover);
+  --study-success: var(--avs-success);
+  --surface-app: var(--avs-bg);
+  --surface-panel: var(--avs-surface-2);
+  --surface-control: var(--avs-control-bg);
+  --surface-preview: var(--avs-preview);
+  --text-primary: var(--avs-text);
+  --text-secondary: var(--avs-text-secondary);
+  --text-muted: var(--avs-text-muted);
+  --accent-primary: var(--avs-accent);
+  --font-ui: var(--avs-font-ui);
+  --line-height-control: var(--avs-line-control);
+  --line-height-body: var(--avs-line-body);
+  --control-height-sm: var(--avs-control-height-sm);
+  --control-height-md: var(--avs-control-height-md);
+  --control-radius: var(--avs-radius-control);
+  background: var(--avs-bg) !important;
+  color: var(--avs-text) !important;
+}
+.app-study .avs-spectrum-scope { background: var(--avs-bg) !important; color: var(--avs-text) !important; }
+.app-study .app-header { background: var(--avs-surface-1) !important; box-shadow: inset 0 -1px 0 var(--avs-border-subtle) !important; }
+.app-study .app-nav a.active, .app-study .app-nav a[aria-current="page"] { background: rgba(232, 117, 53, .06) !important; }
+.app-study .studio-heading { background: var(--avs-surface-2) !important; color: var(--avs-text) !important; border: 0 !important; border-radius: var(--avs-radius-panel) !important; }
+.app-study .studio-heading h1,
+.app-study .studio-heading p,
+.app-study .studio-heading .muted { color: inherit !important; }
+.app-study .reference-panel, .app-study .generation-panel { background: var(--avs-surface-1) !important; border: 0 !important; }
+.app-study .control-section { background: transparent !important; border: 0 !important; box-shadow: none !important; }
+.app-study .ux2-viewport { border: 0 !important; background: var(--avs-preview) !important; box-shadow: 0 20px 44px rgba(0, 0, 0, .32) !important; }
+.app-study .ux2-viewport .v-head, .app-study .ux2-viewport .v-foot { background: var(--avs-surface-1) !important; border: 0 !important; color: var(--avs-text-secondary) !important; }
+.app-study .ux2-viewport .v-body { background: var(--avs-preview) !important; }
+.app-study .reference-dropzone, .app-study .reference-preview { border-color: var(--avs-border-subtle) !important; background: var(--avs-control-bg) !important; color: var(--avs-text-secondary) !important; }
+.app-study .reference-image { border-radius: var(--avs-radius-control); }
+.app-study .estimate-note { border: 0 !important; background: var(--avs-surface-1) !important; color: var(--avs-text-muted) !important; }
+.app-study .generate-section { border: 0 !important; background: var(--avs-surface-2) !important; box-shadow: none !important; }
+.app-study .output-location-panel, .app-study .current-job-strip { background: var(--avs-surface-1) !important; border: 0 !important; }
+.app-study .current-job-strip .spectrum-Button { color: var(--avs-text-secondary) !important; background: transparent !important; }
+
+/* Supporting pages remain structurally unchanged but lose legacy white blocks. */
+.app-home, .app-jobs, .app-output, .app-environment,
+.app-home .app-main, .app-jobs .app-main, .app-output .app-main, .app-environment .app-main { background: var(--avs-bg) !important; }
+.app-home .task-card, .app-jobs .panel, .app-output .panel, .app-environment .panel { background: var(--avs-surface-2) !important; }
+.app-environment .group-nav button, .app-environment .group-nav sl-button::part(base) { justify-content: flex-start; border-color: transparent !important; background: transparent !important; color: var(--avs-text-secondary) !important; text-align: left; }
+.app-environment .group-nav button:hover, .app-environment .group-nav sl-button::part(base):hover { background: var(--avs-surface-3) !important; }
+.app-environment .group-nav button.on, .app-environment .group-nav sl-button.on::part(base) { background: rgba(232, 117, 53, .13) !important; color: var(--avs-text) !important; }
+
+/* P1.18 surface ownership closure: a Shoelace host is only a layout shell;
+   its ::part(base) is the single visible control surface.  This neutralizes
+   legacy .btn backgrounds that otherwise create an outer frame behind the
+   real button, most noticeably on Jobs Refresh and Environment actions. */
+.app-shell sl-button.btn,
+.app-shell sl-button.btn.primary,
+.app-shell sl-button.btn.ok,
+.app-shell sl-button.btn.danger,
+.app-shell sl-button.btn.ghost {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.app-shell sl-button.btn.primary[disabled] {
+  color: transparent !important;
+}
+.app-shell sl-button.btn.primary:not([disabled]) {
+  color: inherit !important;
+}
+.app-shell #refresh-btn::part(base) {
+  border-color: transparent !important;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text) !important;
+}
+.app-environment #go-studio-btn::part(base) {
+  border-color: transparent !important;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-muted) !important;
+}
+.app-environment #go-studio-btn:not([disabled])::part(base) {
+  background: var(--avs-accent) !important;
+  color: #fff !important;
+}
+.app-environment #restart-comfyui-btn {
+  background: transparent !important;
+  color: inherit !important;
+}
+.app-home .task-actions {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* P1.19 optical alignment: keep the nav label group on one explicit text
+   metric instead of relying on inherited line-height or padding. */
+.app-shell .app-nav a {
+  height: var(--avs-control-height-md);
+  padding-block: 0 !important;
+  align-items: center;
+  line-height: 1;
+}
+.app-shell .app-nav a .avs-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+/* P1.19 disclosure affordance: a quiet single-row surface makes the
+   existing expandable Study sections discoverable without restoring card
+   borders or changing their native details/summary behavior. */
+.app-study details > summary {
+  min-height: var(--avs-control-height-sm);
+  padding: 0 var(--avs-space-3);
+  border-radius: var(--avs-radius-control);
+  background: rgba(255, 255, 255, .035);
+  line-height: var(--avs-line-control);
+}
+.app-study details > summary:hover,
+.app-study details[open] > summary {
+  background: var(--avs-surface-3);
+  color: var(--avs-text) !important;
+}
+.app-study details > summary:focus-visible {
+  outline: 2px solid var(--avs-focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .app-shell .app-header { padding-inline: 12px; }
+  .app-shell .app-header > .small.muted { display: none; }
+  .app-shell .app-nav { padding-left: 4px; }
+  .app-shell .app-nav a { padding-inline: 7px; }
+}
+@media (max-width: 640px) {
+  .app-shell .app-header { gap: 6px; }
+  .app-shell .app-header .brand { font-size: 13px; }
+  .app-shell .app-nav a { padding-inline: 6px; }
+  .app-shell .app-nav a .avs-icon { display: none; }
+  .app-shell .avs-theme-toggle { order: 3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* UX2-P1.20 hierarchy closure: keep the existing Study composition, but
+   remove the spreadsheet-like outer frame and normalize its internal rhythm. */
+.app-study .studio-layout {
+  gap: var(--avs-space-3);
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.app-study .studio-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  min-height: 64px;
+  margin-bottom: var(--avs-space-3);
+  padding: var(--avs-space-3) var(--avs-space-4) !important;
+  column-gap: var(--avs-space-2);
+}
+.app-study .studio-heading > div { min-width: 0; }
+.app-study .studio-heading h1 { margin: 0 !important; line-height: 1.15; }
+.app-study .studio-heading #task-meta { margin: var(--avs-space-1) 0 0; line-height: 1.35; }
+.app-study .studio-heading > .spectrum-Button { margin: 0 !important; }
+
+/* P1.21 design-system closure: product mark, Study identity, and actions
+   use one quiet toolbar hierarchy without changing the existing markup. */
+.app-header .brand {
+  letter-spacing: .005em;
+}
+.app-study .studio-heading .eyebrow {
+  margin: 0 0 var(--avs-space-1);
+  color: var(--avs-text-muted) !important;
+  font-size: var(--avs-font-size-xs);
+  line-height: 1.2;
+}
+.app-study .studio-heading h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+.app-study .studio-heading #task-meta {
+  color: var(--avs-text-muted) !important;
+  font-size: var(--avs-font-size-sm);
+  font-weight: 450;
+}
+.app-study .studio-heading > a.spectrum-Button {
+  min-height: var(--avs-control-height-sm);
+  padding-inline: var(--avs-space-3);
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-secondary) !important;
+  font-size: var(--avs-font-size-sm);
+}
+.app-study .studio-heading > #rename-study-btn {
+  min-height: var(--avs-control-height-sm);
+  padding-inline: var(--avs-space-2);
+  background: transparent !important;
+  color: var(--avs-text-muted) !important;
+  font-size: var(--avs-font-size-xs);
+}
+.app-study .studio-heading > a.spectrum-Button:hover { color: var(--avs-text) !important; }
+.app-study .studio-heading > #rename-study-btn:hover { color: var(--avs-text-secondary) !important; }
+
+/* A section is a rhythm boundary; only native controls carry a visible
+   boundary. This keeps the inspector from reading as cards inside cards. */
+.app-study .generation-panel > .control-section {
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.app-study .generation-panel > .control-section + .control-section { margin-top: var(--avs-space-5); }
+.app-study .generation-panel .section-title {
+  min-height: var(--avs-control-height-sm);
+  margin-bottom: var(--avs-space-2);
+  color: var(--avs-text-secondary) !important;
+  line-height: var(--avs-line-control) !important;
+}
+.app-study .generation-panel .control-section > label:not(.check-row) {
+  display: block;
+  margin-bottom: var(--avs-space-2);
+  line-height: 1.3;
+}
+.app-study .generation-panel select,
+.app-study .generation-panel textarea,
+.app-study .generation-panel input[type="text"],
+.app-study .generation-panel input[type="number"] {
+  border-color: var(--avs-border-subtle);
+  background: var(--avs-control-bg) !important;
+}
+
+/* Keep the preview toolbar quiet: media wins over its metadata. */
+.app-study .ux2-viewport .v-head {
+  font-size: var(--avs-font-size-sm);
+  color: var(--avs-text-muted) !important;
+}
+.app-study .ux2-viewport .v-head > span:first-child {
+  color: var(--avs-text-secondary);
+  font-weight: 600;
+}
+.app-study .ux2-viewport .v-head #v-params {
+  color: var(--avs-text-muted);
+  font-size: var(--avs-font-size-xs);
+  letter-spacing: .01em;
+}
+
+/* Contextual output guidance is informational, not an execution failure. */
+.app-output #err.notice-banner {
+  border: 0 !important;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text-secondary) !important;
+}
+
+/* Override the older shell selectors without changing their source files. */
+.app-shell .topbar .brand,
+.app-shell .app-header .brand {
+  color: var(--avs-text) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: .005em !important;
+}
+.app-shell .topbar .app-nav a,
+.app-shell .app-header .app-nav a {
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+}
+.app-shell .topbar .app-nav a.active,
+.app-shell .topbar .app-nav a[aria-current="page"],
+.app-shell .app-header .app-nav a.active,
+.app-shell .app-header .app-nav a[aria-current="page"] {
+  font-weight: 650 !important;
+}
+
+/* A single compact toolbar keeps the viewport metadata on the same optical
+   baseline without turning it into another bordered panel. */
+.app-study .ux2-viewport .v-head {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 var(--avs-space-3) !important;
+  border-bottom: 1px solid var(--avs-border-subtle) !important;
+  line-height: 1;
+}
+.app-study .ux2-viewport .v-head > span { display: inline-flex; align-items: center; height: 100%; }
+.app-study .ux2-viewport .v-head .spacer { flex: 1 1 auto; }
+.app-study .ux2-viewport .v-head #v-params { line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* Add-reference is the local entry action; approval stays clearly secondary
+   until a reference exists. */
+.app-study #choose-ref-btn {
+  min-height: var(--avs-control-height-md);
+  font-weight: 650;
+  background: var(--avs-surface-3) !important;
+  color: var(--avs-text) !important;
+}
+.app-study #choose-ref-btn:hover { background: var(--avs-surface-3) !important; }
+.app-study #upload-btn,
+.app-study #upload-btn[disabled] {
+  min-height: var(--avs-control-height-sm);
+  background: var(--avs-surface-1) !important;
+  color: var(--avs-text-muted) !important;
+  opacity: .62;
+}
+.app-study .reference-actions { gap: var(--avs-space-2); }
+
+/* The visible Study disclosures share one list language: one row surface,
+   one chevron, and one focus treatment. Native details behavior is retained. */
+.app-study .generation-panel details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--avs-control-height-sm);
+  padding: 0 var(--avs-space-3) !important;
+  border-radius: var(--avs-radius-control);
+  background: rgba(255, 255, 255, .035);
+  line-height: var(--avs-line-control);
+  list-style: none;
+}
+.app-study .generation-panel details > summary::-webkit-details-marker { display: none; }
+.app-study .generation-panel details > summary::after {
+  flex: 0 0 auto;
+  color: var(--avs-text-muted);
+  content: "›";
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+}
+.app-study .generation-panel details[open] > summary::after { transform: rotate(90deg); }
+.app-study .generation-panel details > summary:hover,
+.app-study .generation-panel details[open] > summary {
+  background: var(--avs-surface-3);
+  color: var(--avs-text) !important;
+}
+.app-study .generation-panel details > summary:focus-visible {
+  outline: 2px solid var(--avs-focus);
+  outline-offset: 2px;
+}
+
+/* P1.20 optical nav pass: give the label its own line box so the underline
+   cannot make the text appear vertically displaced. */
+.app-shell .app-nav a {
+  line-height: 1.2;
+}
+.app-shell .app-nav a.active::after,
+.app-shell .app-nav a[aria-current="page"]::after {
+  bottom: 2px;
+}
+
+@media (max-width: 900px) {
+  .app-study .studio-heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 56px;
+  }
+  .app-study .studio-heading > .spectrum-Button.ghost:first-of-type { display: none; }
+}

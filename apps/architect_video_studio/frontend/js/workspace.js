@@ -181,17 +181,17 @@ function renderVideoTypes() {
   const select = document.getElementById('video-type');
   const selected = (intent && intent.selected_workflow) || VIDEO_TYPES[0][0];
   select.innerHTML = VIDEO_TYPES.map(([id, label]) =>
-    `<sl-option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(label)}</sl-option>`).join('');
+    `<option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
   document.getElementById('video-type-help').textContent = TYPE_HELP[selected];
 }
 
 function renderParams() {
   const duration = document.getElementById('param-duration');
   duration.innerHTML = Array.from({length: 12}, (_, i) => i + 4)
-    .map((seconds) => `<sl-option value="${seconds}">${seconds} 秒</sl-option>`).join('');
+    .map((seconds) => `<option value="${seconds}">${seconds} 秒</option>`).join('');
   const resolution = document.getElementById('param-resolution');
   resolution.innerHTML = ['832x480', '1024x576', '1344x768']
-    .map((v) => `<sl-option value="${v}" ${v === '1024x576' ? 'selected' : ''}>${v.replace('x', '×')}</sl-option>`).join('');
+    .map((v) => `<option value="${v}" ${v === '1024x576' ? 'selected' : ''}>${v.replace('x', '×')}</option>`).join('');
   const saved = (prompt && prompt.generation_parameters) || {};
   if (saved.duration) duration.value = String(saved.duration);
   if (saved.resolution) resolution.value = saved.resolution;
@@ -240,6 +240,9 @@ function renderRefs() {
     state.textContent = '未上传'; state.className = 'badge state';
     document.getElementById('reference-preview').innerHTML = '拖拽图片到这里，或点击选择';
     document.getElementById('refs').textContent = '';
+    document.getElementById('choose-ref-btn').style.display = 'inline-flex';
+    document.getElementById('choose-ref-btn').textContent = '添加参考图';
+    document.getElementById('replace-ref-btn').style.display = 'none';
     document.getElementById('upload-btn').disabled = !pendingFile;
     return;
   }
@@ -247,8 +250,9 @@ function renderRefs() {
   document.getElementById('reference-preview').innerHTML = img
     ? `<img class="reference-image" src="${esc(img)}" alt="当前参考图">`
     : `<span>${esc(selectedRef.filename)}</span>`;
+  document.getElementById('choose-ref-btn').style.display = 'none';
   document.getElementById('replace-ref-btn').style.display = 'inline-flex';
-  document.getElementById('refs').textContent = `${selectedRef.filename} · ${selectedRef.sha256 ? selectedRef.sha256.slice(0, 12) : 'asset'}`;
+  document.getElementById('refs').textContent = selectedRef.state === 'APPROVED' ? '当前参考图' : '待处理参考图';
   const approved = selectedRef.state === 'APPROVED';
   state.textContent = approved ? '参考图已批准 ✓' : '待审批';
   state.className = `badge ${approved ? 'done' : 'warn'}`;
@@ -485,13 +489,13 @@ document.getElementById('detect-provider-btn')?.addEventListener('click', detect
 function showHydrationFailure(error) {
   const layout = document.querySelector('.studio-layout');
   if (layout) {
-    layout.querySelectorAll('button, sl-button, input, select, sl-select, textarea, sl-textarea').forEach((el) => { el.disabled = true; });
+    layout.querySelectorAll('button, input, select, textarea').forEach((el) => { el.disabled = true; });
     layout.style.display = 'none';
   }
   const strip = document.getElementById('current-job-strip');
   if (strip) strip.style.display = 'none';
   showErr(`项目加载失败：${error.message || error}。请重试，或返回项目列表。`);
-  errEl.innerHTML += ' <sl-button class="btn small" id="retry-project-load" type="button">重试</sl-button> <a class="btn small" href="index.html">返回项目列表</a>';
+  errEl.innerHTML += ' <button class="spectrum-Button btn small" id="retry-project-load" type="button">重试</button> <a class="btn small" href="index.html">返回项目列表</a>';
   document.getElementById('retry-project-load').addEventListener('click', () => location.reload());
 }
 

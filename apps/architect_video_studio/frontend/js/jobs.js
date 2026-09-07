@@ -2,6 +2,7 @@
 // enums remain available only in the technical section.
 const initialProjectId = qs('project');
 const initialJobId = qs('job');
+let activeProjectId = initialProjectId || '';
 const errEl = document.getElementById('err');
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
@@ -38,11 +39,23 @@ async function loadProjects() {
   const projects = await get('/api/projects');
   const sel = document.getElementById('project-select');
   sel.innerHTML = projects.map((p) => `<sl-option value="${esc(p.id)}" ${p.id === initialProjectId ? 'selected' : ''}>${esc(p.name)}</sl-option>`).join('');
-  if (projects.length) await loadJobs(sel.value);
-  sel.addEventListener('change', () => { location.href = `jobs.html?project=${encodeURIComponent(sel.value)}`; });
+  const selected = projects.find((p) => p.id === initialProjectId)?.id || projects[0]?.id || '';
+  activeProjectId = selected;
+  if (selected) {
+    // Do not depend on the custom element having reflected its value yet.
+    sel.value = selected;
+    await loadJobs(selected);
+  } else {
+    showErr('暂无可用 Study，请先创建或选择一个 Study。');
+  }
+  sel.addEventListener('change', () => {
+    activeProjectId = sel.value || activeProjectId;
+    if (activeProjectId) location.href = `jobs.html?project=${encodeURIComponent(activeProjectId)}`;
+  });
 }
 
 async function loadJobs(pid) {
+  if (!pid) { showErr('请先选择一个 Study。'); return; }
   try {
     const jobs = await get(`/api/projects/${pid}/jobs`);
     const body = document.getElementById('jobs-body');
@@ -132,5 +145,5 @@ async function openDetail(jobId, pid) {
   });
 }
 
-document.getElementById('refresh-btn').addEventListener('click', () => loadJobs(document.getElementById('project-select').value));
+document.getElementById('refresh-btn').addEventListener('click', () => loadJobs(activeProjectId || document.getElementById('project-select').value));
 loadProjects().catch(showErr);

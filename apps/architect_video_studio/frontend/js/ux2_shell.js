@@ -52,6 +52,10 @@
         link.href = withProject(link.getAttribute('href'));
       }
     });
+
+    document.querySelectorAll('.studio-heading a[href="jobs.html"], .current-job-strip a[href="jobs.html"]').forEach((link) => {
+      link.href = withProject(link.getAttribute('href'));
+    });
   }
 
   function bindContextualStudyLink() {

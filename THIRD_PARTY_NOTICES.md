@@ -98,6 +98,14 @@ requirement explicit rather than silently assuming a global binary.
 These frontend assets are vendored for local/offline desktop use. AVS uses the
 components only as presentation primitives; they do not own Study, Job,
 engine, provider, or generation state.
+## 6.1 Adobe Spectrum CSS
+
+| Component | License | Source / version | Included files |
+| --- | --- | --- | --- |
+| Adobe Spectrum CSS | Apache-2.0 | https://github.com/adobe/spectrum-css, v2.13.0 (`2e3a674c4e302219f36774745d94f3fccb22c692`) | `apps/architect_video_studio/frontend/vendor/spectrum/spectrum-dark.css`, `LICENSE` |
+
+The Study page uses the locally packaged Spectrum dark stylesheet as its component/token reference. No Adobe branding or Spectrum source repository is bundled.
+
 ## 7. 使用注意
 
 - 若将本产品与 ComfyUI 一起分发，须遵守 GPL-3.0 相应义务（提供对应源码/许可）
