@@ -43,6 +43,10 @@ class SystemAPI:
     def current_workflow(self, job_id: str = "") -> Dict[str, Any]:
         return self.service.current_workflow(job_id)
 
+    def verify_current_workflow(self, job_id: str, snapshot_id: str,
+                                workflow: Any) -> Dict[str, Any]:
+        return self.service.verify_current_workflow(job_id, snapshot_id, workflow)
+
     def restart_comfyui(self) -> Dict[str, Any]:
         return self.service.restart_comfyui()
 
