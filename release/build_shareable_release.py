@@ -262,6 +262,14 @@ def main() -> int:
     args = parser.parse_args()
     output_dir = (ROOT / args.output_dir).resolve() if not args.output_dir.is_absolute() else args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        source_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("The release must be built from a verified Git commit.") from exc
+    if len(source_commit) != 40 or any(char not in "0123456789abcdef" for char in source_commit.lower()):
+        raise RuntimeError(f"Invalid source commit returned by Git: {source_commit!r}")
     with tempfile.TemporaryDirectory(prefix="architect-video-studio-release-") as temp:
         stage = Path(temp)
         files = assemble_payload(stage)
@@ -279,6 +287,8 @@ def main() -> int:
         "schema_version": 1,
         "product": "Architect Video Studio",
         "candidate": "v0.8.0-rc1-shareable",
+        "source_commit": source_commit,
+        "source_commit_policy": "exact-frozen-commit",
         "installer": setup.name,
         "package": package.name,
         "payload_files": files,

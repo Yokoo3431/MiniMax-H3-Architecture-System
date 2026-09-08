@@ -964,18 +964,45 @@ class JobAPI:
         if event_prompt and job.get("prompt_id") and str(event_prompt) != str(job["prompt_id"]):
             return
         previous_stage = job.get("current_stage", "执行工作流")
-        job["current_stage"] = event.get("stage") or previous_stage        # Keep a bounded, privacy-safe observer trace.  It contains only
+        event_name = str(event.get("event_type") or event.get("event")
+                         or event.get("type") or "")
+        # Telemetry loss is an observation condition, never a Job lifecycle
+        # transition. Keep the last trustworthy stage/progress and let the
+        # /history + /queue reconciler remain authoritative.
+        if event_name in ("telemetry_degraded", "syncing", "queue_observed"):
+            trace = job.setdefault("observation_trace", [])
+            trace.append({
+                "timestamp": self.store.timestamp(),
+                "prompt_id": job.get("prompt_id") or event_prompt,
+                "event": event_name,
+                "event_type": event_name,
+                "node_id": None,
+                "display_node_id": None,
+                "value": None,
+                "max": None,
+                "semantic_stage": previous_stage,
+            })
+            job["observation_trace"] = trace[-100:]
+            job["elapsed"] = round(max(0.0, self.clock() - float(job.get("started_at") or self.clock())), 3)
+            job["progress_message"] = event.get("message") or "生成中 · 正在同步任务状态"
+            self._save_job(project_id, job)
+            return
+        job["current_stage"] = event.get("stage") or previous_stage
+        # Keep a bounded, privacy-safe observer trace. It contains only
         # event/node/step metadata; prompt text and image content never enter
         # the persisted control-plane trace.
         trace = job.setdefault("observation_trace", [])
+        step = event.get("step", event.get("value"))
+        total_steps = event.get("total_steps", event.get("max"))
         trace.append({
             "timestamp": self.store.timestamp(),
-            "prompt_id": job.get("prompt_id"),
-            "event": str(event.get("event") or event.get("type") or ""),
-            "event_type": str(event.get("event_type") or event.get("event") or event.get("type") or ""),
+            "prompt_id": job.get("prompt_id") or event_prompt,
+            "event": event_name,
+            "event_type": event_name,
             "node_id": event.get("node_id"),
-            "value": event.get("step"),
-            "max": event.get("total_steps"),
+            "display_node_id": event.get("display_node_id"),
+            "value": step,
+            "max": total_steps,
             "semantic_stage": event.get("stage") or previous_stage,
         })
         job["observation_trace"] = trace[-100:]
@@ -996,11 +1023,11 @@ class JobAPI:
             # Polling may report an older stage after websocket sampling events.
             state = current_state
             job["current_stage"] = previous_stage
-        if event.get("step") is not None:
-            job["step"] = event.get("step")
-        if event.get("total_steps") is not None:
-            job["total_steps"] = event.get("total_steps")
-        if str(event.get("type") or event.get("event") or "") == "execution_error":
+        if step is not None:
+            job["step"] = step
+        if total_steps is not None:
+            job["total_steps"] = total_steps
+        if event_name == "execution_error":
             job["progress_message"] = "正在等待 ComfyUI 确认执行结果"
             self._save_job(project_id, job)
             return
@@ -1011,7 +1038,22 @@ class JobAPI:
             event.get("progress"))
         if calculated is not None:
             job["progress"] = calculated
-            job["eta_seconds"] = estimate_eta(float(job.get("elapsed") or 0), calculated)
+            candidate_eta = estimate_eta(float(job.get("elapsed") or 0), calculated)
+            if candidate_eta is not None:
+                previous_eta = job.get("eta_seconds")
+                try:
+                    previous_eta = float(previous_eta)
+                except (TypeError, ValueError):
+                    previous_eta = None
+                if previous_eta is None or previous_eta <= 0:
+                    job["eta_seconds"] = round(candidate_eta, 1)
+                else:
+                    # Bound event-to-event volatility; the historical range
+                    # remains the stable fallback shown before this signal.
+                    bounded = min(max(candidate_eta, previous_eta * 0.5),
+                                  previous_eta * 1.5 + 1.0)
+                    job["eta_seconds"] = round(
+                        previous_eta * 0.65 + bounded * 0.35, 1)
         self._save_job(project_id, job)
 
     def _stage_refs_to_comfy_input(self, project_id: str, request: Any) -> Dict[str, str]:

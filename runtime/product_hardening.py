@@ -31,6 +31,7 @@ def map_comfy_event(event: Mapping[str, Any]) -> dict[str, Any]:
     """
     name = str(event.get("type") or event.get("event") or "").lower()
     data = event.get("data") if isinstance(event.get("data"), Mapping) else event
+    prompt_id = event.get("prompt_id") or (data.get("prompt_id") if isinstance(data, Mapping) else None)
     stage_map = {
         "execution_start": ("准备参考图", "PREPARING"),
         "execution_cached": ("加载 H3 模型", "LOADING_MODEL"),
@@ -46,18 +47,23 @@ def map_comfy_event(event: Mapping[str, Any]) -> dict[str, Any]:
     current = data.get("value", data.get("step")) if isinstance(data, Mapping) else None
     total = data.get("max", data.get("total_steps")) if isinstance(data, Mapping) else None
     progress = data.get("progress") if isinstance(data, Mapping) else None
-    if progress is None and current is not None and total:
+    if current is not None and total:
         try:
             progress = float(current) / float(total) * 100.0
         except (TypeError, ValueError, ZeroDivisionError):
             progress = None
+    else:
+        # A naked percentage is not enough for this product contract. The
+        # visible value must be backed by Comfy's real value/max pair.
+        progress = None
     if progress is not None:
         try:
             progress = max(0.0, min(100.0, float(progress)))
         except (TypeError, ValueError):
             progress = None
-    return {
+    result = {
         "event": name or "unknown",
+        "event_type": name or "unknown",
         "state": state or "EXECUTING",
         "stage": stage or "执行工作流",
         "progress": progress,
@@ -65,6 +71,13 @@ def map_comfy_event(event: Mapping[str, Any]) -> dict[str, Any]:
         "total_steps": total,
         "message": str(data.get("text") or data.get("message") or "") if isinstance(data, Mapping) else "",
     }
+    if prompt_id is not None:
+        result["prompt_id"] = str(prompt_id)
+    for key in ("node_id", "display_node_id"):
+        value = event.get(key) or (data.get(key) if isinstance(data, Mapping) else None)
+        if value is not None:
+            result[key] = str(value)
+    return result
 
 
 def estimate_eta(elapsed: float, progress: float | None,
@@ -94,4 +107,3 @@ def unique_comfy_filename(asset: Mapping[str, Any], source: Path) -> str:
         digest = hashlib.sha256(source.read_bytes()).hexdigest()[:12]
     suffix = source.suffix.lower() or ".png"
     return f"avs_{asset_id or 'asset'}_{digest}{suffix}"
-

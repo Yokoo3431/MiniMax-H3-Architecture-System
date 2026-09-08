@@ -268,7 +268,12 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         return native_request
 
     def submit(self, native_request: Dict[str, Any]) -> str:
-        client_id = str(native_request.get("client_id") or uuid.uuid4())
+        # A managed Comfy service has one stable client identity. Reusing it
+        # keeps /prompt correlation and /ws reconnects on the same stream;
+        # duck-typed legacy clients still receive a request-scoped fallback.
+        client_id = str(native_request.get("client_id")
+                        or getattr(self.client, "client_id", "")
+                        or uuid.uuid4())
         native_request["client_id"] = client_id
         kwargs = {
             "client_id": client_id,

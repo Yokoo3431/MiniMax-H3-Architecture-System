@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 import urllib.request
+from urllib.error import HTTPError
 import zlib
 from pathlib import Path
 
@@ -182,6 +183,52 @@ class TestTrustedAssetEndpoint(unittest.TestCase):
                 hydrated = json.loads(response.read().decode("utf-8"))["data"]
             self.assertEqual(hydrated["current_reference_asset_id"], approved["reference"]["id"])
             self.assertTrue(hydrated["study"]["reference_approved"])
+
+            # The existing trusted-asset fixture also covers the real output
+            # delivery boundary without adding a new canonical test ID.
+            output_dir = h.store.package_dir(pid) / "output"
+            report_dir = h.store.package_dir(pid) / "report"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            report_dir.mkdir(parents=True, exist_ok=True)
+            video = output_dir / "video.mp4"
+            video.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"x" * 32)
+            job_id = "job-real"
+            h.store.save_jobs(pid, {job_id: {
+                "id": job_id, "project_id": pid, "state": "COMPLETED",
+                "runtime": "native", "workflow": "05_Slow_Walkthrough",
+                "final_output_path": str(video), "output_path": str(video),
+            }})
+            (report_dir / "generation_report.json").write_text(
+                json.dumps({"project_id": pid, "job_id": job_id,
+                            "status": "COMPLETED", "provenance": {}}),
+                encoding="utf-8")
+            output_api = OutputAPI(h.store, allow_mock_outputs=False)
+            result = output_api.get_result(job_id)
+            self.assertEqual(result["output"]["media_url"],
+                             f"/api/jobs/{job_id}/media")
+            self.assertEqual(result["output"]["mime_type"], "video/mp4")
+            self.assertNotIn(str(h.store.package_dir(pid)), result["output"])
+            report = output_api.get_report(job_id)
+            self.assertEqual(report["state"], "COMPLETED")
+
+            media_url = f"http://127.0.0.1:{server.server_address[1]}/api/jobs/{job_id}/media"
+            with urllib.request.urlopen(media_url, timeout=3) as response:
+                body = response.read()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers.get_content_type(), "video/mp4")
+                self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+            range_request = urllib.request.Request(
+                media_url, headers={"Range": "bytes=-5"})
+            with urllib.request.urlopen(range_request, timeout=3) as response:
+                self.assertEqual(response.status, 206)
+                self.assertEqual(response.headers["Content-Range"],
+                                 f"bytes {len(body) - 5}-{len(body) - 1}/{len(body)}")
+                self.assertEqual(len(response.read()), 5)
+            with self.assertRaises(HTTPError) as ctx:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{server.server_address[1]}/api/jobs/job-unknown/media",
+                    timeout=3)
+            self.assertEqual(ctx.exception.code, 404)
         finally:
             if server is not None:
                 server.shutdown()

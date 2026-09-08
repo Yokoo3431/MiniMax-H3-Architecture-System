@@ -1,7 +1,8 @@
-"""Output API (mock, contract-first).
+"""Output API (contract-first).
 
 Builds the Project/input|workflow|prompt|output|report package with provenance,
-runtime info, reference hashes, and a frozen workflow copy. No real MP4.
+runtime info, reference hashes, and a frozen workflow copy. Native completed
+Jobs expose their verified packaged media through a job-bound URL.
 """
 
 from __future__ import annotations
@@ -246,8 +247,10 @@ class OutputAPI:
         if job["state"] != "COMPLETED":
             raise ValueError(f"job {job_id} is {job['state']}; result available only when COMPLETED")
         if job.get("runtime") == "native":
-            video_path = Path(job.get("output_path") or (
-                self.store.package_dir(project_id) / "output" / "video.mp4"))
+            video_path = self._job_media_path(project_id, job)
+            if video_path is None:
+                raise ValueError(
+                    f"OUTPUT_ERROR: completed job has no real MP4 output for {job_id}")
             if not video_path.is_file() or video_path.stat().st_size <= 0:
                 raise ValueError(
                     f"OUTPUT_ERROR: completed job has no real MP4 output: {video_path}")
@@ -256,32 +259,113 @@ class OutputAPI:
     def get_report(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
         report_path = self.store.package_dir(project_id) / "report" / "report.json"
-        if not report_path.is_file():
-            raise ValueError(f"report not built for job {job_id}")
-        return json.loads(report_path.read_text(encoding="utf-8"))
+        if report_path.is_file():
+            return json.loads(report_path.read_text(encoding="utf-8"))
+
+        # Native output packages historically used generation_report.json.
+        # Normalize that existing report shape at the API boundary instead of
+        # treating optional packaging metadata as a completed-video failure.
+        generation_report = self.store.package_dir(project_id) / "report" / "generation_report.json"
+        if generation_report.is_file():
+            report = json.loads(generation_report.read_text(encoding="utf-8"))
+            project = self.store.load_project(project_id)
+            refs = self.store.load_references(project_id)
+            report.setdefault("project_id", project_id)
+            report.setdefault("project_name", project.get("name", ""))
+            report.setdefault("job_id", job_id)
+            report.setdefault("state", report.get("status", job.get("state")))
+            report.setdefault("reference_hashes", {
+                ref.get("filename", ref_id): ref.get("sha256")
+                for ref_id, ref in refs.items()
+            })
+            report.setdefault("audit_log", self.store.load_audit(project_id))
+            report.setdefault("provenance", {})
+            return report
+        raise ValueError(f"report not built for job {job_id}")
+
+    def _package_video_path(self, project_id: str) -> Path | None:
+        """Return only the Job-owned packaged MP4, never a request path."""
+        output_root = (self.store.package_dir(project_id) / "output").resolve()
+        candidate = (output_root / "video.mp4").resolve()
+        try:
+            candidate.relative_to(output_root)
+        except ValueError:
+            return None
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            return candidate
+        return None
+
+    def _job_media_path(self, project_id: str,
+                        job: Dict[str, Any]) -> Path | None:
+        """Resolve a completed Job's media within AVS-owned output roots."""
+        project = self.store.load_project(project_id)
+        roots = [
+            (self.store.package_dir(project_id) / "output").resolve(),
+            self.store.output_directory(project).resolve(),
+        ]
+        candidates = []
+        for value in (job.get("final_output_path"), job.get("output_path")):
+            if value:
+                candidates.append(Path(value).resolve())
+        package_video = self._package_video_path(project_id)
+        if package_video is not None:
+            candidates.append(package_video)
+        for candidate in candidates:
+            if candidate.suffix.lower() != ".mp4" or not candidate.is_file():
+                continue
+            if any(self._is_within(candidate, root) for root in roots):
+                if candidate.stat().st_size > 0:
+                    return candidate
+        return None
+
+    @staticmethod
+    def _is_within(candidate: Path, root: Path) -> bool:
+        try:
+            candidate.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def media_path(self, job_id: str) -> Path:
+        """Resolve browser media strictly through the selected canonical Job."""
+        project_id, job = self.store.find_job(job_id)
+        if job.get("runtime") == "mock" and not self.allow_mock_outputs:
+            raise KeyError(f"output media not found for job {job_id}")
+        if job.get("state") != "COMPLETED":
+            raise KeyError(f"output media not available for job {job_id}")
+        media = self._job_media_path(project_id, job)
+        if media is None:
+            raise KeyError(f"output media not found for job {job_id}")
+        return media
 
     def list_outputs(self, project_id: str) -> List[Dict[str, Any]]:
         out = []
         for job in self.store.load_jobs(project_id).values():
             if (job["state"] == "COMPLETED"
                     and (self.allow_mock_outputs or job.get("runtime") != "mock")
-                    and (job.get("runtime") == "mock" or Path(
-                        job.get("output_path") or (
-                            self.store.package_dir(project_id) / "output" / "video.mp4"
-                        )
-                    ).is_file())):
+                    and (job.get("runtime") == "mock"
+                         or self._job_media_path(project_id, job) is not None)):
                 out.append(self.manifest(project_id, job))
         return out
 
     def manifest(self, project_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
         package = self.store.package_dir(project_id)
+        media = self._job_media_path(project_id, job)
         return {
             "job_id": job["id"],
             "project_id": project_id,
+            "runtime": job.get("runtime", ""),
             "workflow": job.get("workflow"),
             "runtime_output_path": job.get("runtime_output_path", ""),
             "final_output_path": job.get("final_output_path", ""),
             "package_root": str(package),
+            "output": {
+                "available": bool(media),
+                "filename": media.name if media else "",
+                "media_url": f"/api/jobs/{job['id']}/media" if media else "",
+                "mime_type": "video/mp4" if media else "",
+                "size_bytes": media.stat().st_size if media else None,
+            },
             "structure": {
                 "input": [p.name for p in sorted((package / "input").iterdir())] if (package / "input").is_dir() else [],
                 "workflow": [p.name for p in sorted((package / "workflow").iterdir())] if (package / "workflow").is_dir() else [],

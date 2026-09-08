@@ -5,10 +5,12 @@ const initialJobId = qs('job');
 let activeProjectId = initialProjectId || '';
 const errEl = document.getElementById('err');
 
-function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
+function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = friendlyError(msg); }
 function jobIsTerminal(job) { return !!(job && job.is_terminal); }
 function jobIsActive(job) { return !!(job && job.is_active); }
-function friendlyState(job) { return job.status_label || ({COMPLETED:'完成', FAILED:'生成失败', GPU_FAILED:'生成失败', CANCELLED:'已取消', SUBMISSION_LOST:'提交未确认'}[job.state] || '生成中'); }
+function friendlyState(job) {
+  return job.status_label || ({QUEUED:'排队中', SUBMITTED:'已提交', RUNNING:'运行中', GENERATING:'生成中', RECONCILING:'整理输出', COMPLETED:'完成', FAILED:'生成失败', GPU_FAILED:'生成失败', CANCELLED:'已取消', SUBMISSION_LOST:'提交未确认'}[job.state] || '生成中');
+}
 function formatEtaRange(job) {
   const e = job && job.estimated_time;
   if (!e || !Number.isFinite(Number(e.min_seconds)) || !Number.isFinite(Number(e.max_seconds))) return '';
@@ -20,9 +22,17 @@ function formatJobEta(job) {
   if (job.state === 'COMPLETED') return '已完成';
   if (['FAILED', 'GPU_FAILED', 'CANCELLED', 'SUBMISSION_LOST'].includes(job.state)) return '无需等待';
   const range = formatEtaRange(job);
-  const live = Number.isFinite(Number(job.eta_seconds)) ? '剩余约 ' + Math.ceil(Number(job.eta_seconds)) + 's' : '';
+  const etaSeconds = Number(job.eta_seconds);
+  const live = Number.isFinite(etaSeconds) && etaSeconds > 0 ? '剩余约 ' + Math.ceil(etaSeconds) + 's' : '';
   if (range) return live ? live + ' · 预计总耗时：' + range : '预计总耗时：' + range;
   return live || '正在估算剩余时间';
+}
+function outputFolderPath(outputPath) {
+  const separator = String.fromCharCode(92);
+  let raw = String(outputPath || '').trim();
+  while (raw.endsWith('/') || raw.endsWith(separator)) raw = raw.slice(0, -1);
+  const slash = Math.max(raw.lastIndexOf('/'), raw.lastIndexOf(separator));
+  return slash > 0 ? raw.slice(0, slash) : '';
 }
 function badge(state, job) {
   const cls = state === 'COMPLETED' ? 'done' : ['FAILED','GPU_FAILED','CANCELLED','SUBMISSION_LOST'].includes(state) ? 'err' : 'warn';
@@ -39,7 +49,13 @@ async function loadProjects() {
   const projects = await get('/api/projects');
   const sel = document.getElementById('project-select');
   sel.innerHTML = projects.map((p) => `<sl-option value="${esc(p.id)}" ${p.id === initialProjectId ? 'selected' : ''}>${esc(p.name)}</sl-option>`).join('');
-  const selected = projects.find((p) => p.id === initialProjectId)?.id || projects[0]?.id || '';
+  let selected = projects.find((p) => p.id === initialProjectId)?.id || '';
+  if (!selected && initialJobId) {
+    try {
+      const detail = await get(`/api/jobs/${encodeURIComponent(initialJobId)}/detail`);
+      selected = projects.find((p) => p.id === detail.project?.id)?.id || '';
+    } catch (_) { /* the empty state below is the truthful fallback */ }
+  }
   activeProjectId = selected;
   if (selected) {
     // Do not depend on the custom element having reflected its value yet.
@@ -57,19 +73,20 @@ async function loadProjects() {
 async function loadJobs(pid) {
   if (!pid) { showErr('请先选择一个 Study。'); return; }
   try {
-    const jobs = await get(`/api/projects/${pid}/jobs`);
     const body = document.getElementById('jobs-body');
+    body.innerHTML = '<tr><td colspan="6" class="muted">正在加载任务…</td></tr>';
+    const jobs = await get(`/api/projects/${pid}/jobs`);
     body.innerHTML = jobs.length ? jobs.map((j) => `
       <tr class="job-row" data-job="${esc(j.id)}" tabindex="0">
         <td data-label="Job">${esc(j.id)}</td><td data-label="Workflow">${esc(j.workflow)}</td><td data-label="状态">${badge(j.state, j)}${progressText(j)}</td>
         <td data-label="Seed">${esc(j.seed)}</td><td data-label="创建时间">${esc(j.created_at)}</td>
-        <td data-label="操作">${j.state === 'COMPLETED' ? `<a href="output.html?job=${esc(j.id)}" onclick="event.stopPropagation()">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || '运行中')}</span>`}</td>
+        <td data-label="操作">${j.state === 'COMPLETED' ? `<a href="output.html?project=${encodeURIComponent(pid)}&job=${esc(j.id)}" onclick="event.stopPropagation()">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || friendlyState(j))}</span>`}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">暂无任务</td></tr>';
     body.querySelectorAll('.job-row').forEach((row) => {
       const open = () => openDetail(row.dataset.job, pid);
       row.addEventListener('click', open); row.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
     });
-    if (initialJobId) await openDetail(initialJobId, pid);
+    if (initialJobId && jobs.some((j) => String(j.id) === String(initialJobId))) await openDetail(initialJobId, pid);
     if (jobs.some((j) => jobIsActive(j))) setTimeout(() => loadJobs(pid), 2000);
   } catch (e) { showErr(e.message); }
 }
@@ -95,7 +112,7 @@ async function openDetail(jobId, pid) {
     ${detail.error_category === 'COMFYUI_CRASHED' ? '<sl-button class="btn" id="restart-comfyui">重新启动服务</sl-button>' : ''}
     <sl-button class="btn" id="open-current-workflow">打开当前任务工作流</sl-button>
     <sl-button class="btn" id="open-study">打开 Study</sl-button>
-    ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?job=${esc(detail.id)}">打开输出</a><sl-button class="btn" id="open-output-folder">打开所在文件夹</sl-button>${detail.delivery_state === 'OUTPUT_DELIVERY_FAILED' ? '<sl-button class="btn" id="retry-output">重试复制</sl-button>' : ''}` : ''}
+    ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?project=${encodeURIComponent(pid)}&job=${esc(detail.id)}">打开输出</a><sl-button class="btn" id="open-output-folder">打开所在文件夹</sl-button>${detail.delivery_state === 'OUTPUT_DELIVERY_FAILED' ? '<sl-button class="btn" id="retry-output">重试复制</sl-button>' : ''}` : ''}
     <sl-button class="btn" id="copy-tech">复制技术详情</sl-button>`;
   document.getElementById('detail-technical').textContent = JSON.stringify(detail.technical_details || {}, null, 2);
   document.getElementById('open-study')?.addEventListener('click', () => { location.href = `workspace.html?project=${encodeURIComponent(pid)}`; });
@@ -114,7 +131,7 @@ async function openDetail(jobId, pid) {
   });
   document.getElementById('copy-tech')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(document.getElementById('detail-technical').textContent || ''); });
   document.getElementById('open-output-folder')?.addEventListener('click', async () => {
-    const target = detail.final_output_path || detail.output_path;
+    const target = outputFolderPath(detail.final_output_path || detail.output_path);
     if (!target) return;
     try { await post('/api/system/open-path', {path: target}); } catch (e) { showErr(e.message); }
   });

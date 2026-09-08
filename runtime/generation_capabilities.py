@@ -132,7 +132,9 @@ def weighted_progress(stage: str | None, step: Any = None,
     except (TypeError, ValueError):
         return None
     if fraction is None:
-        return bounds[0] if name in ("PREPARING", "ENCODING", "DECODING", "FINALIZING") else None
+        # A stage label is semantic telemetry, not numeric progress. Do not
+        # manufacture a 0/10/90% value when Comfy did not provide value/max.
+        return None
     return round(bounds[0] + (bounds[1] - bounds[0]) * fraction, 2)
 
 

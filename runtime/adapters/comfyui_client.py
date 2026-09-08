@@ -13,12 +13,18 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import base64
+import hashlib
+import socket
+import ssl
+import struct
 import subprocess
 import threading
 import time
+import uuid
 import urllib.error
 import urllib.request
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from typing import Any, Callable, Dict, Optional
 from pathlib import Path
 
@@ -98,6 +104,133 @@ class WorkflowNotFoundError(RuntimeError):
     """The referenced native workflow asset is missing."""
 
 
+class _StdlibWebSocket:
+    """Small dependency-free RFC 6455 client for Comfy telemetry.
+
+    Comfy's observer channel only needs text frames, ping/pong, close, and a
+    bounded receive timeout.  Keeping this fallback local avoids making
+    websocket-client a runtime prerequisite for the desktop application.
+    Binary frames are deliberately ignored so media never enters telemetry.
+    """
+
+    _GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, url: str, timeout: float = 2.0) -> None:
+        parts = urlsplit(url)
+        if parts.scheme not in ("ws", "wss") or not parts.hostname:
+            raise ValueError(f"unsupported websocket URL: {url}")
+        port = parts.port or (443 if parts.scheme == "wss" else 80)
+        self._sock = socket.create_connection((parts.hostname, port), timeout=timeout)
+        if parts.scheme == "wss":
+            context = ssl.create_default_context()
+            self._sock = context.wrap_socket(self._sock, server_hostname=parts.hostname)
+        self._sock.settimeout(timeout)
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        target = parts.path or "/"
+        if parts.query:
+            target += "?" + parts.query
+        host = parts.hostname
+        if parts.port:
+            host += f":{parts.port}"
+        request = (
+            f"GET {target} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        ).encode("ascii")
+        self._sock.sendall(request)
+        response = self._read_until(b"\r\n\r\n")
+        head = response.decode("latin1", errors="replace").split("\r\n")
+        if not head or " 101 " not in f" {head[0]} ":
+            raise ConnectionError(f"websocket handshake failed: {head[0] if head else 'empty'}")
+        headers = {}
+        for line in head[1:]:
+            if ":" in line:
+                name, value = line.split(":", 1)
+                headers[name.strip().lower()] = value.strip()
+        expected = base64.b64encode(hashlib.sha1(key.encode("ascii") + self._GUID).digest()).decode("ascii")
+        if headers.get("sec-websocket-accept") != expected:
+            raise ConnectionError("websocket handshake accept mismatch")
+
+    def _read_until(self, marker: bytes) -> bytes:
+        data = bytearray()
+        while marker not in data:
+            chunk = self._sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("websocket closed during handshake")
+            data.extend(chunk)
+            if len(data) > 65536:
+                raise ConnectionError("websocket handshake too large")
+        return bytes(data)
+
+    def _read_exact(self, size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            chunk = self._sock.recv(size - len(data))
+            if not chunk:
+                raise ConnectionError("websocket closed")
+            data.extend(chunk)
+        return bytes(data)
+
+    def _send_frame(self, opcode: int, payload: bytes = b"") -> None:
+        length = len(payload)
+        if length < 126:
+            header = bytes((0x80 | opcode, 0x80 | length))
+        elif length <= 0xFFFF:
+            header = bytes((0x80 | opcode, 0x80 | 126)) + struct.pack("!H", length)
+        else:
+            header = bytes((0x80 | opcode, 0x80 | 127)) + struct.pack("!Q", length)
+        mask = os.urandom(4)
+        masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+        self._sock.sendall(header + mask + masked)
+
+    def settimeout(self, timeout: float) -> None:
+        self._sock.settimeout(timeout)
+
+    def recv(self) -> Optional[str]:
+        fragments = []
+        while True:
+            first, second = self._read_exact(2)
+            fin = bool(first & 0x80)
+            opcode = first & 0x0F
+            masked = bool(second & 0x80)
+            length = second & 0x7F
+            if length == 126:
+                length = struct.unpack("!H", self._read_exact(2))[0]
+            elif length == 127:
+                length = struct.unpack("!Q", self._read_exact(8))[0]
+            mask = self._read_exact(4) if masked else None
+            payload = self._read_exact(length) if length else b""
+            if mask:
+                payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+            if opcode == 0x8:
+                return ""
+            if opcode == 0x9:
+                self._send_frame(0xA, payload)
+                continue
+            if opcode == 0xA:
+                continue
+            if opcode == 0x2:
+                # Never decode/retain binary Comfy frames.
+                return None
+            if opcode == 0x1 or opcode == 0x0:
+                fragments.append(payload)
+                if fin:
+                    return b"".join(fragments).decode("utf-8", errors="replace")
+
+    def close(self) -> None:
+        try:
+            self._sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+
 class ComfyUIClient:
     """Thin HTTP client for the ComfyUI Native runtime (127.0.0.1)."""
 
@@ -110,7 +243,8 @@ class ComfyUIClient:
                  submission_timeout: Optional[float] = None,
                  metadata_timeout: float = 10.0,
                  observation_timeout: float = 15.0,
-                 output_timeout: float = 30.0) -> None:
+                 output_timeout: float = 30.0,
+                 client_id: Optional[str] = None) -> None:
         self.base_url = base_url.rstrip("/")
         # ``timeout=`` remains a compatibility override for existing callers.
         # New code uses an explicit policy per request class.
@@ -125,6 +259,9 @@ class ComfyUIClient:
         self.output_root = output_root or os.environ.get("H3_COMFY_OUTPUT", "")
         self.strict_output = bool(strict_output)
         self.ffmpeg_path = str(ffmpeg_path) if ffmpeg_path else None
+        # One identity per managed Comfy service lets /prompt and /ws share
+        # the same telemetry stream across jobs and reconnects.
+        self.client_id = str(client_id or uuid.uuid4())
 
     # ------------------------------------------------------------------ #
     def _request(self, method: str, path: str,
@@ -255,7 +392,7 @@ class ComfyUIClient:
         history = self._request("GET", f"/history/{prompt_id}", operation="observation")
         if prompt_id not in history:
             return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False,
-                    "event": {"type": "executing"}}
+                    "history_present": False, "event": {"type": "executing"}}
         entry = history[prompt_id]
         status = entry.get("status", {})
         status_str = status.get("status_str", "unknown")
@@ -265,17 +402,20 @@ class ComfyUIClient:
         for msg in messages:
             if msg and isinstance(msg, list) and msg[0] in ("execution_error", "execution_interrupted"):
                 errors.append(msg)
-        event = {"type": "execution_success" if status_str == "success" and completed else "executing"}
+        terminal_success = status_str == "success" and completed
+        event = {"type": "execution_success" if terminal_success else "executing"}
         progress = status.get("progress")
-        if progress is not None:
+        if progress is not None and not terminal_success:
             event = {"type": "progress", "data": progress if isinstance(progress, dict) else {"progress": progress}}
         if status_str == "success" and completed:
-            return {"status": "COMPLETED", "prompt_id": prompt_id, "completed": True, "event": event}
+            return {"status": "COMPLETED", "prompt_id": prompt_id, "completed": True,
+                    "history_present": True, "event": event}
         if status_str == "error" or errors:
             return {"status": "ERROR", "prompt_id": prompt_id,
-                    "completed": False, "messages": messages,
+                    "completed": False, "history_present": True, "messages": messages,
                     "event": {"type": "execution_error", "data": {"message": str(messages)}}}
-        return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False, "event": event}
+        return {"status": "RUNNING", "prompt_id": prompt_id, "completed": False,
+                "history_present": True, "event": event}
 
     def get_history(self, prompt_id: str) -> Dict[str, Any]:
         """GET /history/<prompt_id> -> full execution result."""
@@ -318,7 +458,7 @@ class ComfyUIClient:
         if not isinstance(payload, dict):
             return None
         event_type = str(payload.get("type") or "")
-        allowed = {"status", "execution_start", "executing", "progress",
+        allowed = {"status", "execution_start", "execution_cached", "executing", "progress",
                    "progress_state", "executed", "execution_error",
                    "execution_success"}
         if event_type not in allowed:
@@ -330,6 +470,7 @@ class ComfyUIClient:
         result: Dict[str, Any] = {"type": event_type, "event": event_type,
                                   "prompt_id": str(event_prompt or prompt_id)}
         node_id = data.get("node") or data.get("node_id") or data.get("display_node_id")
+        display_node_id = data.get("display_node_id")
         value = data.get("value")
         maximum = data.get("max")
         state = data.get("state")
@@ -341,11 +482,14 @@ class ComfyUIClient:
                 active = next((item for item in nodes.values() if isinstance(item, dict)), None)
             if isinstance(active, dict):
                 node_id = active.get("display_node_id") or active.get("node_id") or node_id
+                display_node_id = active.get("display_node_id") or display_node_id
                 value = active.get("value", value)
                 maximum = active.get("max", maximum)
                 state = active.get("state", state)
         if node_id is not None:
             result["node_id"] = str(node_id)
+        if display_node_id is not None:
+            result["display_node_id"] = str(display_node_id)
         if isinstance(value, (int, float)) and isinstance(maximum, (int, float)) and maximum > 0:
             result["step"] = value
             result["total_steps"] = maximum
@@ -354,23 +498,23 @@ class ComfyUIClient:
             result["state"] = str(state)
         return result
 
+    def _connect_websocket(self, client_id: str):
+        try:
+            import websocket
+            return websocket.create_connection(self._websocket_url(client_id), timeout=2)
+        except ImportError:
+            return _StdlibWebSocket(self._websocket_url(client_id), timeout=2)
+
     def observe_websocket(self, prompt_id: str, client_id: str,
                           on_event: Optional[Callable[[Dict[str, Any]], None]],
                           stop_event: threading.Event, max_reconnects: int = 6) -> None:
         """Observe one prompt over Comfy's websocket; never changes job truth."""
-        try:
-            import websocket
-        except ImportError:
-            if on_event:
-                on_event({"type": "telemetry_degraded", "prompt_id": prompt_id,
-                          "message": "websocket-client unavailable"})
-            return
         reconnects = 0
         delay = 0.5
         while not stop_event.is_set() and reconnects <= max_reconnects:
             ws = None
             try:
-                ws = websocket.create_connection(self._websocket_url(client_id), timeout=2)
+                ws = self._connect_websocket(client_id)
                 ws.settimeout(2)
                 delay = 0.5
                 while not stop_event.is_set():
@@ -380,6 +524,8 @@ class ComfyUIClient:
                         if "timed out" in str(exc).lower():
                             continue
                         raise
+                    if message is None:
+                        continue
                     if not message:
                         raise ConnectionError("Comfy websocket closed")
                     event = self.normalize_websocket_event(message, prompt_id)
@@ -415,37 +561,10 @@ class ComfyUIClient:
                   if value]
         queue_error = None
         try:
-            queue = self.get_queue()
-        except (ComfyUICommunicationTimeout, ComfyProtocolError) as exc:
-            # /queue is observational only. Still query history so a queue
-            # timeout cannot hide a completed task.
-            queue_error = exc
-            queue = {}
-        queue_seed_candidates = []
-        for bucket, status in (("queue_running", "RUNNING"),
-                               ("queue_pending", "RUNNING")):
-            for item in queue.get(bucket) or []:
-                candidate_id = _queue_prompt_id(item)
-                if prompt_id and candidate_id == str(prompt_id):
-                    return {"status": status, "prompt_id": candidate_id,
-                            "source": "queue", "entry": item}
-                if candidate_id and wanted and _contains_all(item, wanted):
-                    return {"status": status, "prompt_id": candidate_id,
-                            "source": "queue", "entry": item}
-                if candidate_id and legacy_seed is not None and _contains_value(
-                        item, str(legacy_seed)):
-                    queue_seed_candidates.append((candidate_id, item, status))
-        if not wanted and not prompt_id and len(queue_seed_candidates) == 1:
-            candidate_id, item, status = queue_seed_candidates[0]
-            return {"status": status, "prompt_id": candidate_id,
-                    "source": "queue", "entry": item}
-
-        try:
             history = self.list_history()
-        except (ComfyUICommunicationTimeout, ComfyProtocolError):
-            if queue_error is not None:
-                raise queue_error
-            raise
+        except (ComfyUICommunicationTimeout, ComfyProtocolError) as exc:
+            history = {}
+            queue_error = exc
         candidates = []
         for candidate_id, entry in history.items():
             if prompt_id and str(candidate_id) == str(prompt_id):
@@ -457,22 +576,49 @@ class ComfyUIClient:
                             if _contains_value(entry, str(legacy_seed))]
             if len(seed_matches) == 1:
                 candidates = seed_matches
-        if len(candidates) != 1:
-            result = {"status": "UNKNOWN", "prompt_id": prompt_id,
-                      "source": "queue/history", "candidates": len(candidates)}
-            if queue_error is not None:
-                result["observation_error"] = f"{type(queue_error).__name__}: {queue_error}"
-            return result
-        candidate_id, entry = candidates[0]
-        status = entry.get("status", {}) if isinstance(entry, dict) else {}
-        if status.get("status_str") == "success" and status.get("completed"):
-            state = "COMPLETED"
-        elif status.get("status_str") == "error":
-            state = "FAILED"
-        else:
-            state = "RUNNING"
-        return {"status": state, "prompt_id": candidate_id, "source": "history",
-                "entry": entry}
+        if len(candidates) == 1:
+            candidate_id, entry = candidates[0]
+            status = entry.get("status", {}) if isinstance(entry, dict) else {}
+            if status.get("status_str") == "success" and status.get("completed"):
+                state = "COMPLETED"
+            elif status.get("status_str") == "error":
+                state = "FAILED"
+            else:
+                state = "RUNNING"
+            return {"status": state, "prompt_id": candidate_id, "source": "history",
+                    "entry": entry}
+
+        # Queue is only an active-state fallback after terminal history has
+        # been checked. This prevents a stale queue entry from masking a
+        # completed/failed history record.
+        try:
+            queue = self.get_queue()
+            queue_seed_candidates = []
+            for bucket, status in (("queue_running", "RUNNING"),
+                                   ("queue_pending", "RUNNING")):
+                for item in queue.get(bucket) or []:
+                    candidate_id = _queue_prompt_id(item)
+                    if prompt_id and candidate_id == str(prompt_id):
+                        return {"status": status, "prompt_id": candidate_id,
+                                "source": "queue", "entry": item}
+                    if candidate_id and wanted and _contains_all(item, wanted):
+                        return {"status": status, "prompt_id": candidate_id,
+                                "source": "queue", "entry": item}
+                    if candidate_id and legacy_seed is not None and _contains_value(
+                            item, str(legacy_seed)):
+                        queue_seed_candidates.append((candidate_id, item, status))
+            if not wanted and not prompt_id and len(queue_seed_candidates) == 1:
+                candidate_id, item, status = queue_seed_candidates[0]
+                return {"status": status, "prompt_id": candidate_id,
+                        "source": "queue", "entry": item}
+        except (ComfyUICommunicationTimeout, ComfyProtocolError) as exc:
+            queue_error = queue_error or exc
+
+        result = {"status": "UNKNOWN", "prompt_id": prompt_id,
+                  "source": "queue/history", "candidates": len(candidates)}
+        if queue_error is not None:
+            result["observation_error"] = f"{type(queue_error).__name__}: {queue_error}"
+        return result
 
     def collect_output(self, history_result: Dict[str, Any],
                        job_id: str, workflow_id: str,
@@ -577,6 +723,21 @@ class ComfyUIClient:
                     event = dict(state.get("event") or {"type": "executing"})
                     event.setdefault("prompt_id", prompt_id)
                     on_event(event)
+                if state["status"] == "RUNNING" and not state.get("history_present", True):
+                    # /history is terminal truth. When it has not materialized
+                    # yet, consult /queue as an active-state fallback without
+                    # treating an absent queue item as a failure.
+                    try:
+                        queue = self.get_queue()
+                        queued = any(
+                            _queue_prompt_id(item) == str(prompt_id)
+                            for bucket in ("queue_running", "queue_pending")
+                            for item in (queue.get(bucket) or [])
+                        )
+                    except (ComfyUICommunicationTimeout, ComfyProtocolError):
+                        queued = False
+                    if queued and on_event is not None:
+                        on_event({"type": "queue_observed", "prompt_id": prompt_id})
                 if state["status"] in ("COMPLETED", "ERROR"):
                     return state
                 time.sleep(min(poll_interval, max(1.0, deadline - time.time())))

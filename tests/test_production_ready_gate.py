@@ -22,7 +22,9 @@ class TestProductionReadyGate(unittest.TestCase):
         self.assertTrue(GATE_MANIFEST.is_file(), "production_ready_gate.json must exist")
         with open(GATE_MANIFEST, "r", encoding="utf-8") as f:
             manifest = json.load(f)
-        self.assertIn("v0_8_0_authorization_target", manifest)
+        # The RC1 freeze manifest keeps the target decision in the canonical
+        # v0_8_0_authorization field; the earlier target label was retired.
+        self.assertEqual(manifest.get("v0_8_0_authorization"), "APPROVED")
 
     def test_real_cases_pack_exists(self):
         self.assertTrue(REAL_PACK_FILE.is_file(), "real_cases_pack.json must exist")

@@ -44,18 +44,35 @@ class StudioUX2P1Tests(unittest.TestCase):
         for element_id in ("task-name", "task-state", "v-body", "v-progress", "current-job-strip"):
             self.assertIn(f'id="{element_id}"', source)
         jobs = self.read("js/jobs.js")
-        self.assertIn("const selected = projects.find((p) => p.id === initialProjectId)?.id || projects[0]?.id || '';", jobs)
+        self.assertIn("let selected = projects.find((p) => p.id === initialProjectId)?.id || '';", jobs)
         self.assertIn("if (!pid) { showErr('请先选择一个 Study。'); return; }", jobs)
         self.assertNotIn('/api/projects//jobs', jobs)
+        self.assertNotIn("|| projects[0]?.id || ''", jobs)
         output = self.read("js/output.js")
         self.assertIn('showContextState', output)
         self.assertNotIn('缺少 job 参数', output)
+        output_html = self.read("output.html")
+        self.assertIn('id="output-context-actions"', output_html)
+        output_script = self.read("js/output.js")
+        self.assertIn("该任务当前状态", output_script)
+        self.assertIn("完成的输出会显示在这里。", output_html)
+        self.assertNotIn("Rendered output will appear here.", output_html)
+        study_script = self.read("js/workspace.js")
+        self.assertIn("const created = await post(`/api/projects/${projectId}/jobs`", study_script)
+        self.assertIn("job?.id", study_script)
+        self.assertIn("if (progress == null) progressBar.style.removeProperty('width');", study_script)
+        self.assertIn("function flowState(job = null)", study_script)
+        self.assertIn("button.setAttribute('aria-describedby', 'gate-note')", study_script)
+        for state in ("QUEUED", "SUBMITTED", "RUNNING", "GENERATING", "RECONCILING", "COMPLETED", "FAILED", "CANCELLED", "SUBMISSION_LOST"):
+            self.assertIn(state, jobs)
+        self.assertIn("function friendlyError", self.read("js/api.js"))
         jobs_css = self.read("css/studio.css")
         self.assertIn(".jobs-table", jobs_css)
         self.assertIn("data-label", jobs_css)
         self.assertIn("study-identity", source)
         self.assertIn("ux2-viewport-frame", source)
         self.assertIn("ux2-tool-drawer", source)
+        self.assertIn('id="current-job-output"', source)
 
     def test_semantic_tokens_and_responsive_hooks_exist(self):
         source = self.read("css/studio.css")
@@ -97,9 +114,11 @@ class StudioUX2P1Tests(unittest.TestCase):
         source = self.read("js/ux2_shell.js")
         self.assertIn("params.get('project')", source)
         self.assertIn("workspace.html?project=", source)
-        self.assertIn("withProject", source)
+        self.assertIn("withContext", source)
         self.assertIn(".studio-heading a[href=\"jobs.html\"], .current-job-strip a[href=\"jobs.html\"]", source)
-        self.assertIn("link.href = withProject(link.getAttribute('href'))", source)
+        self.assertIn("link.href = withContext(link.getAttribute('href'))", source)
+        self.assertIn("target.searchParams.set('project', project)", source)
+        self.assertIn("target.searchParams.set('job', job)", source)
         engine = self.read("js/engine_status.js")
         self.assertNotRegex(engine, r"location\\.(href|assign|replace)")
 
@@ -117,7 +136,7 @@ class StudioUX2P1Tests(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', source)
         jobs = self.read("js/jobs.js")
-        self.assertIn("const selected = projects.find((p) => p.id === initialProjectId)?.id || projects[0]?.id || '';", jobs)
+        self.assertIn("let selected = projects.find((p) => p.id === initialProjectId)?.id || '';", jobs)
         self.assertIn("if (!pid) { showErr('请先选择一个 Study。'); return; }", jobs)
         self.assertNotIn('/api/projects//jobs', jobs)
         output = self.read("js/output.js")
@@ -157,6 +176,10 @@ class StudioUX2P1Tests(unittest.TestCase):
         }
         self.assertTrue(changed)
         self.assertFalse(any("runtime" in p or "workflows" in p for p in changed))
+
+        contract = (ROOT / "docs" / "STUDIO_UX2_P2_FLOW_CONTRACT.md").read_text(encoding="utf-8")
+        for transition in ("Home → Study", "Study → Jobs", "Jobs → Output", "Output → Study", "Theme toggle"):
+            self.assertIn(transition, contract)
 
 
 if __name__ == "__main__":

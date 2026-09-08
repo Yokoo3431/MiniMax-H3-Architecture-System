@@ -17,6 +17,7 @@ let pollTimer = null;
 let promptTimer = null;
 let promptRequestSerial = 0;
 let providerCatalog = [];
+let latestJob = null;
 
 const VIDEO_TYPES = [
   ['01_Exterior_Hero', 'Exterior Hero'],
@@ -38,10 +39,12 @@ const QUALITY_DEFAULTS = {
   high: { resolution: '1344x768', sampler_mode: 'euler' },
 };
 const STATE_LABELS = {
+  NO_REFERENCE: '等待参考图', REFERENCE_PENDING_APPROVAL: '等待审批', READY_TO_CONFIGURE: '准备配置',
   CREATED: '准备中', REFERENCE_PENDING: '等待参考图', REFERENCE_APPROVED: '准备中',
   PROMPT_REVIEW: '准备中', PROMPT_NEEDS_CONFIRMATION: '准备中', USER_CONFIRM: '可以生成',
-  GPU_RUNNING: '生成中', QUALITY_CHECK: '生成中', COMPLETED: '已完成',
-  FAILED: '生成失败', GPU_FAILED: '生成失败', GENERATING: '生成中',
+  GPU_RUNNING: '生成中', QUALITY_CHECK: '整理输出', QUEUED: '排队中', SUBMITTED: '已提交',
+  RUNNING: '运行中', GENERATING: '生成中', RECONCILING: '整理输出', COMPLETED: '已完成',
+  FAILED: '生成失败', GPU_FAILED: '生成失败', CANCELLED: '已取消', SUBMISSION_LOST: '提交未确认',
   READY_TO_GENERATE: '可以生成',
 };
 
@@ -70,6 +73,18 @@ function currentParams() {
 function stateLabel(state) { return STATE_LABELS[state] || '准备中'; }
 function jobIsTerminal(job) { return !!(job && job.is_terminal); }
 function jobIsActive(job) { return !!(job && job.is_active); }
+// This is a presentation projection of canonical Study/Job fields; it does
+// not persist or replace either state model.
+function flowState(job = null) {
+  if (!study || !study.reference_uploaded) return 'NO_REFERENCE';
+  if (!study.reference_approved) return 'REFERENCE_PENDING_APPROVAL';
+  if (job && ['QUEUED', 'SUBMITTED', 'RUNNING', 'GENERATING', 'GPU_RUNNING', 'RECONCILING', 'QUALITY_CHECK'].includes(job.state)) return 'GENERATING';
+  if (job && job.state === 'COMPLETED') return 'COMPLETED';
+  if (job && ['FAILED', 'GPU_FAILED'].includes(job.state)) return 'FAILED';
+  if (job && job.state === 'CANCELLED') return 'CANCELLED';
+  if (study.prompt_ready && study.generate_allowed) return 'READY_TO_GENERATE';
+  return 'READY_TO_CONFIGURE';
+}
 function formatEtaRange(job) {
   const e = job && job.estimated_time;
   if (!e || !Number.isFinite(Number(e.min_seconds)) || !Number.isFinite(Number(e.max_seconds))) return '';
@@ -80,7 +95,8 @@ function formatEtaRange(job) {
 function formatJobEta(job) {
   if (!job || jobIsTerminal(job)) return job && job.state === 'COMPLETED' ? '已完成' : '无需等待';
   const range = formatEtaRange(job);
-  const live = Number.isFinite(Number(job.eta_seconds)) ? '剩余约 ' + Math.ceil(Number(job.eta_seconds)) + 's' : '';
+  const etaSeconds = Number(job.eta_seconds);
+  const live = Number.isFinite(etaSeconds) && etaSeconds > 0 ? '剩余约 ' + Math.ceil(etaSeconds) + 's' : '';
   if (range) return live ? live + ' · 预计总耗时：' + range : '预计总耗时：' + range;
   return live || '正在估算剩余时间';
 }
@@ -172,7 +188,7 @@ function renderHeader() {
   document.getElementById('task-meta').textContent =
     `${project.project_type || '建筑视频'} · 参考图 → 视频类型 → 意图 → 参数 → 生成`;
   const badge = document.getElementById('task-state');
-  const state = (study && study.current_state) || project.state;
+  const state = flowState(latestJob);
   badge.textContent = stateLabel(state);
   badge.className = `badge ${['COMPLETED','USER_CONFIRM','READY_TO_GENERATE'].includes(state) ? 'done' : ['FAILED','GPU_FAILED'].includes(state) ? 'err' : state === 'GPU_RUNNING' ? 'warn' : 'state'}`;
 }
@@ -373,8 +389,11 @@ function updateGate() {
   const risk = document.getElementById('risk-check').checked;
   const button = document.getElementById('generate-btn');
   button.disabled = !(approved && promptReady && risk && study.generate_allowed);
+  button.setAttribute('aria-describedby', 'gate-note');
+  button.setAttribute('aria-disabled', String(button.disabled));
   const note = document.getElementById('gate-note');
-  if (!approved) note.textContent = '请先上传并审批参考图';
+  if (!study?.reference_uploaded) note.textContent = '请先添加参考图';
+  else if (!approved) note.textContent = '参考图已添加，等待上传并审批';
   else if (!promptReady) note.textContent = '正在生成当前 H3 优化提示词…';
   else if (!risk) note.textContent = '请确认参考图与设置';
   else if (study.gate_reasons && study.gate_reasons.length) note.textContent = study.gate_reasons[0];
@@ -409,11 +428,13 @@ async function generate() {
     const seed = rawSeed ? parseInt(rawSeed, 10) : Math.floor(Math.random() * 900000000);
     if (!Number.isInteger(seed) || seed < 0) { showErr('Seed 需为非负整数或留空'); return; }
     const params = currentParams(); params.seed = seed;
-    await post(`/api/projects/${projectId}/jobs`, {
+    const created = await post(`/api/projects/${projectId}/jobs`, {
       seed, risk_reviewed: true, generation_parameters: params,
     });
-    location.href = `jobs.html?project=${encodeURIComponent(projectId)}`;
-  } catch (e) { showErr(e.message); }
+    const job = created && (created.job || created);
+    const jobQuery = job?.id ? `&job=${encodeURIComponent(job.id)}` : '';
+    location.href = `jobs.html?project=${encodeURIComponent(projectId)}${jobQuery}`;
+  } catch (e) { showErr(friendlyError(e, '生成任务提交失败，请检查参考图、提示词和设置。')); }
 }
 
 async function pollJobs() {
@@ -422,11 +443,12 @@ async function pollJobs() {
     await refreshStudy();
     const active = jobs.find((j) => jobIsActive(j));
     const job = active || jobs[0];
+    latestJob = job || null;
     if (job) {
       const progress = job.progress == null ? null : Math.round(job.progress);
-      const pct = progress == null ? 0 : progress;
       const progressBar = document.getElementById('v-progress');
-      progressBar.style.width = `${pct}%`;
+      if (progress == null) progressBar.style.removeProperty('width');
+      else progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
       progressBar.parentElement.classList.toggle('indeterminate', progress == null);
       document.getElementById('v-progress-label').textContent = progress == null ? '—' : `${progress}%`;
       document.getElementById('v-status').textContent = job.current_stage || stateLabel(job.state);
@@ -435,6 +457,26 @@ async function pollJobs() {
       document.getElementById('current-job-progress').textContent = progress == null ? '—' : String(progress) + '%' + (job.step != null && job.total_steps != null ? ' · ' + job.step + '/' + job.total_steps : '');
       document.getElementById('current-job-elapsed').textContent = job.elapsed ? `已用时 ${Math.ceil(job.elapsed)}s` : '—';
       document.getElementById('current-job-eta').textContent = formatJobEta(job);
+      const outputLink = document.getElementById('current-job-output');
+      if (outputLink) {
+        const available = job.state === 'COMPLETED' && job.id;
+        outputLink.hidden = !available;
+        if (available) {
+          outputLink.href = `output.html?project=${encodeURIComponent(projectId)}&job=${encodeURIComponent(job.id)}`;
+        }
+      }
+    } else {
+      document.getElementById('v-status').textContent = stateLabel(study?.current_state);
+      document.getElementById('v-progress-label').textContent = '—';
+      document.getElementById('v-progress').style.removeProperty('width');
+      document.getElementById('v-progress').parentElement.classList.remove('indeterminate');
+      document.getElementById('current-job-title').textContent = '尚无任务';
+      document.getElementById('current-job-stage').textContent = stateLabel(study?.current_state);
+      document.getElementById('current-job-progress').textContent = '—';
+      document.getElementById('current-job-elapsed').textContent = '—';
+      document.getElementById('current-job-eta').textContent = '暂无任务';
+      const outputLink = document.getElementById('current-job-output');
+      if (outputLink) outputLink.hidden = true;
     }
     renderHeader(); updateGate();
     if (!job || jobIsActive(job)) pollTimer = setTimeout(pollJobs, 2000);

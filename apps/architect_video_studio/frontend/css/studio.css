@@ -641,6 +641,13 @@ pre.prompt {
   font-size: 15px;
   text-align: center;
 }
+.video-box video {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  background: var(--viewport);
+}
 
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); font-size: 12px; }

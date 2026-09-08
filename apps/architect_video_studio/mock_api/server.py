@@ -56,6 +56,55 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_media(self, path: Path) -> None:
+            """Stream one already-authorized Job MP4, with byte ranges."""
+            size = path.stat().st_size
+            start, end = 0, size - 1
+            status = HTTPStatus.OK
+            requested = self.headers.get("Range", "").strip()
+            if requested:
+                match = re.fullmatch(r"bytes=(\d*)-(\d*)", requested)
+                if not match or (not match.group(1) and not match.group(2)):
+                    self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.end_headers()
+                    return
+                if match.group(1):
+                    start = int(match.group(1))
+                    if match.group(2):
+                        end = int(match.group(2))
+                    else:
+                        end = min(size - 1, start + 1024 * 1024 - 1)
+                else:
+                    suffix_length = int(match.group(2))
+                    start = max(0, size - suffix_length)
+                    end = size - 1
+                if start >= size or start > end:
+                    self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.end_headers()
+                    return
+                end = min(end, size - 1)
+                status = HTTPStatus.PARTIAL_CONTENT
+            length = end - start + 1
+            self.send_response(status)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(length))
+            self.send_header("Accept-Ranges", "bytes")
+            if status == HTTPStatus.PARTIAL_CONTENT:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with path.open("rb") as stream:
+                stream.seek(start)
+                remaining = length
+                while remaining:
+                    chunk = stream.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+
         def _read_json(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0:
@@ -269,6 +318,10 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/jobs/([^/]+)/result", path)
             if m and method == "GET":
                 return self._ok(apis["output"].get_result(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/media", path)
+            if m and method == "GET":
+                self._send_media(apis["output"].media_path(m.group(1)))
+                return
             m = re.fullmatch(r"/api/jobs/([^/]+)/report", path)
             if m and method == "GET":
                 return self._ok(apis["output"].get_report(m.group(1)))

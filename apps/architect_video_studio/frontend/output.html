@@ -29,10 +29,11 @@
   <main id="main-content" class="wrap app-main">
     <h2 style="margin-top:0;">Output Review</h2>
     <div id="err" class="error-banner" style="display:none;"></div>
+    <div id="output-context-actions" class="row mt" style="display:none;gap:8px;" aria-label="输出上下文导航"></div>
     <div class="workspace" style="grid-template-columns:1fr 1fr;">
       <div class="panel">
         <h3>视频</h3>
-        <div class="video-box"><span class="video-box-title">Production preview</span><span class="small">Rendered output will appear here.</span></div>
+        <div class="video-box"><video id="output-video" controls preload="metadata" hidden></video><span id="output-video-empty" class="small">完成的输出会显示在这里。</span></div>
         <div id="params" class="mt"></div>
       </div>
       <div class="panel">

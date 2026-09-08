@@ -18,11 +18,19 @@
     return ROUTES[fileName] || 'home';
   }
 
-  function withProject(href) {
+  function withContext(href) {
+    if (!href || href.startsWith('index.html?new=1')) return href;
+    const target = new URL(href, window.location.href);
+    const fileName = target.pathname.split('/').pop().toLowerCase();
     const project = params.get('project');
-    if (!project || !href || href.startsWith('index.html?new=1')) return href;
-    const separator = href.includes('?') ? '&' : '?';
-    return href + separator + 'project=' + encodeURIComponent(project);
+    const job = params.get('job');
+    if (project && ['workspace.html', 'jobs.html', 'output.html'].includes(fileName)) {
+      target.searchParams.set('project', project);
+    }
+    if (job && ['jobs.html', 'output.html'].includes(fileName)) {
+      target.searchParams.set('job', job);
+    }
+    return target.pathname.split('/').pop() + target.search + target.hash;
   }
 
   function resolveNavigation() {
@@ -49,12 +57,12 @@
           ? 'workspace.html?project=' + encodeURIComponent(currentProject)
           : 'index.html?new=1';
       } else if (linkRoute === 'jobs' || linkRoute === 'outputs') {
-        link.href = withProject(link.getAttribute('href'));
+        link.href = withContext(link.getAttribute('href'));
       }
     });
 
     document.querySelectorAll('.studio-heading a[href="jobs.html"], .current-job-strip a[href="jobs.html"]').forEach((link) => {
-      link.href = withProject(link.getAttribute('href'));
+      link.href = withContext(link.getAttribute('href'));
     });
   }
 
