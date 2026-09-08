@@ -11,6 +11,7 @@ from apps.architect_video_studio.mock_api.workflow_handoff import (
     build_ui_workflow,
 )
 from apps.architect_video_studio.mock_api.environment_service import _workflow_identity_diff
+from runtime.adapters.production_workflow_binding import workflow_identity_projection
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +79,43 @@ class TestNativeH3WorkflowBridge(unittest.TestCase):
         diff = _workflow_identity_diff(expected, actual)
         self.assertEqual(diff["inputs"][0]["expected"]["kind"], "link")
         self.assertEqual(diff["inputs"][0]["actual"]["kind"], "list")
+
+    def test_identity_projection_matches_comfy_defaults_and_js_numbers(self):
+        expected = {
+            "2": {"class_type": "CLIPLoader", "inputs": {
+                "clip_name": "clip.safetensors", "type": "minimax",
+            }},
+            "8": {"class_type": "BasicScheduler", "inputs": {"denoise": 1.0}},
+            "14": {"class_type": "CreateVideo", "inputs": {"fps": 24.0}},
+        }
+        actual = {
+            2: {"class_type": "CLIPLoader", "inputs": {
+                "clip_name": "clip.safetensors", "type": "minimax", "device": "default",
+            }, "_meta": {"title": "CLIP Loader"}},
+            8: {"class_type": "BasicScheduler", "inputs": {"denoise": 1}},
+            14: {"class_type": "CreateVideo", "inputs": {"fps": 24, "bit_depth": 8}},
+        }
+        self.assertEqual(workflow_identity_projection(expected),
+                         workflow_identity_projection(actual))
+
+    def test_identity_projection_does_not_mask_linked_optional_inputs(self):
+        expected = {
+            "2": {"class_type": "CLIPLoader", "inputs": {
+                "device": ["9", 0],
+            }},
+            "14": {"class_type": "CreateVideo", "inputs": {
+                "bit_depth": ["10", 0],
+            }},
+        }
+        actual = {
+            "2": {"class_type": "CLIPLoader", "inputs": {}},
+            "14": {"class_type": "CreateVideo", "inputs": {}},
+        }
+        projected_expected = workflow_identity_projection(expected)
+        projected_actual = workflow_identity_projection(actual)
+        self.assertNotEqual(projected_expected, projected_actual)
+        self.assertEqual(expected["2"]["inputs"]["device"], ["9", 0])
+        self.assertEqual(expected["14"]["inputs"]["bit_depth"], ["10", 0])
 
     def test_desktop_shell_does_not_execute_graph_handoff(self):
         shell = (ROOT / "launcher" / "DesktopShell.cs").read_text(encoding="utf-8")

@@ -50,6 +50,58 @@ def canonical_workflow_sha256(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _normalize_identity_value(value: Any) -> Any:
+    """Normalize values that change representation across Python and JS."""
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, list):
+        return [_normalize_identity_value(item) for item in value]
+    if isinstance(value, Mapping):
+        return {str(key): _normalize_identity_value(item)
+                for key, item in value.items()}
+    return value
+
+
+def workflow_identity_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Project an API graph onto the execution semantics shared with ComfyUI.
+
+    ComfyUI's browser serializer adds node titles under ``_meta`` and fills
+    known optional widgets with their defaults.  Those are not part of the
+    API execution identity, while links and user-selected values remain
+    strict.  Numeric values are normalized because JSON.stringify has one
+    JavaScript Number type.
+    """
+    projected: dict[str, Any] = {}
+    for node_id, node in payload.items():
+        if not isinstance(node, Mapping):
+            projected[str(node_id)] = _normalize_identity_value(node)
+            continue
+        class_type = str(node.get("class_type") or "")
+        raw_inputs = node.get("inputs")
+        inputs = {
+            str(key): _normalize_identity_value(value)
+            for key, value in (raw_inputs.items() if isinstance(raw_inputs, Mapping) else [])
+        }
+        if class_type == "CLIPLoader":
+            inputs.setdefault("device", "default")
+        elif class_type == "CreateVideo":
+            inputs.setdefault("bit_depth", 8)
+        projected[str(node_id)] = {
+            "class_type": class_type,
+            "inputs": inputs,
+        }
+    return projected
+
+
+def canonical_identity_workflow_sha256(payload: Mapping[str, Any]) -> str:
+    """Hash the ComfyUI/API semantic identity projection."""
+    return canonical_workflow_sha256(workflow_identity_projection(payload))
+
+
 def load_registry() -> dict:
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 

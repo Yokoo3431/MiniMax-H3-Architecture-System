@@ -1096,7 +1096,9 @@ class EnvironmentService:
     def verify_current_workflow(self, job_id: str, snapshot_id: str,
                                 workflow: Any) -> Dict[str, Any]:
         """Verify a browser-serialized active graph against the Job snapshot."""
-        from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
+        from runtime.adapters.production_workflow_binding import (
+            canonical_identity_workflow_sha256, workflow_identity_projection,
+        )
 
         expected = self.current_workflow(job_id)
         if str(snapshot_id or "") != str(expected.get("snapshot_id") or ""):
@@ -1108,9 +1110,14 @@ class EnvironmentService:
             }
         if not isinstance(workflow, dict):
             return {"verified": False, "reason": "ACTIVE_GRAPH_NOT_API_OBJECT"}
-        actual_hash = canonical_workflow_sha256(workflow)
-        expected_hash = str(expected.get("execution_workflow_sha256") or expected.get("workflow_hash") or "")
-        expected_nodes = len(expected.get("workflow") or {})
+        expected_workflow = expected.get("workflow") or {}
+        expected_identity = workflow_identity_projection(expected_workflow)
+        actual_identity = workflow_identity_projection(workflow)
+        actual_hash = canonical_identity_workflow_sha256(workflow)
+        expected_hash = canonical_identity_workflow_sha256(expected_workflow)
+        stored_expected_hash = str(
+            expected.get("execution_workflow_sha256") or expected.get("workflow_hash") or "")
+        expected_nodes = len(expected_workflow)
         verified = actual_hash == expected_hash and len(workflow) == expected_nodes
         result = {
             "verified": verified,
@@ -1119,12 +1126,13 @@ class EnvironmentService:
             "expected_snapshot_id": expected.get("snapshot_id", ""),
             "workflow_hash": actual_hash,
             "expected_workflow_hash": expected_hash,
+            "stored_expected_workflow_hash": stored_expected_hash,
             "node_count": len(workflow),
             "expected_node_count": expected_nodes,
         }
         if not verified:
             result["differences"] = _workflow_identity_diff(
-                expected.get("workflow") or {}, workflow)
+                expected_identity, actual_identity)
         return result
 
     def restart_comfyui(self) -> Dict[str, Any]:
