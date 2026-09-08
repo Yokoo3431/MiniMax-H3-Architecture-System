@@ -6,7 +6,10 @@ import json
 import unittest
 from pathlib import Path
 
-from apps.architect_video_studio.mock_api.workflow_handoff import build_ui_workflow
+from apps.architect_video_studio.mock_api.workflow_handoff import (
+    WorkflowHandoffError,
+    build_ui_workflow,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +30,9 @@ class TestNativeH3WorkflowBridge(unittest.TestCase):
         self.assertEqual(ui["nodes"][5]["widgets_values"][1:4], [1344, 768, 107])
         self.assertEqual([item["link"] for item in ui["nodes"][5]["inputs"]], [1, 2, 3])
         self.assertEqual([item["link"] for item in ui["nodes"][9]["inputs"]], [5, 6])
+        self.assertEqual([item["link"] for item in ui["nodes"][11]["inputs"]], [12, 17])
+        self.assertEqual([item["link"] for item in ui["nodes"][12]["inputs"]], [13, 18])
+        self.assertEqual(len(ui["links"]), 18)
         self.assertEqual(ui["nodes"][14]["widgets_values"][0], "video/04_Drone_Aerial")
 
     def test_bridge_owns_binding_and_verification(self):
@@ -45,6 +51,14 @@ class TestNativeH3WorkflowBridge(unittest.TestCase):
         self.assertIn("app.graphToPrompt", bridge)
         self.assertIn("/api/system/verify-workflow", bridge)
         self.assertNotIn("localStorage.clear", bridge)
+
+    def test_invalid_api_link_is_rejected(self):
+        api = json.loads(
+            (ROOT / "production_workflows" / "golden" / "04_Drone_Aerial.json")
+            .read_text(encoding="utf-8"))
+        api["12"]["inputs"]["vae"] = ["missing-node", 0]
+        with self.assertRaises(WorkflowHandoffError):
+            build_ui_workflow("04_Drone_Aerial", api)
 
     def test_desktop_shell_does_not_execute_graph_handoff(self):
         shell = (ROOT / "launcher" / "DesktopShell.cs").read_text(encoding="utf-8")

@@ -89,11 +89,78 @@ def build_ui_workflow(workflow_id: str, api_workflow: Mapping[str, Any], *,
                 values[index] = copy.deepcopy(inputs[input_name])
         node["widgets_values"] = values
 
+    nodes_by_id = {str(node.get("id")): node for node in result["nodes"]}
+
+    # The API snapshot is authoritative for connections. Native Golden files
+    # can be older than the API graph (the 04_Drone_Aerial template omitted
+    # the two VAE decode links), so rebuild the top-level link table from every
+    # API reference while preserving existing link ids where possible.
+    existing_links: dict[tuple[str, int, str, int], list[Any]] = {}
+    next_link_id = 1
+    for link in result.get("links") or []:
+        if not isinstance(link, list) or len(link) < 5:
+            continue
+        link_id, origin_id, origin_slot, target_id, target_slot = link[:5]
+        try:
+            key = (str(origin_id), int(origin_slot), str(target_id), int(target_slot))
+            existing_links[key] = link
+            next_link_id = max(next_link_id, int(link_id) + 1)
+        except (TypeError, ValueError):
+            continue
+
+    rebuilt_links: list[list[Any]] = []
+    for target_id, api_node in api_workflow.items():
+        target = nodes_by_id.get(str(target_id))
+        if target is None:
+            raise WorkflowHandoffError(f"API node {target_id} is missing from UI")
+        target_inputs = target.get("inputs") or []
+        input_slots = {
+            str(slot.get("name")): index
+            for index, slot in enumerate(target_inputs)
+            if isinstance(slot, Mapping) and slot.get("name") is not None
+        }
+        for input_name, value in (api_node.get("inputs") or {}).items():
+            if not (isinstance(value, list) and len(value) == 2):
+                continue
+            origin_id = str(value[0])
+            try:
+                origin_slot = int(value[1])
+            except (TypeError, ValueError) as exc:
+                raise WorkflowHandoffError(
+                    f"API link for {target_id}.{input_name} has an invalid slot") from exc
+            if origin_id not in nodes_by_id or origin_slot < 0:
+                raise WorkflowHandoffError(
+                    f"API link for {target_id}.{input_name} references an invalid origin")
+            if input_name not in input_slots:
+                raise WorkflowHandoffError(
+                    f"UI node {target_id} has no input slot {input_name}")
+            target_slot = input_slots[input_name]
+            key = (origin_id, origin_slot, str(target_id), target_slot)
+            old = existing_links.get(key)
+            if old is not None:
+                link_id = int(old[0])
+                link_type = old[5] if len(old) > 5 else "*"
+            else:
+                link_id = next_link_id
+                next_link_id += 1
+                origin = nodes_by_id.get(origin_id)
+                origin_outputs = origin.get("outputs") if origin else []
+                link_type = "*"
+                if isinstance(origin_outputs, list) and origin_slot < len(origin_outputs):
+                    link_type = origin_outputs[origin_slot].get("type", "*")
+                if link_type == "*" and target_slot < len(target_inputs):
+                    link_type = target_inputs[target_slot].get("type", "*")
+            rebuilt_links.append([
+                link_id, int(origin_id), origin_slot, int(target_id),
+                target_slot, link_type,
+            ])
+    result["links"] = rebuilt_links
+    result["last_link_id"] = max((int(link[0]) for link in rebuilt_links), default=0)
+
     # Some historical Native Golden exports carried stale per-node link
     # fields while their top-level ``links`` table was correct. ComfyUI uses
     # the top-level table during configure; keeping both representations in
     # sync prevents a frontend-version-dependent edge/link mismatch.
-    nodes_by_id = {str(node.get("id")): node for node in result["nodes"]}
     for node in result["nodes"]:
         for input_slot in node.get("inputs") or []:
             input_slot["link"] = None
