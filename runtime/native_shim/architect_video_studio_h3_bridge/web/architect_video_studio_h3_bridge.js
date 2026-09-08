@@ -94,7 +94,10 @@
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const active = store.activeWorkflow;
       const signature = active ? `${active.path}|${active.activeState?.id || ""}` : "";
-      if (app.vueAppReady && app.graph && !app.isLoadingGraph && signature) {
+      const graphReady = typeof app.isGraphReady === "boolean"
+        ? app.isGraphReady
+        : !!app.graph;
+      if (app.vueAppReady && graphReady && !app.configuringGraph && signature) {
         stable = signature === previous ? stable + 1 : 0;
         previous = signature;
         if (stable >= 3) return;
@@ -105,6 +108,23 @@
       await sleep(250);
     }
     throw new Error("ComfyUI workflow persistence restore did not become idle");
+  }
+
+  async function waitForComfyReady(app) {
+    let stable = 0;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const graphReady = typeof app.isGraphReady === "boolean"
+        ? app.isGraphReady
+        : !!app.graph;
+      if (app.vueAppReady && graphReady && !app.configuringGraph) {
+        stable += 1;
+        if (stable >= 3) return;
+      } else {
+        stable = 0;
+      }
+      await sleep(250);
+    }
+    throw new Error("ComfyUI app did not become ready for H3 handoff");
   }
 
   async function fetchHandoff(target) {
@@ -173,7 +193,7 @@
       throw new Error("ComfyUI app API is unavailable");
     }
     const { store, service } = await loadWorkflowServices();
-    await waitForRestore(app, store);
+    await waitForComfyReady(app);
     const data = await fetchHandoff(target);
     const path = targetPath(data, target);
     const current = activeIdentity(store);
@@ -201,12 +221,17 @@
     ensureReturnButton();
     const target = queryTarget();
     if (!target.jobId || !target.snapshotId) return;
-    if (window.__avsH3BridgePromise) return window.__avsH3BridgePromise;
-    window.__avsH3BridgePromise = bindExactWorkflow().catch((error) => {
-      console.error(`[${BRIDGE_NAME}]`, error);
-      showStatus(`H3 工作流加载失败：${error.message}`, false);
-    });
-    return window.__avsH3BridgePromise;
+    if (window.__avsH3BridgeScheduled || window.__avsH3BridgePromise) return;
+    window.__avsH3BridgeScheduled = true;
+    // ComfyUI invokes extension setup from app.setup(), before GraphCanvas
+    // restores workflow tabs. Do not await the handoff here or startup can
+    // deadlock until waitForRestore times out.
+    setTimeout(() => {
+      window.__avsH3BridgePromise = bindExactWorkflow().catch((error) => {
+        console.error(`[${BRIDGE_NAME}]`, error);
+        showStatus(`H3 工作流加载失败：${error.message}`, false);
+      });
+    }, 0);
   }
 
   const app = window.comfyAPI?.app?.app || window.app;
