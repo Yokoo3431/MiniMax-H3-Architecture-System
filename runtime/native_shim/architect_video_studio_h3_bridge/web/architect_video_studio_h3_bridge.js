@@ -216,13 +216,11 @@
     const existing = store.getWorkflowByPath(path);
     if (existing) await service.closeWorkflow(existing, { warnIfUnsaved: false });
     const workflow = store.createTemporary(path.slice("workflows/".length), data.ui_workflow);
+    // ComfyUI's official workflow service calls loadGraphData internally
+    // while activating this target. Calling app.loadGraphData a second time
+    // can reconfigure links after the target is active; in 1.48.7 this was
+    // observed to drop the two optional VAE decode connections.
     await service.openWorkflow(workflow, { force: true });
-    await app.loadGraphData(data.ui_workflow, true, true, workflow, {
-      openSource: "architect_video_studio_h3_job",
-      deferWarnings: true,
-      skipAssetScans: true,
-      silentAssetErrors: true,
-    });
     const verified = await verifyActive(app, store, target, data);
     showStatus(`已绑定：${data.workflow_id} · ${verified.node_count} nodes · SHA ${verified.workflow_hash.slice(0, 12)} · CURRENT ✓`, true);
   }

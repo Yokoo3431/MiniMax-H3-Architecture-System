@@ -144,7 +144,8 @@ class TestProductHardening(unittest.TestCase):
                   "architect_video_studio_h3_bridge" / "web" /
                   "architect_video_studio_h3_bridge.js").read_text(encoding="utf-8")
         self.assertIn("app.registerExtension", bridge)
-        self.assertIn("loadGraphData(data.ui_workflow, true, true, workflow", bridge)
+        self.assertIn("service.openWorkflow(workflow, { force: true })", bridge)
+        self.assertNotIn("app.loadGraphData(data.ui_workflow", bridge)
         self.assertNotIn("localStorage.clear", bridge)
         root = Path(__file__).resolve().parent.parent
         nvfp4 = (root / "patches/support_layers/minimax_h3_nvfp4_native_loader.patch").read_text(encoding="utf-8")
