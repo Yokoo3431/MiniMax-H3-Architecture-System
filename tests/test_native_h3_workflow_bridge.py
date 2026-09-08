@@ -35,6 +35,8 @@ class TestNativeH3WorkflowBridge(unittest.TestCase):
                   "architect_video_studio_h3_bridge.js").read_text(encoding="utf-8")
         self.assertIn("app.registerExtension", bridge)
         self.assertIn("async function bindExactWorkflow", bridge)
+        self.assertIn("module.A || module.useWorkflowStore", bridge)
+        self.assertNotIn("module.useWorkflowStore || module.nt", bridge)
         self.assertIn("service.openWorkflow", bridge)
         self.assertIn("app.loadGraphData(data.ui_workflow, true, true, workflow", bridge)
         self.assertIn("app.graphToPrompt", bridge)

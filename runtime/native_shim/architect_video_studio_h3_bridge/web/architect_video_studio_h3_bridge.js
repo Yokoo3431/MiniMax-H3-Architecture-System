@@ -68,9 +68,12 @@
     const url = frontendModuleUrl();
     if (!url) throw new Error("ComfyUI setting store module is not loaded");
     const module = await import(url);
-    // 1.48.7 exports the workflow store as nt and the workflow service as K.
-    // The fallbacks keep this bridge readable against an unminified dev build.
-    const storeFactory = module.nt || module.useWorkflowStore || module.BF;
+    // 1.48.7 exports the workflow store as A (useWorkflowStore) and the
+    // workflow service as K. `nt` is the workspace store in this build and is
+    // intentionally not accepted as a workflow-store fallback. The named
+    // fallback keeps this bridge readable against an unminified dev build,
+    // while the duck-typing check below protects against export drift.
+    const storeFactory = module.A || module.useWorkflowStore;
     const serviceFactory = module.K || module.useWorkflowService;
     if (typeof storeFactory !== "function" || typeof serviceFactory !== "function") {
       throw new Error("ComfyUI workflow store/service exports are unavailable");
