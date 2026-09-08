@@ -178,9 +178,19 @@
     const envelope = await response.json();
     const result = envelope.data || {};
     if (!result.verified) {
+      const details = (result.differences?.inputs || []).slice(0, 4).map((item) => {
+        const describe = (value) => {
+          if (!value || value.kind === "missing") return "missing";
+          if (value.kind === "link") return `link(${value.node_id},${value.slot})`;
+          if (value.kind === "string") return `string(${value.length},${value.sha256})`;
+          return `${value.kind}:${String(value.value ?? value.sha256 ?? "?")}`;
+        };
+        return `${item.node_id}.${item.input} ${describe(item.expected)}→${describe(item.actual)}`;
+      }).join("; ");
       throw new Error(`CURRENT ✕: ${result.reason || "WORKFLOW_IDENTITY_MISMATCH"} ` +
         `(nodes ${result.node_count ?? "?"}/${result.expected_node_count ?? "?"}, ` +
-        `SHA ${(result.workflow_hash || "").slice(0, 12)}/${(result.expected_workflow_hash || "").slice(0, 12)})`);
+        `SHA ${(result.workflow_hash || "").slice(0, 12)}/${(result.expected_workflow_hash || "").slice(0, 12)}` +
+        `${details ? `; diff ${details}` : ""})`);
     }
     return result;
   }

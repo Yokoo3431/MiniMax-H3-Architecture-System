@@ -10,6 +10,7 @@ from apps.architect_video_studio.mock_api.workflow_handoff import (
     WorkflowHandoffError,
     build_ui_workflow,
 )
+from apps.architect_video_studio.mock_api.environment_service import _workflow_identity_diff
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,6 +60,24 @@ class TestNativeH3WorkflowBridge(unittest.TestCase):
         api["12"]["inputs"]["vae"] = ["missing-node", 0]
         with self.assertRaises(WorkflowHandoffError):
             build_ui_workflow("04_Drone_Aerial", api)
+
+    def test_identity_diff_is_bounded_and_does_not_expose_string_values(self):
+        expected = {"1": {"inputs": {"prompt": "secret prompt"}}}
+        actual = {"1": {"inputs": {}}}
+        diff = _workflow_identity_diff(expected, actual)
+        self.assertEqual(diff["inputs"][0]["actual"], {"kind": "missing"})
+        self.assertNotIn("secret prompt", json.dumps(diff))
+
+    def test_identity_diff_normalizes_node_keys_and_fingerprints_arrays(self):
+        expected = {1: {"inputs": {"value": ["alpha", "beta"]}}}
+        actual = {"1": {"inputs": {"value": ["alpha", "beta"]}}}
+        diff = _workflow_identity_diff(expected, actual)
+        self.assertEqual(diff["inputs"], [])
+        expected[1]["inputs"]["link"] = ["4", 0]
+        actual["1"]["inputs"]["link"] = ["other", "slot"]
+        diff = _workflow_identity_diff(expected, actual)
+        self.assertEqual(diff["inputs"][0]["expected"]["kind"], "link")
+        self.assertEqual(diff["inputs"][0]["actual"]["kind"], "list")
 
     def test_desktop_shell_does_not_execute_graph_handoff(self):
         shell = (ROOT / "launcher" / "DesktopShell.cs").read_text(encoding="utf-8")

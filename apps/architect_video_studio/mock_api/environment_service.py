@@ -8,6 +8,7 @@ Official Skill pin. No GPU inference.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -36,6 +37,78 @@ from runtime.h3_model_root import (
 )
 from runtime.support_layer import load_release_runtime_manifest
 from .workflow_handoff import build_ui_workflow
+
+
+def _workflow_value_fingerprint(value: Any) -> Dict[str, Any]:
+    """Describe an input without exposing prompts, paths, or credentials."""
+    if (isinstance(value, list) and len(value) == 2 and
+            isinstance(value[0], (str, int)) and
+            isinstance(value[1], int) and not isinstance(value[1], bool)):
+        return {"kind": "link", "node_id": str(value[0]), "slot": value[1]}
+    if isinstance(value, str):
+        return {
+            "kind": "string",
+            "length": len(value),
+            "sha256": hashlib.sha256(value.encode("utf-8")).hexdigest()[:12],
+        }
+    if value is None or isinstance(value, (bool, int, float)):
+        return {"kind": type(value).__name__, "value": value}
+    try:
+        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        encoded = repr(value)
+    return {
+        "kind": type(value).__name__,
+        "sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:12],
+    }
+
+
+def _workflow_identity_diff(expected: Dict[str, Any], actual: Dict[str, Any]) -> Dict[str, Any]:
+    """Return bounded, non-sensitive differences between two API graphs."""
+    expected_ids = {str(key) for key in expected}
+    actual_ids = {str(key) for key in actual}
+
+    def node_by_id(workflow: Dict[str, Any], node_id: str) -> Any:
+        for key, node in workflow.items():
+            if str(key) == node_id:
+                return node
+        return {}
+
+    differences: list[Dict[str, Any]] = []
+    for node_id in sorted(expected_ids & actual_ids):
+        expected_node = node_by_id(expected, node_id)
+        actual_node = node_by_id(actual, node_id)
+        expected_inputs = expected_node.get("inputs") if isinstance(expected_node, dict) else {}
+        actual_inputs = actual_node.get("inputs") if isinstance(actual_node, dict) else {}
+        expected_inputs = expected_inputs if isinstance(expected_inputs, dict) else {}
+        actual_inputs = actual_inputs if isinstance(actual_inputs, dict) else {}
+        for input_name in sorted(set(expected_inputs) | set(actual_inputs)):
+            expected_value = (
+                {"kind": "missing"}
+                if input_name not in expected_inputs
+                else _workflow_value_fingerprint(expected_inputs[input_name])
+            )
+            actual_value = (
+                {"kind": "missing"}
+                if input_name not in actual_inputs
+                else _workflow_value_fingerprint(actual_inputs[input_name])
+            )
+            if expected_value != actual_value:
+                differences.append({
+                    "node_id": node_id,
+                    "input": input_name,
+                    "expected": expected_value,
+                    "actual": actual_value,
+                })
+            if len(differences) >= 32:
+                break
+        if len(differences) >= 32:
+            break
+    return {
+        "missing_nodes": sorted(expected_ids - actual_ids),
+        "extra_nodes": sorted(actual_ids - expected_ids),
+        "inputs": differences,
+    }
 
 # launcher is a sibling (repo root) or parent-sibling (distribution/studio).
 _LAUNCHER_CANDIDATES = [
@@ -1039,7 +1112,7 @@ class EnvironmentService:
         expected_hash = str(expected.get("execution_workflow_sha256") or expected.get("workflow_hash") or "")
         expected_nodes = len(expected.get("workflow") or {})
         verified = actual_hash == expected_hash and len(workflow) == expected_nodes
-        return {
+        result = {
             "verified": verified,
             "reason": "OK" if verified else "WORKFLOW_IDENTITY_MISMATCH",
             "snapshot_id": snapshot_id,
@@ -1049,6 +1122,10 @@ class EnvironmentService:
             "node_count": len(workflow),
             "expected_node_count": expected_nodes,
         }
+        if not verified:
+            result["differences"] = _workflow_identity_diff(
+                expected.get("workflow") or {}, workflow)
+        return result
 
     def restart_comfyui(self) -> Dict[str, Any]:
         """Reclaim only the managed ComfyUI port and start one clean child."""
