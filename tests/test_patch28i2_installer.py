@@ -32,6 +32,7 @@ from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
 from apps.architect_video_studio.mock_api.system_api import SystemAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.yaml_compat import safe_load  # noqa: E402
 from runtime.storage_policy import cache_paths, process_environment  # noqa: E402
+from runtime.support_layer import load_support_manifest  # noqa: E402
 
 
 def _sha(data: bytes) -> str:
@@ -170,6 +171,29 @@ class TestInstallerPlanning(unittest.TestCase):
         self.assertEqual(plan["schema_version"], 1)
         self.assertEqual(len(plan["components"]), 7)
         self.assertTrue(plan["requires_confirmation"])
+
+    def test_video_support_uses_video_release_provenance(self):
+        support = load_support_manifest(SYSTEM_ROOT)
+        entry = support["support_layers"]["video_helper_suite"]
+        target = self.h.native / "ComfyUI" / "custom_nodes" / entry["directory"]
+        target.mkdir(parents=True)
+        release = json.loads(
+            (SYSTEM_ROOT / "configs" / "release_runtime_manifest.json").read_text(encoding="utf-8")
+        )
+        (target.parent / "support_layer.lock.json").write_text(
+            json.dumps({
+                "video_helper_suite": {
+                    "commit": release["video_support"]["upstream_commit"],
+                    "source_tree_fingerprint": release["video_support"]["managed_runtime_fingerprint"],
+                }
+            }),
+            encoding="utf-8",
+        )
+        state = self.h.service._support_state(
+            self.h.native, InstallationService.VHS_SUPPORT_COMPONENT, entry
+        )
+        self.assertEqual(state["status"], "READY")
+        self.assertEqual(state["commit"], release["video_support"]["upstream_commit"])
 
     def test_default_storage_roots_are_project_local(self):
         service = InstallationService(self.h.store, repo_root=SYSTEM_ROOT,

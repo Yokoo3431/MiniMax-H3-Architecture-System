@@ -255,9 +255,16 @@ class InstallationService:
             # support layer. Older node directories used that record directly.
             record = data.get("h3" if layer_id == self.H3_SUPPORT_COMPONENT
                               else "video_helper_suite") or data
-            release_h3 = (load_release_runtime_manifest(self.repo_root).get("h3") or {})
-            expected_commit = release_h3.get("upstream_commit") or entry.get("commit")
-            expected = release_h3.get("managed_runtime_fingerprint")
+            release = load_release_runtime_manifest(self.repo_root)
+            # Each support layer owns a separate release provenance record.
+            # Using the H3 record for both layers makes a valid VideoHelperSuite
+            # lock look mismatched because its commit and tree fingerprint are
+            # intentionally different from the H3 values.
+            release_entry = release.get(
+                "h3" if layer_id == self.H3_SUPPORT_COMPONENT else "video_support"
+            ) or {}
+            expected_commit = release_entry.get("upstream_commit") or entry.get("commit")
+            expected = release_entry.get("managed_runtime_fingerprint")
             expected = expected or entry.get("production_snapshot", {}).get("source_tree_fingerprint_without_backups")
             if not expected:
                 expected = entry.get("source_tree_fingerprint", {}).get("value")
