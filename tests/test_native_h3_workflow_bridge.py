@@ -51,6 +51,7 @@ class TestNativeH3WorkflowBridge(unittest.TestCase):
         self.assertIn("service.openWorkflow", bridge)
         self.assertIn("service.openWorkflow(workflow, { force: true })", bridge)
         self.assertNotIn("app.loadGraphData(data.ui_workflow", bridge)
+        self.assertIn("stale persisted H3 graph; rebinding", bridge)
         self.assertIn("app.graphToPrompt", bridge)
         self.assertIn("/api/system/verify-workflow", bridge)
         self.assertNotIn("localStorage.clear", bridge)

@@ -208,9 +208,16 @@
     const path = targetPath(data, target);
     const current = activeIdentity(store);
     if (current?.job_id === target.jobId && current?.snapshot_id === target.snapshotId) {
-      const verified = await verifyActive(app, store, target, data);
-      showStatus(`已绑定：${data.workflow_id} · ${verified.node_count} nodes · SHA ${verified.workflow_hash.slice(0, 12)} · CURRENT ✓`, true);
-      return;
+      try {
+        const verified = await verifyActive(app, store, target, data);
+        showStatus(`已绑定：${data.workflow_id} · ${verified.node_count} nodes · SHA ${verified.workflow_hash.slice(0, 12)} · CURRENT ✓`, true);
+        return;
+      } catch (error) {
+        // Persistence can restore a stale graph carrying the same H3 metadata.
+        // Its identity is not proof that graphToPrompt() still matches the
+        // immutable Job snapshot, so fall through to an exact rebind.
+        console.warn(`[${BRIDGE_NAME}] stale persisted H3 graph; rebinding`, error);
+      }
     }
 
     const existing = store.getWorkflowByPath(path);
