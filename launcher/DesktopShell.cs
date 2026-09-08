@@ -228,7 +228,7 @@ internal sealed class DesktopShellForm : Form
         SignalPageReadyAsync();
     }
 
-    private async Task SignalPageReadyAsync()
+    private async Task LegacySignalPageReadyAsync()
     {
         try {
             var state = await webView.ExecuteScriptAsync("document.readyState");
@@ -236,6 +236,8 @@ internal sealed class DesktopShellForm : Form
             UpdateComfyReturnVisibility(currentUrl);
             if (currentUrl.StartsWith(ComfyUrl, StringComparison.OrdinalIgnoreCase))
             {
+                Log("APP-09", "Comfy handoff delegated to the Comfy-side H3 Bridge; no host graph injection performed.");
+                return;
                 var returnUrl = (StudioUrl + "/index.html?new=1").Replace("'", "\\'");
                 var studioEndpoint = (StudioUrl + "/api/system/current-workflow?job_id=" + Uri.EscapeDataString(GetQueryValue(currentUrl, "h3_job"))).Replace("'", "\\'");
                 var script = "(() => { const token=new URL(location.href).searchParams.get('h3_refresh')||'default'; const reset='architect-video-studio-workflow-reset-v3:'+token; if (sessionStorage.getItem(reset)!=='1') { localStorage.clear(); sessionStorage.setItem(reset,'1'); location.reload(); return; } const id='architect-video-studio-return'; if (!document.getElementById(id)) { const b=document.createElement('button'); b.id=id; b.textContent='返回 Studio'; b.style.cssText='position:fixed;z-index:2147483647;right:12px;top:42px;height:24px;padding:0 8px;border:1px solid rgba(255,255,255,.35);border-radius:4px;background:rgba(36,105,180,.82);color:#fff;font:12px Segoe UI,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.28);cursor:pointer;opacity:.86;'; b.onclick=()=>{window.location.href='" + returnUrl + "';}; document.body.appendChild(b); } const endpoint='" + studioEndpoint + "'; fetch(endpoint,{cache:'no-store'}).then(r=>r.json()).then(x=>{ const d=x.data||{}; const wf=d.workflow; if (!wf) return; let attempts=0; const apply=()=>{ const a=window.app||globalThis.app; let ok=false; try { if (a && typeof a.loadGraphData==='function') { a.loadGraphData(wf); ok=true; } else if (a && a.graph && typeof a.graph.configure==='function') { a.graph.configure(wf); if (typeof a.graph.setDirtyCanvas==='function') a.graph.setDirtyCanvas(true,true); ok=true; } } catch(e) {} if (!ok && attempts++<8) return setTimeout(apply,750); const hash=(d.execution_workflow_sha256||d.workflow_hash||'').slice(0,12); const n=document.createElement('div'); n.textContent=ok ? ('已加载当前任务：'+(d.workflow_id||'')+' · SHA '+hash+' · CURRENT ✓') : ('当前任务工作流已准备：'+(d.file_name||'')); n.style.cssText='position:fixed;z-index:2147483647;right:18px;top:14px;padding:7px 10px;border-radius:4px;background:'+(ok?'#1f7a4d':'#8a5a00')+';color:#fff;font:12px Segoe UI,sans-serif;box-shadow:0 1px 5px rgba(0,0,0,.28);'; document.body.appendChild(n); setTimeout(()=>n.remove(),5000); }; apply(); }).catch(()=>{}); })();";
@@ -244,6 +246,19 @@ internal sealed class DesktopShellForm : Form
             Log("APP-09", "page ready signal received readyState=" + state + " url=" + currentUrl);
         }
         catch (Exception error) { Log("APP-09", "page ready signal exception=" + error.Message); }
+    }
+
+    // The Comfy-side extension owns workflow fetch, binding, and verification.
+    // Keeping page-ready host logic navigation-only avoids racing Comfy's
+    // workflow persistence lifecycle from WebView2 NavigationCompleted.
+    private Task SignalPageReadyAsync()
+    {
+        var currentUrl = webView != null && webView.Source != null ? webView.Source.AbsoluteUri : pendingUrl;
+        UpdateComfyReturnVisibility(currentUrl);
+        if (currentUrl.StartsWith(ComfyUrl, StringComparison.OrdinalIgnoreCase))
+            Log("APP-09", "Comfy handoff delegated to the Comfy-side H3 Bridge; no host graph injection performed.");
+        Log("APP-09", "page ready signal received url=" + currentUrl);
+        return Task.CompletedTask;
     }
 
     private void UpdateComfyReturnVisibility(string url) { }

@@ -35,6 +35,7 @@ from runtime.h3_model_root import (
     write_comfy_model_paths_config,
 )
 from runtime.support_layer import load_release_runtime_manifest
+from .workflow_handoff import build_ui_workflow
 
 # launcher is a sibling (repo root) or parent-sibling (distribution/studio).
 _LAUNCHER_CANDIDATES = [
@@ -997,6 +998,13 @@ class EnvironmentService:
                 "workflow_id": str(persisted.get("workflow_id") or selected_job.get("workflow") or ""),
                 "file_name": str(persisted.get("file_name") or ""),
                 "workflow": persisted["workflow"],
+                "ui_workflow": build_ui_workflow(
+                    str(persisted.get("workflow_id") or selected_job.get("workflow") or ""),
+                    persisted["workflow"],
+                    job_id=str(selected_job.get("id") or ""),
+                    snapshot_id=str(persisted.get("snapshot_id") or selected_job.get("workflow_snapshot_id") or ""),
+                    workflow_hash=str(persisted.get("workflow_hash") or selected_job.get("workflow_hash") or ""),
+                ),
                 "snapshot_id": str(persisted.get("snapshot_id") or selected_job.get("workflow_snapshot_id") or ""),
                 "workflow_hash": str(persisted.get("workflow_hash") or selected_job.get("workflow_hash") or ""),
                 "execution_workflow_sha256": str(persisted.get("execution_workflow_sha256") or selected_job.get("execution_workflow_sha256") or ""),
@@ -1011,6 +1019,36 @@ class EnvironmentService:
             f"任务 {selected_job.get('id', '')} 缺少精确执行快照，无法打开旧版工作流；"
             "请重新提交该任务以生成新的诊断快照。"
         )
+
+    def verify_current_workflow(self, job_id: str, snapshot_id: str,
+                                workflow: Any) -> Dict[str, Any]:
+        """Verify a browser-serialized active graph against the Job snapshot."""
+        from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
+
+        expected = self.current_workflow(job_id)
+        if str(snapshot_id or "") != str(expected.get("snapshot_id") or ""):
+            return {
+                "verified": False,
+                "reason": "SNAPSHOT_MISMATCH",
+                "expected_snapshot_id": expected.get("snapshot_id", ""),
+                "snapshot_id": snapshot_id,
+            }
+        if not isinstance(workflow, dict):
+            return {"verified": False, "reason": "ACTIVE_GRAPH_NOT_API_OBJECT"}
+        actual_hash = canonical_workflow_sha256(workflow)
+        expected_hash = str(expected.get("execution_workflow_sha256") or expected.get("workflow_hash") or "")
+        expected_nodes = len(expected.get("workflow") or {})
+        verified = actual_hash == expected_hash and len(workflow) == expected_nodes
+        return {
+            "verified": verified,
+            "reason": "OK" if verified else "WORKFLOW_IDENTITY_MISMATCH",
+            "snapshot_id": snapshot_id,
+            "expected_snapshot_id": expected.get("snapshot_id", ""),
+            "workflow_hash": actual_hash,
+            "expected_workflow_hash": expected_hash,
+            "node_count": len(workflow),
+            "expected_node_count": expected_nodes,
+        }
 
     def restart_comfyui(self) -> Dict[str, Any]:
         """Reclaim only the managed ComfyUI port and start one clean child."""

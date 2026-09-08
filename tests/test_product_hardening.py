@@ -139,8 +139,13 @@ class TestProductHardening(unittest.TestCase):
         self.assertIn("def current_workflow", service)
         self.assertIn("/api/system/current-workflow", server)
         self.assertIn("打开当前任务工作流", jobs)
-        self.assertIn("workflow-reset-v3", shell)
-        self.assertIn("loadGraphData", shell)
+        self.assertIn("Comfy handoff delegated to the Comfy-side H3 Bridge", shell)
+        bridge = (root / "runtime" / "native_shim" /
+                  "architect_video_studio_h3_bridge" / "web" /
+                  "architect_video_studio_h3_bridge.js").read_text(encoding="utf-8")
+        self.assertIn("app.registerExtension", bridge)
+        self.assertIn("loadGraphData(data.ui_workflow, true, true, workflow", bridge)
+        self.assertNotIn("localStorage.clear", bridge)
         root = Path(__file__).resolve().parent.parent
         nvfp4 = (root / "patches/support_layers/minimax_h3_nvfp4_native_loader.patch").read_text(encoding="utf-8")
         vae = (root / "patches/support_layers/minimax_h3_vae_offload_sync.patch").read_text(encoding="utf-8")
@@ -163,7 +168,7 @@ class TestProductHardening(unittest.TestCase):
         self.assertIn("persisted = selected_job.get(\"workflow_snapshot\") or {}", service)
         self.assertIn("h3_snapshot", service)
         self.assertIn("opened = False", launcher)
-        self.assertIn("loadGraphData", shell)
+        self.assertIn("Comfy handoff delegated to the Comfy-side H3 Bridge", shell)
         self.assertIn("cache:'no-store'", shell)
 
 

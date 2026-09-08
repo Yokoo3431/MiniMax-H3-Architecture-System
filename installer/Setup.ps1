@@ -324,6 +324,17 @@ function Reconcile-H3RuntimeSupport([string]$Runtime, [string]$InstallRoot) {
     if ($LASTEXITCODE -ne 0) { throw "Managed H3 support reconciliation failed." }
 }
 
+function Install-H3FrontendBridge([string]$Runtime, [string]$InstallRoot) {
+    $source = Join-Path $InstallRoot "runtime\native_shim\architect_video_studio_h3_bridge"
+    $target = Join-Path $Runtime "ComfyUI\custom_nodes\architect_video_studio_h3_bridge"
+    if (-not (Test-Path -LiteralPath $source)) {
+        throw "AVS H3 frontend bridge payload is missing."
+    }
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Copy-Payload $source $target
+    Write-Host "Installed AVS H3 frontend bridge: $target"
+}
+
 function Ensure-Extractor($Config, [string]$Cache, [string]$InstallRoot, [string]$Runtime) {
     $path = Join-Path $Cache $Config.extractor.filename
     if (-not (Test-Path -LiteralPath $path)) {
@@ -571,6 +582,7 @@ Stop-ExistingDesktopShell $installRoot
 Stop-ExistingManagedServices $installRoot
 Copy-Payload $payload $installRoot
 $runtime = Ensure-Runtime $config $installRoot $cache
+Install-H3FrontendBridge $runtime $installRoot
 Set-Content -LiteralPath (Join-Path $installRoot "native_env.path") -Value $runtime -Encoding UTF8
 $modelsRoot = Find-ExistingModelsRoot $installRoot $runtime
 Set-Content -LiteralPath (Join-Path $installRoot "models_env.path") -Value $modelsRoot -Encoding UTF8

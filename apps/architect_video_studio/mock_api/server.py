@@ -42,6 +42,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8189")
+            self.send_header("Vary", "Origin")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -350,6 +352,12 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 values = parse_qs(query)
                 return self._ok(apis["system"].current_workflow(
                     (values.get("job_id") or [""])[0]))
+            if path == "/api/system/verify-workflow" and method == "POST":
+                return self._ok(apis["system"].verify_current_workflow(
+                    str(body.get("job_id") or ""),
+                    str(body.get("snapshot_id") or ""),
+                    body.get("workflow"),
+                ))
             if path == "/api/system/restart-comfyui" and method == "POST":
                 return self._ok(apis["system"].restart_comfyui())
             if path == "/api/system/runtime-update/status" and method == "GET":
