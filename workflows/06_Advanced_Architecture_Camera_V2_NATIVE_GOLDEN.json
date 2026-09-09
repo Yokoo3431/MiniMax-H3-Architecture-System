@@ -1,0 +1,33 @@
+{
+  "last_node_id": 15,
+  "last_link_id": 18,
+  "nodes": [
+    {"id": 1, "type": "LoadImage", "pos": [60, 80], "size": [320, 240], "widgets_values": ["__REFERENCE_FIRST__", "image"], "inputs": [], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [3]}], "properties": {"title": "FIRST FRAME - architecture reference"}},
+    {"id": 2, "type": "CLIPLoader", "pos": [420, 80], "size": [300, 100], "widgets_values": ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "minimax"], "inputs": [], "outputs": [{"name": "CLIP", "type": "CLIP", "links": [1]}], "properties": {"title": "TE - locked native loader"}},
+    {"id": 3, "type": "UNETLoader", "pos": [420, 200], "size": [300, 100], "widgets_values": ["minimax_h3_fl2va_pruned_int8_convrot.safetensors", "default"], "inputs": [], "outputs": [{"name": "MODEL", "type": "MODEL", "links": [4, 5]}], "properties": {"title": "DiT - locked native loader"}},
+    {"id": 4, "type": "VAELoader", "pos": [420, 320], "size": [300, 90], "widgets_values": ["minimax_h3_video_vae_fp16.safetensors"], "inputs": [], "outputs": [{"name": "VAE", "type": "VAE", "links": [2, 17]}], "properties": {"title": "Video VAE"}},
+    {"id": 5, "type": "VAELoader", "pos": [420, 420], "size": [300, 90], "widgets_values": ["minimax_h3_audio_vae_fp32.safetensors"], "inputs": [], "outputs": [{"name": "VAE", "type": "VAE", "links": [18]}], "properties": {"title": "Audio VAE"}},
+    {"id": 6, "type": "MiniMaxH3ImageToVideo", "pos": [760, 80], "size": [420, 330], "widgets_values": ["For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\nintegrated_multimodal_description: [Shot 1] A controlled architectural camera move at slow speed, combining a restrained forward push with a small aerial arc. Keep the building as the locked subject throughout the single continuous shot. Preserve massing, façade geometry, rooflines, openings, structural edges, and material boundaries from the reference image. Keep concrete texture and glass reflections stable; keep the horizon level and perspective change gradual. No structural morphing, no spontaneous architecture additions, no object substitution, no text, subtitles, logos, or watermarks.\n\noverall_soundscape: Gentle ambient environment sound consistent with the architectural site, subtle wind, and restrained spatial room tone; no dialogue.\n\nnon_diegetic_music: Minimal ambient cinematic score, slow tempo, warm and restrained, fading in softly.", 1344, 768, 107], "inputs": [{"name": "clip", "type": "CLIP", "link": 1}, {"name": "vae", "type": "VAE", "link": 2}, {"name": "first_frame", "type": "IMAGE", "link": 3}], "outputs": [{"name": "positive", "type": "CONDITIONING", "links": [6]}, {"name": "LATENT", "type": "LATENT", "links": [7]}], "properties": {"title": "ADVANCED V2 I2V - prompt conditioning only"}},
+    {"id": 7, "type": "KSamplerSelect", "pos": [760, 450], "size": [260, 90], "widgets_values": ["res_multistep"], "inputs": [], "outputs": [{"name": "SAMPLER", "type": "SAMPLER", "links": [8]}], "properties": {"title": "same sampler as Golden 04"}},
+    {"id": 8, "type": "BasicScheduler", "pos": [760, 550], "size": [300, 110], "widgets_values": ["simple", 20, 1.0], "inputs": [{"name": "model", "type": "MODEL", "link": 4}], "outputs": [{"name": "SIGMAS", "type": "SIGMAS", "links": [9]}], "properties": {"title": "same scheduler and steps"}},
+    {"id": 9, "type": "RandomNoise", "pos": [760, 680], "size": [260, 90], "widgets_values": [777888904], "inputs": [], "outputs": [{"name": "NOISE", "type": "NOISE", "links": [10]}], "properties": {"title": "same comparison seed"}},
+    {"id": 10, "type": "BasicGuider", "pos": [1080, 450], "size": [260, 100], "widgets_values": [], "inputs": [{"name": "model", "type": "MODEL", "link": 5}, {"name": "conditioning", "type": "CONDITIONING", "link": 6}], "outputs": [{"name": "GUIDER", "type": "GUIDER", "links": [11]}], "properties": {"title": "guider"}},
+    {"id": 11, "type": "SamplerCustomAdvanced", "pos": [1080, 570], "size": [320, 140], "widgets_values": [], "inputs": [{"name": "noise", "type": "NOISE", "link": 10}, {"name": "guider", "type": "GUIDER", "link": 11}, {"name": "sampler", "type": "SAMPLER", "link": 8}, {"name": "sigmas", "type": "SIGMAS", "link": 9}, {"name": "latent_image", "type": "LATENT", "link": 7}], "outputs": [{"name": "output", "type": "LATENT", "links": [12, 13]}], "properties": {"title": "native sampler"}},
+    {"id": 12, "type": "VAEDecode", "pos": [1440, 360], "size": [260, 90], "widgets_values": [], "inputs": [{"name": "samples", "type": "LATENT", "link": 12}, {"name": "vae", "type": "VAE", "link": 17}], "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [14]}], "properties": {"title": "video decode - required VAE path"}},
+    {"id": 13, "type": "VAEDecodeAudio", "pos": [1440, 470], "size": [260, 90], "widgets_values": [], "inputs": [{"name": "samples", "type": "LATENT", "link": 13}, {"name": "vae", "type": "VAE", "link": 18}], "outputs": [{"name": "AUDIO", "type": "AUDIO", "links": [15]}], "properties": {"title": "audio decode - required VAE path"}},
+    {"id": 14, "type": "CreateVideo", "pos": [1740, 80], "size": [280, 120], "widgets_values": [24.0], "inputs": [{"name": "images", "type": "IMAGE", "link": 14}, {"name": "audio", "type": "AUDIO", "link": 15}], "outputs": [{"name": "video", "type": "VIDEO", "links": [16]}], "properties": {"title": "mux - same 24fps"}},
+    {"id": 15, "type": "SaveVideo", "pos": [1740, 220], "size": [300, 140], "widgets_values": ["video/06_Advanced_Architecture_Camera_V2", "auto", "auto"], "inputs": [{"name": "video", "type": "VIDEO", "link": 16}], "outputs": [], "properties": {"title": "experimental output"}}
+  ],
+  "links": [
+    [1, 2, 0, 6, 0, "CLIP"], [2, 4, 0, 6, 1, "VAE"], [3, 1, 0, 6, 2, "IMAGE"],
+    [4, 3, 0, 8, 0, "MODEL"], [5, 3, 0, 10, 0, "MODEL"], [6, 6, 0, 10, 1, "CONDITIONING"],
+    [7, 6, 1, 11, 4, "LATENT"], [8, 7, 0, 11, 2, "SAMPLER"], [9, 8, 0, 11, 3, "SIGMAS"],
+    [10, 9, 0, 11, 0, "NOISE"], [11, 10, 0, 11, 1, "GUIDER"], [12, 11, 0, 12, 0, "LATENT"],
+    [13, 11, 0, 13, 0, "LATENT"], [14, 12, 0, 14, 0, "IMAGE"], [15, 13, 0, 14, 1, "AUDIO"],
+    [16, 14, 0, 15, 0, "VIDEO"], [17, 4, 0, 12, 1, "VAE"], [18, 5, 0, 13, 1, "VAE"]
+  ],
+  "groups": [{"title": "06 Advanced Architecture Camera V2 (EXPERIMENTAL_V2)", "bounding": [40, 40, 2050, 800], "color": "#4b3f72", "font_size": 24}],
+  "config": {},
+  "extra": {"architect_video_studio_advanced": {"workflow_id": "06_Advanced_Architecture_Camera_V2", "classification": "EXPERIMENTAL_V2", "base_reference": "04_Drone_Aerial", "production_routing": "DISABLED"}},
+  "version": 0.4
+}

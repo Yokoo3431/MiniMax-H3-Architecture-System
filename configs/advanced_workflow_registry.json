@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "layer": "G_ADVANCED_PRODUCT",
+  "classification": "EXPERIMENTAL_V2",
+  "production_routing": "DISABLED",
+  "golden_baseline": "GOLDEN_V1_PRODUCTION_BASELINE",
+  "workflows": {
+    "06_Advanced_Architecture_Camera_V2": {
+      "display_name": "Advanced Architecture Camera V2",
+      "api_asset": "production_workflows/advanced/06_Advanced_Architecture_Camera_V2.json",
+      "ui_asset": "workflows/06_Advanced_Architecture_Camera_V2_NATIVE_GOLDEN.json",
+      "base_reference": "04_Drone_Aerial",
+      "input_mode": "I2VA",
+      "required_reference_count": 1,
+      "production_selector_enabled": false,
+      "change_budget": [
+        "architecture-camera prompt conditioning",
+        "reference and geometry preservation constraints",
+        "experimental output identity"
+      ],
+      "parameters": {
+        "camera_mode": {"value": "controlled_slow_push_orbit", "execution_surface": "prompt_conditioning"},
+        "camera_speed": {"value": "slow", "execution_surface": "prompt_conditioning"},
+        "motion_strength": {"value": "restrained", "execution_surface": "prompt_conditioning"},
+        "reference_strength": {"value": "locked_subject", "execution_surface": "prompt_conditioning"},
+        "geometry_preservation_strength": {"value": "high", "execution_surface": "prompt_conditioning"},
+        "quality_profile": {"value": "standard", "execution_surface": "inherited_Golden_parameters"}
+      },
+      "comparison_contract": {
+        "same_reference": true,
+        "same_duration": true,
+        "same_resolution": true,
+        "same_fps": true,
+        "same_steps": true,
+        "same_seed": true,
+        "gpu_status": "NOT_RUN"
+      }
+    }
+  }
+}
