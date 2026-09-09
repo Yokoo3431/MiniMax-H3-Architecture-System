@@ -143,19 +143,32 @@ class OutputAPI:
         mapping = safe_load(
             (REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml")
             .read_text(encoding="utf-8"))
-        asset_rel = mapping["workflow_registry"][job.get("workflow")]["native_asset"]
-        workflow_asset = REPO_ROOT / asset_rel
-        if workflow_asset and workflow_asset.is_file():
-            shutil.copy2(workflow_asset, package / "workflow" / workflow_asset.name)
+        workflow_id = job.get("workflow")
+        workflow_asset = None
+        if workflow_id in mapping.get("workflow_registry", {}):
+            workflow_asset = REPO_ROOT / mapping["workflow_registry"][workflow_id]["native_asset"]
+            if workflow_asset.is_file():
+                shutil.copy2(workflow_asset, package / "workflow" / workflow_asset.name)
+        else:
+            # Experimental acceptance Jobs carry an immutable API snapshot;
+            # never consult or mutate the production mapping for them.
+            snapshot = job.get("workflow_snapshot") or {}
+            snapshot_workflow = snapshot.get("workflow")
+            if isinstance(snapshot_workflow, dict):
+                workflow_asset = package / "workflow" / f"{workflow_id}_EXECUTION.json"
+                workflow_asset.write_text(
+                    json.dumps(snapshot_workflow, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
 
         # prompt/
+        request_prompt = getattr(request, "prompt_payload", None)
         prompt_record = {
             "study_id": project_id,
             "workflow_id": job.get("workflow"),
             "camera_motion": job.get("camera_motion"),
             "generation_parameters": job.get("generation_parameters"),
-            "prompt_hash": (prompt or {}).get("prompt_hash"),
-            "prompt": (prompt or {}).get("prompt"),
+            "prompt_hash": (request_prompt or {}).get("prompt_hash") or (prompt or {}).get("prompt_hash"),
+            "prompt": (request_prompt or {}).get("prompt") or (prompt or {}).get("prompt"),
         }
         (package / "prompt" / "prompt.json").write_text(
             json.dumps(prompt_record, indent=2, ensure_ascii=False), encoding="utf-8")

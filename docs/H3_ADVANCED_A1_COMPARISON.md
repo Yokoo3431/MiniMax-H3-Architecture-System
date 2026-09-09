@@ -2,8 +2,9 @@
 
 ## Status
 
-This is the static A/B package for `ADVANCED-A1`. GPU execution was **not
-used** in this checkpoint, so no visual superiority claim is made.
+This is the A/B evidence package for `ADVANCED-A1`. One owner-authorized V2 B
+GPU run was completed. No visual superiority claim is made until the owner
+scores the rendered A/B outputs.
 
 ## A — Golden V1
 
@@ -11,8 +12,9 @@ used** in this checkpoint, so no visual superiority claim is made.
 - Classification: `GOLDEN_V1_PRODUCTION_BASELINE`
 - Input mode: I2VA, one first-frame reference
 - Graph: 15 nodes / 18 API semantic links
-- Model, sampler, scheduler, VAE pair, 1344x768, 24fps, 20 steps, and seed:
-  unchanged comparison baseline
+- Static template defaults: 1344x768, 24fps, 20 steps, seed 777888904
+- Acceptance A arm reused an existing completed native `04_Drone_Aerial` Job
+  at 4s, 1344x768, 24fps, 50 steps, seed 42
 
 ## B — Advanced V2
 
@@ -20,8 +22,9 @@ used** in this checkpoint, so no visual superiority claim is made.
 - Classification: `EXPERIMENTAL_V2`
 - Base reference: `04_Drone_Aerial`
 - Graph: 15 nodes / 18 API semantic links
-- Same reference, duration, resolution, fps, steps, seed, model, sampler,
-  scheduler, and VAE pair as A
+- Acceptance B used the same approved reference and runtime parameters as A:
+  4s, 1344x768, 24fps, 50 steps, seed 42; model, sampler, scheduler, and VAE
+  pair remained unchanged
 - Changed execution variable: architecture-camera prompt conditioning
 - Changed metadata variable: experimental output prefix/workflow identity
 
@@ -41,7 +44,25 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 - Both video/audio VAE decode links: PASS
 - Managed node inventory: PASS
 - Golden V1 zero-diff gate: PASS
-- Native Comfy GPU run: NOT RUN
+- Native Comfy GPU run: PASS (one B-arm submission; no duplicate)
+
+## Sanitized B-arm evidence
+
+- Job: `job-77d5a7651dd5`
+- Terminal state: `COMPLETED` / `SUCCEEDED` / `DELIVERED`
+- Prompt acknowledgement: received; observation initially exceeded the
+  1800-second client window, then the same server-side history was recovered
+  without resubmission
+- Snapshot: `306c58f15d978ffccfb1b608`
+- Execution/workflow SHA-256: `fbc0b74119c3a825a5c69d8f37a081074c87412521329fb7fbe3e018d826f446`
+- Output: available, `video/mp4`, 5,357,557 bytes
+- Managed media probe: 4.46s, 1344x768, 24fps, H.264, audio present
+- AVS `/result`: PASS; media Range response: `206`, MIME `video/mp4`
+- Source handoff reconstruction: PASS, 15 UI nodes / 18 UI links, API identity
+  verification PASS
+- Installed 8788 handoff: pending packaging refresh; the currently running
+  installed backend predates A1 and reports the V2 UI template is missing.
+  This is an installation freshness issue, not a GPU/output failure.
 
 ## Visual rubric for the future owner-authorized A/B run
 
@@ -57,6 +78,6 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 
 ## Decision
 
-`V2_NEEDS_ITERATION` — provisional static-only classification. This is not a
-visual rejection; it records that objective GPU/visual evidence is intentionally
-pending and the workflow must not be promoted yet.
+`ADVANCED_A1_OWNER_VISUAL_SCORE_PENDING` — technical A/B evidence is ready,
+but owner visual scoring and the installed DesktopShell handoff after a fresh
+package install remain pending. V2 remains experimental and is not promoted.
