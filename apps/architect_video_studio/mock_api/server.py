@@ -401,7 +401,6 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     from .system_api import SystemAPI
     from runtime.adapters.runtime_paths import resolve_runtime_paths
 
-    output_api = OutputAPI(store, allow_mock_outputs=False)
     runtime_adapter = None
     runtime_paths = None
     if runtime == "real":
@@ -424,6 +423,8 @@ def make_server(addr: Tuple[str, int], data_root: Path,
             production_binding=True,
             runtime_paths=runtime_paths,
         )
+    output_api = OutputAPI(store, allow_mock_outputs=False,
+                           runtime_paths=runtime_paths)
     apis = {
         "project": ProjectAPI(store),
         "reference": ReferenceAPI(store),

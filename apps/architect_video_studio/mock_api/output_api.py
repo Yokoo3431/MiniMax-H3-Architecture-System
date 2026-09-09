@@ -25,9 +25,11 @@ WORKFLOW_FILE_MAP = {
 
 class OutputAPI:
     def __init__(self, store: StudioStore,
-                 allow_mock_outputs: bool = True) -> None:
+                 allow_mock_outputs: bool = True,
+                 runtime_paths=None) -> None:
         self.store = store
         self.allow_mock_outputs = bool(allow_mock_outputs)
+        self.runtime_paths = runtime_paths
 
     def build_output_package(self, project_id: str,
                              job: Dict[str, Any]) -> Dict[str, Any]:
@@ -351,6 +353,11 @@ class OutputAPI:
     def manifest(self, project_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
         package = self.store.package_dir(project_id)
         media = self._job_media_path(project_id, job)
+        ffprobe = None
+        if media is not None and job.get("runtime") == "native":
+            from runtime.media_probe import probe_media_file
+
+            ffprobe = probe_media_file(media, runtime_paths=self.runtime_paths)
         return {
             "job_id": job["id"],
             "project_id": project_id,
@@ -373,7 +380,7 @@ class OutputAPI:
                 "output": [p.name for p in sorted((package / "output").iterdir())] if (package / "output").is_dir() else [],
                 "report": [p.name for p in sorted((package / "report").iterdir())] if (package / "report").is_dir() else [],
             },
-            "ffprobe": None,  # no real video in prototype
+            "ffprobe": ffprobe,
             "files": {
                 "prompt_json": str(package / "prompt" / "prompt.json"),
                 "provenance_json": str(package / "report" / "provenance.json"),
