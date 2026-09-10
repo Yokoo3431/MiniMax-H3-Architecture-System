@@ -41,6 +41,9 @@ RELEASE_WORKFLOW_FILES = (
     "01_Exterior_Hero.json", "02_Day_Night_Transition.json",
     "03_Material_Detail.json", "04_Drone_Aerial.json",
     "05_Slow_Walkthrough.json",
+    # The advanced V2 graph is an explicit native handoff asset.  Keeping it
+    # here does not add it to the production selector/registry.
+    "06_Advanced_Architecture_Camera_V2_NATIVE_GOLDEN.json",
 )
 DOC_FILES = (
     "docs/Quick_Start.md", "docs/Hardware_Requirements.md",

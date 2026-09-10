@@ -4,6 +4,17 @@ const errEl = document.getElementById('err');
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
 
+function ownerError(error, fallback = '操作失败，请稍后重试。') {
+  const message = String(error?.message || error || '');
+  if (message.includes('building_stage') || message.includes('建筑阶段')) {
+    return '无法创建 Study：请选择有效的建筑阶段。';
+  }
+  if (message.includes('project_type') || message.includes('Study 类型')) {
+    return '无法创建 Study：请选择有效的 Study 类型。';
+  }
+  return message || fallback;
+}
+
 const WF_LABEL = {
   '01_Exterior_Hero': 'Architecture Presentation',
   '02_Day_Night_Transition': 'Day Night',
@@ -87,10 +98,10 @@ async function loadTasks() {
             if (!response.ok || !data.ok) throw new Error(data.error || '删除失败');
           }
           await loadTasks();
-        } catch (e) { showErr(e.message); }
+        } catch (e) { showErr(ownerError(e)); }
       });
     });
-  } catch (e) { showErr(e.message); }
+  } catch (e) { showErr(ownerError(e, '加载 Study 失败。')); }
 }
 
 async function checkSystem() {
@@ -123,7 +134,7 @@ document.getElementById('task-create-btn').addEventListener('click', async () =>
       building_stage: document.getElementById('task-stage').value,
     });
     location.href = `workspace.html?project=${p.id}`;
-  } catch (e) { showErr(e.message); }
+  } catch (e) { showErr(ownerError(e, '创建 Study 失败。')); }
 });
 
 loadTasks();

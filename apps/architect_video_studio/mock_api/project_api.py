@@ -10,7 +10,32 @@ from .store import StudioStore
 from .job_state import is_job_active
 
 ALLOWED_PROJECT_TYPES = ("exterior", "interior", "material", "lighting", "aerial", "landscape", "mixed")
-ALLOWED_BUILDING_STAGES = ("方案", "扩初", "报建", "展示", "concept", "schematic", "construction", "presentation")
+CANONICAL_BUILDING_STAGES = ("方案", "扩初", "报建", "展示")
+BUILDING_STAGE_ALIASES = {
+    "concept": "方案",
+    "schematic": "扩初",
+    "construction": "报建",
+    "presentation": "展示",
+}
+# Keep the public allow-list backwards compatible for callers that import it,
+# while persistence always uses the four canonical owner-facing values.
+ALLOWED_BUILDING_STAGES = CANONICAL_BUILDING_STAGES + tuple(BUILDING_STAGE_ALIASES)
+
+
+def normalize_building_stage(value: Any) -> str:
+    """Validate an owner/API stage and return its canonical stored value."""
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ValueError("请选择有效的建筑阶段。")
+    canonical = BUILDING_STAGE_ALIASES.get(value, value)
+    if canonical not in CANONICAL_BUILDING_STAGES:
+        raise ValueError("请选择有效的建筑阶段。")
+    return canonical
+
+
+def validate_project_type(value: Any) -> str:
+    if not isinstance(value, str) or value not in ALLOWED_PROJECT_TYPES:
+        raise ValueError("请选择有效的 Study 类型。")
+    return value
 
 
 class ProjectAPI:
@@ -22,10 +47,8 @@ class ProjectAPI:
         name = (name or "").strip()
         if not name:
             raise ValueError("project name is required")
-        if project_type not in ALLOWED_PROJECT_TYPES:
-            raise ValueError(f"project_type {project_type!r} not in {ALLOWED_PROJECT_TYPES}")
-        if building_stage not in ALLOWED_BUILDING_STAGES:
-            raise ValueError(f"building_stage {building_stage!r} not in {ALLOWED_BUILDING_STAGES}")
+        project_type = validate_project_type(project_type)
+        building_stage = normalize_building_stage(building_stage)
         pid = self.store.new_id("proj")
         project = {
             "id": pid,
@@ -88,9 +111,15 @@ class ProjectAPI:
 
     def update_project(self, project_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
-        for key in ("name", "project_type", "building_stage"):
-            if key in patch:
-                project[key] = patch[key]
+        if "name" in patch:
+            name = str(patch.get("name") or "").strip()
+            if not name:
+                raise ValueError("project name is required")
+            project["name"] = name
+        if "project_type" in patch:
+            project["project_type"] = validate_project_type(patch["project_type"])
+        if "building_stage" in patch:
+            project["building_stage"] = normalize_building_stage(patch["building_stage"])
         if "output_directory" in patch:
             output = str(patch.get("output_directory") or "").strip()
             if not output:
