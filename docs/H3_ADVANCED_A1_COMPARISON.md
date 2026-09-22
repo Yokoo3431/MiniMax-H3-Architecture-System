@@ -121,10 +121,77 @@ considering promotion. The top A2 inputs are:
    the latter do not freeze the shot.
 3. Reduce overconstraint/negative phrasing that suppresses useful displacement.
 
-A2 is not implemented or started in this stage.
+A2 is implemented as a separate experimental profile below; it does not alter
+the repaired A1 graph or its historical evidence.
 
 ## Decision
 
 `ADVANCED_A1_COMPLETE` — the repaired A/B artifacts pass the technical
 fair-comparison gate, and the owner-visible review records `V2_NEEDS_ITERATION`.
-V2 remains experimental, is not promoted, and A2 is not started.
+V2 remains experimental and is not promoted.
+
+## A2 — Motion / Fidelity Experiment
+
+`07_Advanced_Architecture_Camera_V2_1` is an isolated follow-on profile from
+the durable A1 baseline `79bc895f39ac0b482d1decb730296ed4f3e19d70`. It keeps the
+same native 15-node / 18-link topology, model family, UNet, CLIP, video/audio
+VAE pair, scheduler, `euler` sampler, 4s duration, 1344x768 resolution, 24fps,
+50 steps, seed 42, and approved reference. Only the prompt-conditioning
+semantics and experimental output identity changed.
+
+The A2 prompt is divided into three explicit semantic blocks:
+
+1. `CAMERA MOTION BLOCK` — controlled slow forward aerial push, steady speed,
+   shallow oblique path, restrained parallax, stable horizon.
+2. `ARCHITECTURE PRESERVATION BLOCK` — locked building massing, roof silhouette,
+   façade proportions, openings, structural edges, materials, and site relation.
+3. `MINIMAL NEGATIVE CONSTRAINT BLOCK` — only structural morphing, spontaneous
+   additions, and disappearing major elements are prohibited.
+
+The A2 graph remains outside the production selector and is classified as
+`EXPERIMENTAL_A2`. Static validation passed for API/UI reconstruction, both
+VAE decode paths, 15 nodes, 18 links, and the inherited execution controls.
+Golden V1 and A1 assets remain unchanged.
+
+## A2 GPU evidence
+
+- Job: `job-307b93d23953`
+- Workflow: `07_Advanced_Architecture_Camera_V2_1`
+- Terminal state: `COMPLETED` / `SUCCEEDED` / `DELIVERED`
+- Recovery: the original single submission exceeded the local 1800-second
+  observation window; the same Comfy history was finalized after the original
+  prompt left the queue, with no resubmission.
+- Snapshot: `ca5ab0412e7fd3b14a5b6857`
+- Execution/workflow SHA-256:
+  `88720c16de5e0536fcc9412af2801731602f2d0e05e7d4a99975d0769cd93178`
+- Execution controls: 15 nodes / 18 API links; `KSamplerSelect=euler`;
+  duration 4s, 1344x768, 24fps, 50 steps, seed 42.
+- Output: available, `video/mp4`, 6,044,242 bytes
+- Managed media probe: 4.46s, 1344x768, 24fps, H.264, audio present
+
+## Three-way owner visual score
+
+Scores use local 0% / 25% / 50% / 75% / 100% checkpoints from A Golden V1,
+B1 repaired A1, and B2 A2. The temporary frame files remain local and are not
+part of the repository or any remote upload.
+
+| Criterion | A Golden | B1 A1 | B2 A2 | Notes |
+|---|---:|---:|---:|---|
+| Geometry preservation | 2 | 4 | 4 | A2 retains the repaired A1 geometry behavior |
+| Reference fidelity | 2 | 4 | 4 | No visible regression from A1 |
+| Camera smoothness | 4 | 3 | 3 | A2 remains under-moved; no material motion gain over A1 |
+| Material stability | 3 | 4 | 4 | Shoreline, vegetation, and façade remain stable |
+| Temporal stability | 2 | 4 | 4 | No meaningful temporal regression |
+| Architectural hallucination | 2 | 4 | 4 | No major new architectural additions/removals observed |
+| Overall visual quality | 2 | 3 | 3 | Stable architecture, but motion objective is not met |
+
+## A2 decision
+
+`A2_NEEDS_ITERATION` — the separated prompt blocks preserve the A1 repair
+quality, but they do not produce a materially stronger controlled camera move
+than B1. The next iteration should increase camera displacement/parallax while
+loosening the preservation language enough to avoid freezing the shot; it must
+retain the same native topology and fair-comparison controls.
+
+No automatic promotion, merge, tag, release change, or production selector
+change was made.

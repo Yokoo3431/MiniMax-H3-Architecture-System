@@ -69,7 +69,7 @@
         "same_clip": true,
         "same_vae": true,
         "sampler": "euler",
-        "gpu_status": "NOT_RUN"
+        "gpu_status": "COMPLETED_A2_NEEDS_ITERATION"
       }
     }
   }
