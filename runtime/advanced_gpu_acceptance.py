@@ -22,10 +22,14 @@ from apps.architect_video_studio.mock_api.output_api import OutputAPI
 from apps.architect_video_studio.mock_api.store import StudioStore
 from apps.architect_video_studio.state_machine.machine import ProjectStateMachine
 from runtime.advanced_workflows import (
+    ADVANCED_A2_API_PATH,
+    ADVANCED_A2_WORKFLOW_ID,
     ADVANCED_API_PATH,
     ADVANCED_WORKFLOW_ID,
     canonical_advanced_workflow_sha256,
+    load_advanced_a2_api_workflow,
     load_advanced_api_workflow,
+    validate_advanced_a2_workflow,
     validate_advanced_workflow,
 )
 from runtime.adapters.comfyui_client import ComfyUIClient
@@ -63,12 +67,23 @@ def _managed_ffmpeg_path(runtime_paths: RuntimePathContract) -> str | None:
 class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
     """Native transport with an explicit, non-production V2 binder."""
 
+    workflow_id = ADVANCED_WORKFLOW_ID
+    workflow_asset = ADVANCED_API_PATH
+    workflow_classification = "EXPERIMENTAL_V2"
+    output_prefix = "video/06_Advanced_Architecture_Camera_V2_B"
+
+    def _load_workflow(self) -> dict[str, Any]:
+        return load_advanced_api_workflow()
+
+    def _validate_workflow(self, object_info: Mapping[str, Any] | None) -> dict[str, Any]:
+        return validate_advanced_workflow(object_info=object_info)
+
     def preflight(self) -> dict[str, Any]:
         if self.runtime_paths is not None:
             self.runtime_paths.validate_for_job()
         health = self.client.health_check()
         object_info = self.client.object_info()
-        validation = validate_advanced_workflow(object_info=object_info)
+        validation = self._validate_workflow(object_info)
         if not validation["ready"]:
             raise AdvancedAcceptanceError(
                 "advanced workflow preflight failed: "
@@ -78,8 +93,8 @@ class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
 
     def prepare(self, request: Any) -> Dict[str, Any]:
         data = request.to_dict() if isinstance(request, VideoGenerationRequest) else dict(request)
-        if data.get("workflow_id") != ADVANCED_WORKFLOW_ID:
-            raise AdvancedAcceptanceError("acceptance runner only accepts the V2 workflow")
+        if data.get("workflow_id") != self.workflow_id:
+            raise AdvancedAcceptanceError("acceptance runner only accepts its experimental workflow")
         refs = data.get("reference_assets") or []
         if len(refs) != 1 or not refs[0].get("path_or_ref"):
             raise AdvancedAcceptanceError("V2 I2VA acceptance requires one staged reference")
@@ -92,7 +107,7 @@ class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
         duration, fps = params["duration"], params["fps"]
         steps, seed = params["steps"], params["seed"]
 
-        payload = copy.deepcopy(load_advanced_api_workflow())
+        payload = copy.deepcopy(self._load_workflow())
         payload["1"]["inputs"]["image"] = str(refs[0]["path_or_ref"])
         payload["6"]["inputs"].update({
             "prompt": str((data.get("prompt_payload") or {}).get("prompt") or ""),
@@ -110,23 +125,23 @@ class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
         payload["9"]["inputs"]["noise_seed"] = seed
         payload["14"]["inputs"]["fps"] = float(fps)
         payload["15"]["inputs"]["filename_prefix"] = (
-            "video/06_Advanced_Architecture_Camera_V2_B"
+            self.output_prefix
         )
         live = self.client.object_info()
-        validation = validate_advanced_workflow(object_info=live)
+        validation = self._validate_workflow(live)
         if not validation["ready"]:
             raise AdvancedAcceptanceError("advanced workflow became invalid during bind")
         digest = canonical_advanced_workflow_sha256(payload)
         return {
             "job_id": f"advanced-{uuid.uuid4().hex[:12]}",
             "study_id": data["study_id"],
-            "workflow_id": ADVANCED_WORKFLOW_ID,
-            "workflow_asset": str(ADVANCED_API_PATH),
+            "workflow_id": self.workflow_id,
+            "workflow_asset": str(self.workflow_asset),
             "translated_payload": payload,
             "execution_workflow_sha256": digest,
             "binding": {
-                "source_of_truth": str(ADVANCED_API_PATH),
-                "classification": "EXPERIMENTAL_V2",
+                "source_of_truth": str(self.workflow_asset),
+                "classification": self.workflow_classification,
                 "production_selector_enabled": False,
             },
             "control": {
@@ -137,15 +152,32 @@ class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
         }
 
 
+class AdvancedA2AcceptanceRuntimeAdapter(AdvancedAcceptanceRuntimeAdapter):
+    """Native transport binder for the isolated A2 prompt experiment."""
+
+    workflow_id = ADVANCED_A2_WORKFLOW_ID
+    workflow_asset = ADVANCED_A2_API_PATH
+    workflow_classification = "EXPERIMENTAL_A2"
+    output_prefix = "video/07_Advanced_Architecture_Camera_V2_1_A2"
+
+    def _load_workflow(self) -> dict[str, Any]:
+        return load_advanced_a2_api_workflow()
+
+    def _validate_workflow(self, object_info: Mapping[str, Any] | None) -> dict[str, Any]:
+        return validate_advanced_a2_workflow(object_info=object_info)
+
+
 def _new_job(store: StudioStore, project_id: str,
-             request: VideoGenerationRequest, source_job: Mapping[str, Any]) -> dict[str, Any]:
+             request: VideoGenerationRequest, source_job: Mapping[str, Any], *,
+             workflow_id: str = ADVANCED_WORKFLOW_ID,
+             acceptance_arm: str = "B") -> dict[str, Any]:
     params = dict(request.generation_parameters)
     now = time.time()
     job_id = store.new_id("job")
     job = {
         "id": job_id,
         "project_id": project_id,
-        "workflow": ADVANCED_WORKFLOW_ID,
+        "workflow": workflow_id,
         "state": "PREPARING",
         "seed": int(params["seed"]),
         "camera_motion": request.camera_motion,
@@ -156,7 +188,7 @@ def _new_job(store: StudioStore, project_id: str,
         "elapsed": 0.0,
         "estimated_time": estimate_generation_range(
             store.load_jobs(project_id).values(),
-            workflow_id=ADVANCED_WORKFLOW_ID,
+            workflow_id=workflow_id,
             duration=params["duration"], fps=params["fps"],
             resolution=params["resolution"], steps=params["steps"], cold_start=True,
         ),
@@ -179,7 +211,7 @@ def _new_job(store: StudioStore, project_id: str,
         "execution_workflow_sha256": None,
         "lifecycle_state": "CREATED",
         "progress_message": "准备参考图",
-        "acceptance_arm": "B",
+        "acceptance_arm": acceptance_arm,
         "acceptance_source_job_id": str(source_job.get("id") or ""),
     }
     jobs = store.load_jobs(project_id)
@@ -189,7 +221,7 @@ def _new_job(store: StudioStore, project_id: str,
     if project.get("state") == "COMPLETED":
         machine = ProjectStateMachine("COMPLETED")
         machine.transition("start_new_generation", actor="architect",
-                           reason="start isolated A1 V2 B-arm acceptance")
+                           reason=f"start isolated {acceptance_arm} acceptance")
         project["state"] = machine.state
     if project.get("state") != "USER_CONFIRM":
         raise AdvancedAcceptanceError(
@@ -197,14 +229,14 @@ def _new_job(store: StudioStore, project_id: str,
         )
     machine = ProjectStateMachine("USER_CONFIRM")
     machine.transition("confirm_generate", actor="architect",
-                       reason=f"submit isolated A1 B-arm job {job_id}")
+                       reason=f"submit isolated {acceptance_arm} job {job_id}")
     project["state"] = machine.state
     store.save_project(project)
     store.append_audit(project_id, {
-        "actor": "architect", "event": "advanced_a1_b_arm_started",
+        "actor": "architect", "event": "advanced_experimental_arm_started",
         "from": "USER_CONFIRM", "to": "GPU_RUNNING",
-        "detail": {"job_id": job_id, "workflow": ADVANCED_WORKFLOW_ID,
-                    "arm": "B", "source_job_id": str(source_job.get("id") or "")},
+        "detail": {"job_id": job_id, "workflow": workflow_id,
+                    "arm": acceptance_arm, "source_job_id": str(source_job.get("id") or "")},
     })
     return job
 
@@ -298,9 +330,96 @@ def run_advanced_b_arm(*, data_root: Path, project_id: str,
     }
 
 
+def run_advanced_a2_arm(*, data_root: Path, project_id: str,
+                        source_job_id: str, runtime_paths: RuntimePathContract,
+                        client: ComfyUIClient | None = None) -> dict[str, Any]:
+    """Run exactly one isolated A2 job using the repaired native source Job."""
+    store = StudioStore(Path(data_root))
+    project = store.load_project(project_id)
+    jobs = store.load_jobs(project_id)
+    source = jobs.get(source_job_id)
+    if not source or source.get("state") != "COMPLETED" or source.get("runtime") != "native":
+        raise AdvancedAcceptanceError("A2 source must be an existing native completed Job")
+    ref_id = project.get("current_reference_asset_id")
+    ref = store.load_references(project_id).get(ref_id)
+    if not ref or ref.get("state") != "APPROVED":
+        raise AdvancedAcceptanceError("current reference must be approved")
+    raw_params = dict(source.get("generation_parameters") or {})
+    raw_params["seed"] = int(source.get("seed", raw_params.get("seed", 42)))
+    try:
+        params = normalize_generation_parameters(raw_params)
+    except H3ParameterError as exc:
+        raise AdvancedAcceptanceError("source Job has invalid H3 parameters") from exc
+    static_prompt = load_advanced_a2_api_workflow()["6"]["inputs"]["prompt"]
+    prompt_hash = hashlib.sha256(static_prompt.encode("utf-8")).hexdigest()
+    request = VideoGenerationRequest(
+        study_id=project_id,
+        reference_assets=[{
+            "asset_id": ref["id"], "role": ref.get("role", "first_frame"),
+            "path_or_ref": ref.get("stored_path") or ref.get("filename", "ref.png"),
+            "sha256": ref.get("sha256"),
+        }],
+        workflow_id=ADVANCED_A2_WORKFLOW_ID,
+        camera_motion="controlled_forward_oblique_push",
+        generation_parameters=params,
+        prompt_payload={"mode": "I2VA", "prompt": static_prompt,
+                        "prompt_hash": prompt_hash},
+        output_spec={"container": "mp4", "codec": "h264", "fps": params["fps"],
+                     "resolution": params["resolution"], "report_format": "json"},
+        gates={"reference_approved": True, "intent_confirmed": True,
+               "prompt_verified": True, "risk_reviewed": True},
+    )
+    comfy = client or ComfyUIClient(
+        output_root=str(runtime_paths.output_root), strict_output=True,
+        ffmpeg_path=_managed_ffmpeg_path(runtime_paths),
+        health_timeout=5.0, submission_timeout=60.0, metadata_timeout=10.0,
+        observation_timeout=15.0, output_timeout=30.0,
+    )
+    adapter = AdvancedA2AcceptanceRuntimeAdapter(
+        client=comfy, comfy_input_dir=str(runtime_paths.input_root),
+        production_binding=False, runtime_paths=runtime_paths,
+    )
+    adapter.preflight()
+    output_api = OutputAPI(store, allow_mock_outputs=False, runtime_paths=runtime_paths)
+    job_api = JobAPI(store, output_api=output_api, runtime_adapter=adapter,
+                     allow_mock_jobs=False, comfy_input_dir=str(runtime_paths.input_root),
+                     runtime_paths=runtime_paths)
+    job = _new_job(store, project_id, request, source,
+                   workflow_id=ADVANCED_A2_WORKFLOW_ID, acceptance_arm="A2")
+    job_id = job["id"]
+    adapter.progress_callback = lambda event: job_api._record_progress(project_id, job_id, event)
+    adapter.submission_callback = lambda info: job_api._record_submission(project_id, job_id, info)
+    job_api._run_real_job(project_id, job_id, request)
+    final_job = store.load_jobs(project_id)[job_id]
+    if final_job.get("state") != "COMPLETED" or final_job.get("lifecycle_state") != "SUCCEEDED":
+        raise AdvancedAcceptanceError("A2 did not reach COMPLETED/SUCCEEDED")
+    manifest = output_api.get_result(job_id)
+    return {
+        "job_id": job_id,
+        "workflow": ADVANCED_A2_WORKFLOW_ID,
+        "arm": "A2",
+        "state": final_job.get("state"),
+        "lifecycle_state": final_job.get("lifecycle_state"),
+        "delivery_state": final_job.get("delivery_state"),
+        "prompt_id": final_job.get("prompt_id"),
+        "snapshot_id": final_job.get("workflow_snapshot_id"),
+        "workflow_hash": final_job.get("workflow_hash"),
+        "execution_workflow_sha256": final_job.get("execution_workflow_sha256"),
+        "parameters": {key: params.get(key) for key in
+                       ("duration", "fps", "resolution", "steps", "seed", "quality", "sampler_mode")},
+        "output": {"available": manifest["output"]["available"],
+                   "mime_type": manifest["output"]["mime_type"],
+                   "size_bytes": manifest["output"]["size_bytes"],
+                   "ffprobe": manifest.get("ffprobe")},
+    }
+
+
 def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
                               job_id: str, runtime_paths: RuntimePathContract,
-                              client: ComfyUIClient | None = None) -> dict[str, Any]:
+                              client: ComfyUIClient | None = None,
+                              workflow_id: str = ADVANCED_WORKFLOW_ID,
+                              acceptance_arm: str = "B",
+                              workflow_loader=load_advanced_api_workflow) -> dict[str, Any]:
     """Finish the already-submitted B Job after an observation timeout.
 
     This function is deliberately recovery-only: it requires a persisted
@@ -308,8 +427,8 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
     """
     store = StudioStore(Path(data_root))
     project_id_found, job = store.find_job(job_id)
-    if project_id_found != project_id or job.get("acceptance_arm") != "B":
-        raise AdvancedAcceptanceError("job is not the bounded A1 B-arm Job")
+    if project_id_found != project_id or job.get("acceptance_arm") != acceptance_arm:
+        raise AdvancedAcceptanceError("job is not the bounded experimental acceptance Job")
     if job.get("state") == "COMPLETED":
         return {"job_id": job_id, "state": "COMPLETED", "recovered": False}
     prompt_id = str(job.get("prompt_id") or "")
@@ -330,7 +449,7 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
     history = comfy.get_history(prompt_id)
     status = history.get("status") or {}
     if status.get("status_str") != "success" or not status.get("completed"):
-        raise AdvancedAcceptanceError("original B-arm history is not successful")
+        raise AdvancedAcceptanceError("original acceptance history is not successful")
     refs = store.load_references(project_id)
     project = store.load_project(project_id)
     ref = refs.get(project.get("current_reference_asset_id"))
@@ -341,13 +460,13 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
                                                  seed=int(job.get("seed", 42)))
     except H3ParameterError as exc:
         raise AdvancedAcceptanceError("persisted B-arm Job has invalid H3 parameters") from exc
-    static_prompt = load_advanced_api_workflow()["6"]["inputs"]["prompt"]
+    static_prompt = workflow_loader()["6"]["inputs"]["prompt"]
     request = VideoGenerationRequest(
         study_id=project_id,
         reference_assets=[{"asset_id": ref["id"], "role": ref.get("role", "first_frame"),
                            "path_or_ref": ref.get("stored_path") or ref.get("filename", "ref.png"),
                            "sha256": ref.get("sha256")}],
-        workflow_id=ADVANCED_WORKFLOW_ID, camera_motion="slow_push",
+        workflow_id=workflow_id, camera_motion="slow_push",
         generation_parameters=params,
         prompt_payload={"mode": "I2VA", "prompt": static_prompt,
                         "prompt_hash": job.get("prompt_hash") or hashlib.sha256(
@@ -357,8 +476,8 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
         gates={"reference_approved": True, "intent_confirmed": True,
                "prompt_verified": True, "risk_reviewed": True},
     )
-    output = comfy.collect_output(history, job_id, ADVANCED_WORKFLOW_ID, {
-        "study_id": project_id, "workflow_id": ADVANCED_WORKFLOW_ID,
+    output = comfy.collect_output(history, job_id, workflow_id, {
+        "study_id": project_id, "workflow_id": workflow_id,
         "camera_motion": request.camera_motion,
         "resolution": params.get("resolution"), "fps": params.get("fps"),
         "duration": params.get("duration"), "quality": params.get("quality"),
@@ -402,7 +521,7 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
     job_api._sync_project_complete(project_id, job)
     manifest = output_api.get_result(job_id)
     return {
-        "job_id": job_id, "workflow": ADVANCED_WORKFLOW_ID, "arm": "B",
+        "job_id": job_id, "workflow": workflow_id, "arm": acceptance_arm,
         "state": job["state"], "lifecycle_state": job["lifecycle_state"],
         "delivery_state": job.get("delivery_state"), "prompt_id": prompt_id,
         "snapshot_id": job.get("workflow_snapshot_id"),
@@ -418,7 +537,21 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
     }
 
 
+def finalize_reconciled_a2_arm(*, data_root: Path, project_id: str,
+                               job_id: str, runtime_paths: RuntimePathContract,
+                               client: ComfyUIClient | None = None) -> dict[str, Any]:
+    """Recover the one A2 submission without resubmitting it to ComfyUI."""
+    return finalize_reconciled_b_arm(
+        data_root=data_root, project_id=project_id, job_id=job_id,
+        runtime_paths=runtime_paths, client=client,
+        workflow_id=ADVANCED_A2_WORKFLOW_ID,
+        acceptance_arm="A2",
+        workflow_loader=load_advanced_a2_api_workflow,
+    )
+
+
 __all__ = [
     "AdvancedAcceptanceError", "AdvancedAcceptanceRuntimeAdapter",
-    "finalize_reconciled_b_arm", "run_advanced_b_arm",
+    "AdvancedA2AcceptanceRuntimeAdapter", "finalize_reconciled_a2_arm",
+    "finalize_reconciled_b_arm", "run_advanced_a2_arm", "run_advanced_b_arm",
 ]

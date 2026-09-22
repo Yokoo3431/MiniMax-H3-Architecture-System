@@ -21,6 +21,9 @@ ADVANCED_REGISTRY_PATH = REPO_ROOT / "configs" / "advanced_workflow_registry.jso
 ADVANCED_WORKFLOW_ID = "06_Advanced_Architecture_Camera_V2"
 ADVANCED_API_PATH = REPO_ROOT / "production_workflows" / "advanced" / f"{ADVANCED_WORKFLOW_ID}.json"
 ADVANCED_UI_PATH = REPO_ROOT / "workflows" / f"{ADVANCED_WORKFLOW_ID}_NATIVE_GOLDEN.json"
+ADVANCED_A2_WORKFLOW_ID = "07_Advanced_Architecture_Camera_V2_1"
+ADVANCED_A2_API_PATH = REPO_ROOT / "production_workflows" / "advanced" / f"{ADVANCED_A2_WORKFLOW_ID}.json"
+ADVANCED_A2_UI_PATH = REPO_ROOT / "workflows" / f"{ADVANCED_A2_WORKFLOW_ID}_NATIVE_GOLDEN.json"
 SUPPORTED_ADVANCED_NODE_TYPES = {
     "LoadImage", "CLIPLoader", "UNETLoader", "VAELoader",
     "MiniMaxH3ImageToVideo", "KSamplerSelect", "BasicScheduler",
@@ -46,7 +49,9 @@ def _load_json(path: Path) -> dict[str, Any]:
 def load_advanced_registry() -> dict[str, Any]:
     registry = _load_json(ADVANCED_REGISTRY_PATH)
     workflows = registry.get("workflows")
-    if not isinstance(workflows, dict) or ADVANCED_WORKFLOW_ID not in workflows:
+    if not isinstance(workflows, dict) or not {
+        ADVANCED_WORKFLOW_ID, ADVANCED_A2_WORKFLOW_ID,
+    }.issubset(workflows):
         raise AdvancedWorkflowError("advanced workflow registry entry missing")
     return registry
 
@@ -57,6 +62,14 @@ def load_advanced_api_workflow() -> dict[str, Any]:
 
 def load_advanced_ui_workflow() -> dict[str, Any]:
     return _load_json(ADVANCED_UI_PATH)
+
+
+def load_advanced_a2_api_workflow() -> dict[str, Any]:
+    return _load_json(ADVANCED_A2_API_PATH)
+
+
+def load_advanced_a2_ui_workflow() -> dict[str, Any]:
+    return _load_json(ADVANCED_A2_UI_PATH)
 
 
 def canonical_advanced_workflow_sha256(payload: Mapping[str, Any]) -> str:
@@ -79,11 +92,22 @@ def _api_links(payload: Mapping[str, Any]) -> list[tuple[str, int, str, str]]:
     return links
 
 
-def validate_advanced_workflow(*, object_info: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def validate_experimental_workflow(workflow_id: str, *,
+                                   object_info: Mapping[str, Any] | None = None) -> dict[str, Any]:
     registry = load_advanced_registry()
-    entry = registry["workflows"][ADVANCED_WORKFLOW_ID]
-    api = load_advanced_api_workflow()
-    ui = load_advanced_ui_workflow()
+    entry = registry["workflows"].get(workflow_id)
+    if not isinstance(entry, Mapping):
+        return {
+            "workflow_id": workflow_id, "ready": False,
+            "errors": ["experimental workflow registry entry missing"],
+            "classification": "EXPERIMENTAL",
+            "node_count": 0, "link_count": 0, "workflow_sha256": "",
+            "ui_rebuilt": False,
+        }
+    api_path = REPO_ROOT / str(entry.get("api_asset") or "")
+    ui_path = REPO_ROOT / str(entry.get("ui_asset") or "")
+    api = _load_json(api_path)
+    ui = _load_json(ui_path)
     errors: list[str] = []
     expected_ids = {str(index) for index in range(1, 16)}
     if set(map(str, api)) != expected_ids:
@@ -105,14 +129,14 @@ def validate_advanced_workflow(*, object_info: Mapping[str, Any] | None = None) 
         errors.append(f"semantic link count {len(links)} != 18")
     if entry.get("production_selector_enabled") is not False:
         errors.append("experimental workflow must remain outside production selector")
-    if entry.get("classification") not in (None, "EXPERIMENTAL_V2"):
+    if entry.get("classification") not in (None, "EXPERIMENTAL_V2", "EXPERIMENTAL_A2"):
         errors.append("invalid experimental classification")
     if object_info is not None:
         missing = sorted(types - set(object_info))
         if missing:
             errors.append("missing live Comfy node types: " + ", ".join(missing))
     try:
-        rebuilt = build_ui_workflow(ADVANCED_WORKFLOW_ID, api,
+        rebuilt = build_ui_workflow(workflow_id, api,
                                     workflow_hash=canonical_advanced_workflow_sha256(api))
     except (ValueError, KeyError, OSError) as exc:
         errors.append(f"UI reconstruction failed: {exc}")
@@ -125,15 +149,23 @@ def validate_advanced_workflow(*, object_info: Mapping[str, Any] | None = None) 
     if rebuilt and len(rebuilt.get("links") or []) != 18:
         errors.append("rebuilt UI workflow does not contain 18 links")
     return {
-        "workflow_id": ADVANCED_WORKFLOW_ID,
+        "workflow_id": workflow_id,
         "ready": not errors,
         "errors": errors,
-        "classification": "EXPERIMENTAL_V2",
+        "classification": str(entry.get("classification") or registry.get("classification") or "EXPERIMENTAL"),
         "node_count": len(api),
         "link_count": len(links),
         "workflow_sha256": canonical_advanced_workflow_sha256(api),
         "ui_rebuilt": bool(rebuilt),
     }
+
+
+def validate_advanced_workflow(*, object_info: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    return validate_experimental_workflow(ADVANCED_WORKFLOW_ID, object_info=object_info)
+
+
+def validate_advanced_a2_workflow(*, object_info: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    return validate_experimental_workflow(ADVANCED_A2_WORKFLOW_ID, object_info=object_info)
 
 
 def comparable_api_pair() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -146,7 +178,9 @@ def comparable_api_pair() -> tuple[dict[str, Any], dict[str, Any]]:
 
 __all__ = [
     "ADVANCED_API_PATH", "ADVANCED_REGISTRY_PATH", "ADVANCED_UI_PATH",
+    "ADVANCED_A2_API_PATH", "ADVANCED_A2_UI_PATH", "ADVANCED_A2_WORKFLOW_ID",
     "ADVANCED_WORKFLOW_ID", "AdvancedWorkflowError", "canonical_advanced_workflow_sha256",
-    "comparable_api_pair", "load_advanced_api_workflow", "load_advanced_registry",
-    "load_advanced_ui_workflow", "validate_advanced_workflow",
+    "comparable_api_pair", "load_advanced_a2_api_workflow", "load_advanced_a2_ui_workflow",
+    "load_advanced_api_workflow", "load_advanced_registry", "load_advanced_ui_workflow",
+    "validate_advanced_a2_workflow", "validate_advanced_workflow", "validate_experimental_workflow",
 ]

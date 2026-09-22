@@ -10,13 +10,19 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from runtime.advanced_workflows import (
+    ADVANCED_A2_WORKFLOW_ID,
     ADVANCED_WORKFLOW_ID,
     comparable_api_pair,
+    load_advanced_a2_api_workflow,
     load_advanced_registry,
+    validate_advanced_a2_workflow,
     validate_advanced_workflow,
 )
+from runtime.advanced_a2_workflows import build_a2_prompt
 from runtime.adapters.runtime_adapter import VideoGenerationRequest
-from runtime.advanced_gpu_acceptance import AdvancedAcceptanceRuntimeAdapter
+from runtime.advanced_gpu_acceptance import (
+    AdvancedA2AcceptanceRuntimeAdapter, AdvancedAcceptanceRuntimeAdapter,
+)
 from runtime.adapters.production_workflow_binding import CANONICAL_WORKFLOWS
 
 
@@ -60,6 +66,33 @@ class TestAdvancedWorkflowStaticContract(unittest.TestCase):
             "euler",
         )
 
+        a2 = validate_advanced_a2_workflow()
+        self.assertTrue(a2["ready"], a2["errors"])
+        self.assertEqual((a2["node_count"], a2["link_count"]), (15, 18))
+        self.assertTrue(a2["ui_rebuilt"])
+        a2_payload = load_advanced_a2_api_workflow()
+        self.assertEqual(a2_payload["6"]["inputs"]["prompt"], build_a2_prompt())
+        self.assertEqual(a2_payload["7"]["inputs"]["sampler_name"], "euler")
+        self.assertIn("CAMERA MOTION BLOCK", a2_payload["6"]["inputs"]["prompt"])
+        self.assertIn("ARCHITECTURE PRESERVATION BLOCK", a2_payload["6"]["inputs"]["prompt"])
+        self.assertIn("MINIMAL NEGATIVE CONSTRAINT BLOCK", a2_payload["6"]["inputs"]["prompt"])
+
+        a2_adapter = AdvancedA2AcceptanceRuntimeAdapter.__new__(AdvancedA2AcceptanceRuntimeAdapter)
+        a2_adapter.client = Mock()
+        a2_adapter.client.object_info.return_value = None
+        a2_request = copy.deepcopy(request)
+        a2_request.workflow_id = ADVANCED_A2_WORKFLOW_ID
+        a2_request.prompt_payload["prompt"] = build_a2_prompt()
+        with patch("runtime.advanced_gpu_acceptance.validate_advanced_a2_workflow",
+                   return_value={"ready": True}):
+            a2_bound = a2_adapter.prepare(a2_request)
+        self.assertEqual(a2_bound["workflow_id"], ADVANCED_A2_WORKFLOW_ID)
+        self.assertEqual(a2_bound["binding"]["classification"], "EXPERIMENTAL_A2")
+        self.assertEqual(
+            a2_bound["translated_payload"]["15"]["inputs"]["filename_prefix"],
+            "video/07_Advanced_Architecture_Camera_V2_1_A2",
+        )
+
     def test_change_budget_is_prompt_and_identity_only(self):
         golden, advanced = comparable_api_pair()
         self.assertEqual(set(golden), set(advanced))
@@ -83,6 +116,10 @@ class TestAdvancedWorkflowStaticContract(unittest.TestCase):
         self.assertFalse(entry["production_selector_enabled"])
         self.assertEqual(entry["base_reference"], "04_Drone_Aerial")
         self.assertNotIn(ADVANCED_WORKFLOW_ID, CANONICAL_WORKFLOWS)
+        a2_entry = registry["workflows"][ADVANCED_A2_WORKFLOW_ID]
+        self.assertFalse(a2_entry["production_selector_enabled"])
+        self.assertEqual(a2_entry["classification"], "EXPERIMENTAL_A2")
+        self.assertNotIn(ADVANCED_A2_WORKFLOW_ID, CANONICAL_WORKFLOWS)
 
     def test_golden_v1_files_are_zero_diff(self):
         for name, expected in GOLDEN_SHA256.items():
