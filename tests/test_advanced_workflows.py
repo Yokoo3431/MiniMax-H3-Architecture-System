@@ -7,6 +7,7 @@ import hashlib
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from runtime.advanced_workflows import (
     ADVANCED_WORKFLOW_ID,
@@ -14,6 +15,8 @@ from runtime.advanced_workflows import (
     load_advanced_registry,
     validate_advanced_workflow,
 )
+from runtime.adapters.runtime_adapter import VideoGenerationRequest
+from runtime.advanced_gpu_acceptance import AdvancedAcceptanceRuntimeAdapter
 from runtime.adapters.production_workflow_binding import CANONICAL_WORKFLOWS
 
 
@@ -34,6 +37,28 @@ class TestAdvancedWorkflowStaticContract(unittest.TestCase):
         self.assertEqual(result["node_count"], 15)
         self.assertEqual(result["link_count"], 18)
         self.assertTrue(result["ui_rebuilt"])
+
+        adapter = AdvancedAcceptanceRuntimeAdapter.__new__(AdvancedAcceptanceRuntimeAdapter)
+        adapter.client = Mock()
+        adapter.client.object_info.return_value = None
+        request = VideoGenerationRequest(
+            study_id="study-test",
+            reference_assets=[{"path_or_ref": "reference.png"}],
+            workflow_id=ADVANCED_WORKFLOW_ID,
+            camera_motion="slow_push",
+            generation_parameters={
+                "duration": 4.0, "fps": 24, "resolution": "1344x768",
+                "steps": 50, "seed": 42, "quality": "standard",
+            },
+            prompt_payload={"prompt": "test", "prompt_hash": "test-hash", "mode": "I2VA"},
+        )
+        with patch("runtime.advanced_gpu_acceptance.validate_advanced_workflow",
+                   return_value={"ready": True}):
+            bound = adapter.prepare(request)
+        self.assertEqual(
+            bound["translated_payload"]["7"]["inputs"]["sampler_name"],
+            "euler",
+        )
 
     def test_change_budget_is_prompt_and_identity_only(self):
         golden, advanced = comparable_api_pair()
@@ -63,7 +88,6 @@ class TestAdvancedWorkflowStaticContract(unittest.TestCase):
         for name, expected in GOLDEN_SHA256.items():
             actual = hashlib.sha256((ROOT / "production_workflows" / "golden" / name).read_bytes()).hexdigest()
             self.assertEqual(actual, expected, name)
-
 
 if __name__ == "__main__":
     unittest.main()

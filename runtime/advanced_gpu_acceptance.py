@@ -33,6 +33,7 @@ from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter, length
 from runtime.adapters.runtime_adapter import VideoGenerationRequest
 from runtime.adapters.runtime_paths import RuntimePathContract
 from runtime.generation_capabilities import estimate_generation_range
+from runtime.h3_generation_parameters import H3ParameterError, normalize_generation_parameters
 
 
 class AdvancedAcceptanceError(RuntimeError):
@@ -82,18 +83,14 @@ class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
         refs = data.get("reference_assets") or []
         if len(refs) != 1 or not refs[0].get("path_or_ref"):
             raise AdvancedAcceptanceError("V2 I2VA acceptance requires one staged reference")
-        params = dict(data.get("generation_parameters") or {})
-        resolution = str(params.get("resolution") or "1344x768")
+        raw_params = dict(data.get("generation_parameters") or {})
         try:
-            width, height = (int(part) for part in resolution.lower().split("x", 1))
-            duration = float(params.get("duration", 4.0))
-            fps = int(params.get("fps", 24))
-            steps = int(params.get("steps", 50))
-            seed = int(params.get("seed", 42))
-        except (TypeError, ValueError) as exc:
+            params = normalize_generation_parameters(raw_params)
+        except H3ParameterError as exc:
             raise AdvancedAcceptanceError("invalid bounded acceptance parameters") from exc
-        if fps != 24 or not 4.0 <= duration <= 15.0 or steps <= 0:
-            raise AdvancedAcceptanceError("acceptance parameters are outside the H3 contract")
+        width, height = params["width"], params["height"]
+        duration, fps = params["duration"], params["fps"]
+        steps, seed = params["steps"], params["seed"]
 
         payload = copy.deepcopy(load_advanced_api_workflow())
         payload["1"]["inputs"]["image"] = str(refs[0]["path_or_ref"])
@@ -103,6 +100,12 @@ class AdvancedAcceptanceRuntimeAdapter(NativeRuntimeAdapter):
             "height": height,
             "length": length_for(duration, fps),
         })
+        # The static V2 template is an experimental baseline.  The request's
+        # normalized H3 controls are authoritative for the actual execution
+        # graph, just as they are for the Golden binder.  Without this bind,
+        # standard A1 runs silently execute the template's res_multistep
+        # default while their persisted metadata says euler.
+        payload["7"]["inputs"]["sampler_name"] = params["sampler_mode"]
         payload["8"]["inputs"]["steps"] = steps
         payload["9"]["inputs"]["noise_seed"] = seed
         payload["14"]["inputs"]["fps"] = float(fps)
@@ -220,8 +223,12 @@ def run_advanced_b_arm(*, data_root: Path, project_id: str,
     ref = store.load_references(project_id).get(ref_id)
     if not ref or ref.get("state") != "APPROVED":
         raise AdvancedAcceptanceError("current reference must be approved")
-    params = dict(source.get("generation_parameters") or {})
-    params.update({"seed": int(source.get("seed", params.get("seed", 42)))})
+    raw_params = dict(source.get("generation_parameters") or {})
+    raw_params["seed"] = int(source.get("seed", raw_params.get("seed", 42)))
+    try:
+        params = normalize_generation_parameters(raw_params)
+    except H3ParameterError as exc:
+        raise AdvancedAcceptanceError("source Job has invalid H3 parameters") from exc
     static_prompt = load_advanced_api_workflow()["6"]["inputs"]["prompt"]
     prompt_hash = hashlib.sha256(static_prompt.encode("utf-8")).hexdigest()
     request = VideoGenerationRequest(
@@ -280,7 +287,7 @@ def run_advanced_b_arm(*, data_root: Path, project_id: str,
         "execution_workflow_sha256": final_job.get("execution_workflow_sha256"),
         "parameters": {
             key: params.get(key)
-            for key in ("duration", "fps", "resolution", "steps", "seed", "quality")
+            for key in ("duration", "fps", "resolution", "steps", "seed", "quality", "sampler_mode")
         },
         "output": {
             "available": manifest["output"]["available"],
@@ -329,7 +336,11 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
     ref = refs.get(project.get("current_reference_asset_id"))
     if not ref or ref.get("state") != "APPROVED":
         raise AdvancedAcceptanceError("current reference is no longer approved")
-    params = dict(job.get("generation_parameters") or {})
+    try:
+        params = normalize_generation_parameters(job.get("generation_parameters") or {},
+                                                 seed=int(job.get("seed", 42)))
+    except H3ParameterError as exc:
+        raise AdvancedAcceptanceError("persisted B-arm Job has invalid H3 parameters") from exc
     static_prompt = load_advanced_api_workflow()["6"]["inputs"]["prompt"]
     request = VideoGenerationRequest(
         study_id=project_id,
@@ -398,7 +409,7 @@ def finalize_reconciled_b_arm(*, data_root: Path, project_id: str,
         "workflow_hash": job.get("workflow_hash"),
         "execution_workflow_sha256": job.get("execution_workflow_sha256"),
         "parameters": {key: params.get(key) for key in
-                       ("duration", "fps", "resolution", "steps", "seed", "quality")},
+                       ("duration", "fps", "resolution", "steps", "seed", "quality", "sampler_mode")},
         "output": {"available": manifest["output"]["available"],
                    "mime_type": manifest["output"]["mime_type"],
                    "size_bytes": manifest["output"]["size_bytes"],
