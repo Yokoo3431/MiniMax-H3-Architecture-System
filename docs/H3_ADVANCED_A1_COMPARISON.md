@@ -4,8 +4,8 @@
 
 This is the A/B evidence package for `ADVANCED-A1`. The sampler-parity repair
 was authorized and validated with one new V2 B-arm GPU run. The technical
-fair-comparison gate now passes. No visual superiority claim is made until the
-owner scores the rendered A/B outputs.
+fair-comparison gate now passes. The owner-visible score is recorded below;
+this does not constitute a production-promotion or superiority claim.
 
 ## A — Golden V1
 
@@ -85,20 +85,46 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 The earlier B-arm `job-77d5a7651dd5` remains historical evidence of the
 pre-repair sampler mismatch and is not used for the fair comparison.
 
-## Visual rubric for the future owner-authorized A/B run
+## Owner visual score
+
+Scores below are based on the local 0% / 25% / 50% / 75% / 100% frame
+checkpoints from the valid pair only: A is Golden V1 and B is the repaired
+Advanced V2 Job. The historical pre-repair B Job was excluded. Higher is
+better; the architecture criteria are weighted qualitatively more heavily than
+camera motion.
 
 | Criterion | A Golden | B V2 | Notes |
 |---|---:|---:|---|
-| Geometry preservation | pending | pending | Score 1–5 from rendered frames |
-| Reference fidelity | pending | pending | Score 1–5 |
-| Camera smoothness | pending | pending | Score 1–5 |
-| Material stability | pending | pending | Score 1–5 |
-| Temporal stability | pending | pending | Score 1–5 |
-| Architectural hallucination | pending | pending | Score 1–5; higher means fewer artifacts |
-| Overall visual quality | pending | pending | Score 1–5 |
+| Geometry preservation | 2 | 4 | B preserves the sail/roof mass and site layout more consistently |
+| Reference fidelity | 2 | 4 | A drifts from the reference building form in the middle/end checkpoints |
+| Camera smoothness | 4 | 3 | A has clear continuous displacement; B is stable but under-moves |
+| Material stability | 3 | 4 | B keeps façade, landscape, and shoreline materials steadier |
+| Temporal stability | 2 | 4 | A shows stronger form instability; B has fewer visible temporal changes |
+| Architectural hallucination | 2 | 4 | A introduces visible roof/form changes; B has fewer additions/removals |
+| Overall visual quality | 2 | 3 | B is the stronger architecture result but is not production-ready as motion |
+
+## Camera tradeoff
+
+`B = TOO STATIC` — the repaired V2 prompt conditioning improves geometry and
+reference retention, but the camera displacement is too weak to count as a
+successful camera-control outcome. B is not scored as automatically better:
+its architectural gain is offset by insufficient useful motion.
+
+## Final A1 decision
+
+`V2_NEEDS_ITERATION` — keep the repaired sampler parity and the improved
+architecture/reference preservation, but iterate the prompt conditioning before
+considering promotion. The top A2 inputs are:
+
+1. Increase motion-language strength while preserving the geometry lock.
+2. Separate the camera phrase from the geometry-preservation constraints so
+   the latter do not freeze the shot.
+3. Reduce overconstraint/negative phrasing that suppresses useful displacement.
+
+A2 is not implemented or started in this stage.
 
 ## Decision
 
-`ADVANCED_A1_OWNER_VISUAL_SCORE_PENDING` — the repaired A/B artifacts pass the
-technical fair-comparison gate. Owner visual scoring is still pending, and V2
-remains experimental and is not promoted.
+`ADVANCED_A1_COMPLETE` — the repaired A/B artifacts pass the technical
+fair-comparison gate, and the owner-visible review records `V2_NEEDS_ITERATION`.
+V2 remains experimental, is not promoted, and A2 is not started.
