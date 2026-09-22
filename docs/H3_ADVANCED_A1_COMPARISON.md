@@ -23,10 +23,29 @@ scores the rendered A/B outputs.
 - Base reference: `04_Drone_Aerial`
 - Graph: 15 nodes / 18 API semantic links
 - Acceptance B used the same approved reference and runtime parameters as A:
-  4s, 1344x768, 24fps, 50 steps, seed 42; model, sampler, scheduler, and VAE
-  pair remained unchanged
-- Changed execution variable: architecture-camera prompt conditioning
+  4s, 1344x768, 24fps, 50 steps, seed 42; model, scheduler, and VAE pair
+  remained unchanged. The actual sampler mismatch is recorded below.
+- Intended changed execution variable: architecture-camera prompt conditioning
 - Changed metadata variable: experimental output prefix/workflow identity
+
+## Fair-comparison gate
+
+Owner visual scoring is blocked until the A/B execution controls are aligned.
+The persisted top-level Job parameters agree on reference, duration, resolution,
+fps, steps, seed, quality, and acceleration settings. The Native Comfy
+execution snapshots also agree on the CLIP, UNet, and VAE assets.
+
+However, the actual sampler node differs:
+
+| Control | A — Golden V1 | B — Advanced V2 | Gate |
+|---|---|---|---|
+| Native `KSamplerSelect.sampler_name` | `euler` | `res_multistep` | **BLOCKED** |
+| Top-level `generation_parameters.sampler_mode` | `euler` | `euler` | metadata mismatch with execution graph |
+
+The execution graph is authoritative for a fair visual comparison. This is a
+material mismatch beyond the intended architecture-camera prompt conditioning,
+so no frame checkpoints or 1–5 owner scores are recorded in this closure pass.
+No GPU rerun or source-code repair is authorized by the A1 closure scope.
 
 ## Why
 
@@ -45,6 +64,7 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 - Managed node inventory: PASS
 - Golden V1 zero-diff gate: PASS
 - Native Comfy GPU run: PASS (one B-arm submission; no duplicate)
+- Fair A/B comparison gate: BLOCKED (sampler mismatch in actual execution graph)
 
 ## Sanitized B-arm evidence
 
@@ -78,6 +98,7 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 
 ## Decision
 
-`ADVANCED_A1_OWNER_VISUAL_SCORE_PENDING` — technical A/B evidence is ready,
-but owner visual scoring and the installed DesktopShell handoff after a fresh
-package install remain pending. V2 remains experimental and is not promoted.
+`ADVANCED_A1_OWNER_SCORE_BLOCKED` — the existing A/B artifacts are technically
+valid, but the actual Native Comfy sampler differs (`euler` versus
+`res_multistep`). Visual scoring would confound the intended prompt-conditioning
+comparison. V2 remains experimental and is not promoted.
