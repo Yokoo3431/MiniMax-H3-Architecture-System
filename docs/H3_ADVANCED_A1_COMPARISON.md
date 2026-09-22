@@ -2,9 +2,10 @@
 
 ## Status
 
-This is the A/B evidence package for `ADVANCED-A1`. One owner-authorized V2 B
-GPU run was completed. No visual superiority claim is made until the owner
-scores the rendered A/B outputs.
+This is the A/B evidence package for `ADVANCED-A1`. The sampler-parity repair
+was authorized and validated with one new V2 B-arm GPU run. The technical
+fair-comparison gate now passes. No visual superiority claim is made until the
+owner scores the rendered A/B outputs.
 
 ## A — Golden V1
 
@@ -23,29 +24,27 @@ scores the rendered A/B outputs.
 - Base reference: `04_Drone_Aerial`
 - Graph: 15 nodes / 18 API semantic links
 - Acceptance B used the same approved reference and runtime parameters as A:
-  4s, 1344x768, 24fps, 50 steps, seed 42; model, scheduler, and VAE pair
-  remained unchanged. The actual sampler mismatch is recorded below.
+  4s, 1344x768, 24fps, 50 steps, seed 42; model, scheduler, sampler, and VAE
+  pair remained unchanged after the repair.
 - Intended changed execution variable: architecture-camera prompt conditioning
 - Changed metadata variable: experimental output prefix/workflow identity
 
 ## Fair-comparison gate
 
-Owner visual scoring is blocked until the A/B execution controls are aligned.
-The persisted top-level Job parameters agree on reference, duration, resolution,
-fps, steps, seed, quality, and acceleration settings. The Native Comfy
-execution snapshots also agree on the CLIP, UNet, and VAE assets.
-
-However, the actual sampler node differs:
+The sampler-parity repair is complete. The persisted top-level Job parameters
+agree on reference, duration, resolution, fps, steps, seed, quality, and
+acceleration settings. The Native Comfy execution snapshots also agree on the
+CLIP, UNet, VAE, and sampler assets.
 
 | Control | A — Golden V1 | B — Advanced V2 | Gate |
 |---|---|---|---|
-| Native `KSamplerSelect.sampler_name` | `euler` | `res_multistep` | **BLOCKED** |
-| Top-level `generation_parameters.sampler_mode` | `euler` | `euler` | metadata mismatch with execution graph |
+| Native `KSamplerSelect.sampler_name` | `euler` | `euler` | PASS |
+| Top-level `generation_parameters.sampler_mode` | `euler` | `euler` | PASS |
 
-The execution graph is authoritative for a fair visual comparison. This is a
-material mismatch beyond the intended architecture-camera prompt conditioning,
-so no frame checkpoints or 1–5 owner scores are recorded in this closure pass.
-No GPU rerun or source-code repair is authorized by the A1 closure scope.
+The execution graph is authoritative, and it now agrees with the persisted
+metadata on both arms. The intended change remains the architecture-camera
+prompt conditioning only. Visual frame checkpoints and 1–5 owner scores remain
+pending an owner viewing pass.
 
 ## Why
 
@@ -63,26 +62,28 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 - Both video/audio VAE decode links: PASS
 - Managed node inventory: PASS
 - Golden V1 zero-diff gate: PASS
-- Native Comfy GPU run: PASS (one B-arm submission; no duplicate)
-- Fair A/B comparison gate: BLOCKED (sampler mismatch in actual execution graph)
+- Native Comfy GPU run: PASS (one repaired B-arm submission; prior timed-out
+  observation was recovered without resubmission)
+- Fair A/B comparison gate: PASS (sampler parity and identity checks)
 
-## Sanitized B-arm evidence
+## Sanitized repaired B-arm evidence
 
-- Job: `job-77d5a7651dd5`
+- Job: `job-af6a7bf280ac`
 - Terminal state: `COMPLETED` / `SUCCEEDED` / `DELIVERED`
-- Prompt acknowledgement: received; observation initially exceeded the
-  1800-second client window, then the same server-side history was recovered
-  without resubmission
-- Snapshot: `306c58f15d978ffccfb1b608`
-- Execution/workflow SHA-256: `fbc0b74119c3a825a5c69d8f37a081074c87412521329fb7fbe3e018d826f446`
-- Output: available, `video/mp4`, 5,357,557 bytes
+- Prompt acknowledgement: received; observation exceeded the 1800-second
+  client window, then the same server-side history was finalized without
+  resubmission
+- Snapshot: `c26030ebf1b8e76fc0199642`
+- Execution/workflow SHA-256: `abfb41e4ec66b56ccfe545fe7952bfc8612895121a00d50c7ddaf768e19420d1`
+- Execution snapshot: 15 nodes / 18 API links; `KSamplerSelect=euler`
+- Output: available, `video/mp4`, 5,496,061 bytes
 - Managed media probe: 4.46s, 1344x768, 24fps, H.264, audio present
 - AVS `/result`: PASS; media Range response: `206`, MIME `video/mp4`
 - Source handoff reconstruction: PASS, 15 UI nodes / 18 UI links, API identity
   verification PASS
-- Installed 8788 handoff: pending packaging refresh; the currently running
-  installed backend predates A1 and reports the V2 UI template is missing.
-  This is an installation freshness issue, not a GPU/output failure.
+
+The earlier B-arm `job-77d5a7651dd5` remains historical evidence of the
+pre-repair sampler mismatch and is not used for the fair comparison.
 
 ## Visual rubric for the future owner-authorized A/B run
 
@@ -98,7 +99,6 @@ spontaneous additions. No disconnected camera node or fake slider is exposed.
 
 ## Decision
 
-`ADVANCED_A1_OWNER_SCORE_BLOCKED` — the existing A/B artifacts are technically
-valid, but the actual Native Comfy sampler differs (`euler` versus
-`res_multistep`). Visual scoring would confound the intended prompt-conditioning
-comparison. V2 remains experimental and is not promoted.
+`ADVANCED_A1_OWNER_VISUAL_SCORE_PENDING` — the repaired A/B artifacts pass the
+technical fair-comparison gate. Owner visual scoring is still pending, and V2
+remains experimental and is not promoted.
