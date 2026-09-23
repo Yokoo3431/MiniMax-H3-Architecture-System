@@ -26,7 +26,8 @@ WORKFLOW_CAPABILITIES: dict[str, dict[str, Any]] = {
 # These are the currently verified Golden/Runtime values.  In particular,
 # 30fps is deliberately not exposed until the H3 frame-grid contract proves it.
 FPS_OPTIONS = (24,)
-RESOLUTION_OPTIONS = ("832x480", "1024x576", "1344x768")
+# Only resolutions mapped by an A4.1 READY profile are executable.
+RESOLUTION_OPTIONS = ("832x480", "1344x768")
 SAMPLER_OPTIONS = ("euler", "res_multistep")
 STEPS_RANGE = (2, 100)
 DURATION_RANGE = (4.0, 15.0)

@@ -56,6 +56,7 @@ from runtime.adapters.golden_workflow_binding import (
 from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
 from runtime.h3_model_root import validate_h3_model_contract
 from runtime.product_hardening import map_comfy_event
+from runtime.reference_contract import required_reference_roles
 
 WORKFLOW_MAPPING = REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml"
 GOLDEN_05_PATH = REPO_ROOT / "production_workflows" / "golden" / "05_Slow_Walkthrough.json"
@@ -109,8 +110,9 @@ def parse_resolution(resolution: str) -> tuple[int, int]:
 
 
 def length_for(duration: float, fps: int) -> int:
-    """H3 frame-grid length (validated: 4s@24 -> 107 frames)."""
-    return int(round(float(duration) * int(fps))) + 11
+    """H3 frame-grid length rounded up from requested duration."""
+    from runtime.a4_profiles import h3_frame_count_for_duration
+    return h3_frame_count_for_duration(duration, fps)
 
 
 class NativeRuntimeAdapter(RuntimeAdapter):
@@ -160,14 +162,16 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         golden_results = {}
         for workflow_id in SUPPORTED_WORKFLOWS:
             try:
+                roles = required_reference_roles(workflow_id)
                 payload = bind_golden_workflow({
                     "reference_assets": [
-                        {"path_or_ref": "preflight-first.png"},
-                        {"path_or_ref": "preflight-last.png"},
-                    ][:int(golden_entry(workflow_id)["required_reference_count"])],
+                        {"asset_id": f"preflight-{index}", "role": role,
+                         "path_or_ref": f"preflight-{role}.png"}
+                        for index, role in enumerate(roles)
+                    ],
                     "generation_parameters": {
                         "resolution": "1344x768", "fps": 24, "duration": 4.0,
-                        "quality": "diagnostic", "seed": 42,
+                        "quality": "NATIVE_HIGH", "seed": 42,
                     },
                     "prompt_payload": {"prompt": "preflight"},
                 }, workflow_id)

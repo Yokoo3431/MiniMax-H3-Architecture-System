@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .store import StudioStore
+from runtime.reference_contract import (
+    ACTIVE_REFERENCE_ROLES, resolve_selected_references,
+)
 from ..state_machine.machine import IllegalTransitionError, ProjectStateMachine
 
-_REFERENCE_ROLES = ("first_frame", "last_frame")
+_REFERENCE_ROLES = ACTIVE_REFERENCE_ROLES
 
 
 class ReferenceAPI:
@@ -42,7 +45,7 @@ class ReferenceAPI:
         stored_path: Optional[Path] = None
         sha256 = None
         if data_base64:
-            raw = base64.b64decode(data_base64)
+            raw = base64.b64decode(data_base64, validate=True)
             sha256 = hashlib.sha256(raw).hexdigest().upper()
 
             # Reuse an already approved asset with the same content hash.  A
@@ -54,13 +57,22 @@ class ReferenceAPI:
                              and item.get("state") == "APPROVED"), None)
             if existing is not None:
                 return self._public_ref(existing)
+            selected = project.get("selected_reference_asset_ids") or {}
+            opposite_role = "last_frame" if role == "first_frame" else "first_frame"
+            opposite = self.store.load_references(project_id).get(
+                selected.get(opposite_role))
+            if opposite and opposite.get("sha256") == sha256:
+                raise ValueError(
+                    "REFERENCE_DUPLICATE_CONTENT: 首帧和末帧必须是不同的已批准图像")
 
-            stored_path = self.store.input_dir(project_id) / filename
-            stored_path.write_bytes(raw)
-
-        quality_card = self._assess_quality(stored_path if stored_path else None,
-                                            filename=filename)
         ref_id = self.store.new_id("ref")
+        if data_base64:
+            suffix = Path(filename).suffix.lower() or ".png"
+            stored_path = self.store.input_dir(project_id) / f"{role}_{ref_id}{suffix}"
+            stored_path.write_bytes(raw)
+            quality_card = self._assess_quality(stored_path, filename=filename)
+        else:
+            quality_card = self._assess_quality(None, filename=filename)
         ref = {
             "id": ref_id,
             "project_id": project_id,
@@ -114,7 +126,11 @@ class ReferenceAPI:
             # A deduplicated approved asset is still an explicit selection for
             # this Study; do not infer it from historical approved records.
             project = self.store.load_project(project_id)
-            project["current_reference_asset_id"] = ref["id"]
+            bindings = dict(project.get("selected_reference_asset_ids") or {})
+            bindings[ref.get("role") or role] = ref["id"]
+            project["selected_reference_asset_ids"] = bindings
+            if ref.get("role") == "first_frame":
+                project["current_reference_asset_id"] = ref["id"]
             if project["state"] in {"CREATED", "REFERENCE_PENDING", "REFERENCE_REJECTED",
                                      "GPU_FAILED", "QUALITY_FAILED", "COMPLETED",
                                      "PROMPT_REVIEW", "PROMPT_NEEDS_CONFIRMATION",
@@ -122,10 +138,18 @@ class ReferenceAPI:
                 project["state"] = "REFERENCE_APPROVED"
             self.store.save_project(project)
             self.store.clear_prompt(project_id)
+        # Both the newly-approved path and the deduplicated-selection path
+        # must return the persisted selection state.  The project object in
+        # the latter branch is local to that branch; reload unconditionally
+        # so the response contract is identical for both paths.
+        project = self.store.load_project(project_id)
         from .project_api import ProjectAPI
         detail = ProjectAPI(self.store).get_project_detail(project_id)
         return {"reference": ref, "project": detail["project"],
-                "study": detail["study"], "current_reference_asset_id": ref["id"]}
+                "study": detail["study"], "current_reference_asset_id":
+                    project.get("current_reference_asset_id"),
+                "selected_reference_asset_ids": dict(
+                    project.get("selected_reference_asset_ids") or {})}
 
     def approve_reference(self, project_id: str, reference_id: str) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
@@ -135,12 +159,23 @@ class ReferenceAPI:
             raise KeyError(f"reference not found: {reference_id}")
         if ref["state"] != "PENDING":
             raise ValueError(f"reference {reference_id} is {ref['state']}, not PENDING")
+        selected = project.get("selected_reference_asset_ids") or {}
+        opposite_role = "last_frame" if ref.get("role") == "first_frame" else "first_frame"
+        opposite = refs.get(selected.get(opposite_role))
+        if (opposite and ref.get("sha256")
+                and opposite.get("sha256") == ref.get("sha256")):
+            raise ValueError(
+                "REFERENCE_DUPLICATE_CONTENT: 首帧和末帧必须是不同的已批准图像")
         ref["state"] = "APPROVED"
         ref["approved_at"] = self.store.timestamp()
         self.store.save_references(project_id, refs)
         # The current reference is an explicit Study selection, not an
         # inference over every historical APPROVED record.
-        project["current_reference_asset_id"] = reference_id
+        selected = dict(project.get("selected_reference_asset_ids") or {})
+        selected[ref.get("role") or "first_frame"] = reference_id
+        project["selected_reference_asset_ids"] = selected
+        if ref.get("role") == "first_frame":
+            project["current_reference_asset_id"] = reference_id
 
         if project["state"] in ("REFERENCE_PENDING", "REFERENCE_REJECTED"):
             machine = ProjectStateMachine(project["state"])
@@ -186,6 +221,14 @@ class ReferenceAPI:
     def list_references(self, project_id: str) -> List[Dict[str, Any]]:
         return [self._public_ref(ref)
                 for ref in self.store.load_references(project_id).values()]
+
+    def selected_references(self, project_id: str, workflow_id: str,
+                            *, require_approved: bool = True) -> List[Dict[str, Any]]:
+        project = self.store.load_project(project_id)
+        return resolve_selected_references(
+            project_id, project, self.store.load_references(project_id),
+            workflow_id, require_approved=require_approved,
+            reference_root=self.store.input_dir(project_id))
 
     def get_approved_references(self, project_id: str) -> List[Dict[str, Any]]:
         return [r for r in self.list_references(project_id) if r["state"] == "APPROVED"]

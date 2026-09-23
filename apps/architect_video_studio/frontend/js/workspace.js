@@ -13,11 +13,14 @@ let study = null;
 let refs = [];
 let selectedRef = null;
 let pendingFile = null;
+const pendingRoleFiles = {first_frame: null, last_frame: null};
+const pendingRoleUrls = {first_frame: null, last_frame: null};
 let pollTimer = null;
 let promptTimer = null;
 let promptRequestSerial = 0;
 let providerCatalog = [];
 let latestJob = null;
+let capabilities = null;
 
 const VIDEO_TYPES = [
   ['01_Exterior_Hero', 'Exterior Hero'],
@@ -32,11 +35,6 @@ const TYPE_HELP = {
   '03_Material_Detail': '材质与细部镜头，适合墙面、节点和构造质感。',
   '04_Drone_Aerial': '航拍与总图展示，适合建筑群、景观和场地关系。',
   '05_Slow_Walkthrough': '人视缓慢漫游，适合室内空间与动线体验。',
-};
-const QUALITY_DEFAULTS = {
-  draft: { resolution: '832x480', sampler_mode: 'res_multistep' },
-  standard: { resolution: '1024x576', sampler_mode: 'euler' },
-  high: { resolution: '1344x768', sampler_mode: 'euler' },
 };
 const STATE_LABELS = {
   NO_REFERENCE: '等待参考图', REFERENCE_PENDING_APPROVAL: '等待审批', READY_TO_CONFIGURE: '准备配置',
@@ -55,19 +53,12 @@ function currentWorkflow() { return value('video-type'); }
 function currentParams() {
   const raw = {
     duration: parseFloat(value('param-duration')),
-    resolution: value('param-resolution'),
-    fps: parseInt(value('param-fps'), 10),
-    aspect_ratio: value('param-aspect'),
     quality: value('param-quality'),
-    generation_speed: value('param-speed'),
-    sampler_mode: value('param-sampler'),
-    velocity_cache: document.getElementById('param-velocity').checked,
-    cache_dit: document.getElementById('param-cache-dit').checked,
+    fps: 24,
+    delivery_fps: Number(value('param-delivery-fps') || 24),
   };
   const seed = value('param-seed').trim();
-  const steps = value('param-steps').trim();
   if (seed) raw.seed = parseInt(seed, 10);
-  if (steps) raw.steps = parseInt(steps, 10);
   return raw;
 }
 function stateLabel(state) { return STATE_LABELS[state] || '准备中'; }
@@ -107,7 +98,11 @@ async function refreshStudy() {
 }
 
 async function loadAll() {
-  const [detail, c] = await Promise.all([get(`/api/projects/${projectId}`), get('/api/catalog')]);
+  const [detail, c, system] = await Promise.all([
+    get(`/api/projects/${projectId}`), get('/api/catalog'),
+    get('/api/capabilities').catch(() => null),
+  ]);
+  capabilities = system?.a4_profiles || null;
   project = detail.project || detail; catalog = c;
   study = detail.study || await refreshStudy();
   refs = detail.references || [];
@@ -116,7 +111,7 @@ async function loadAll() {
   if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
   await loadProviderCatalog();
   renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderPrompt(); renderOutputDirectory(); updateGate(); refreshEstimate();
-  if (selectedRef && selectedRef.state === 'APPROVED'
+  if (study?.reference_approved
       && document.getElementById('intent-text').value.trim()
       && !(study && study.prompt_current)) schedulePromptRefresh(80);
   pollJobs();
@@ -199,29 +194,39 @@ function renderVideoTypes() {
   select.innerHTML = VIDEO_TYPES.map(([id, label]) =>
     `<option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
   document.getElementById('video-type-help').textContent = TYPE_HELP[selected];
+  renderArchitectureFidelity();
+}
+
+function renderArchitectureFidelity() {
+  const profile = capabilities?.architecture?.[currentWorkflow()];
+  const label = profile?.label || TYPE_HELP[currentWorkflow()] || '按视频类型自动选择';
+  const el = document.getElementById('architecture-profile');
+  if (el) el.textContent = `Automatic · ${label}`;
 }
 
 function renderParams() {
   const duration = document.getElementById('param-duration');
   duration.innerHTML = Array.from({length: 12}, (_, i) => i + 4)
     .map((seconds) => `<option value="${seconds}">${seconds} 秒</option>`).join('');
-  const resolution = document.getElementById('param-resolution');
-  resolution.innerHTML = ['832x480', '1024x576', '1344x768']
-    .map((v) => `<option value="${v}" ${v === '1024x576' ? 'selected' : ''}>${v.replace('x', '×')}</option>`).join('');
   const saved = (prompt && prompt.generation_parameters) || {};
   if (saved.duration) duration.value = String(saved.duration);
-  if (saved.resolution) resolution.value = saved.resolution;
-  if (saved.fps != null) document.getElementById('param-fps').value = String(saved.fps);
-  if (saved.aspect_ratio) document.getElementById('param-aspect').value = saved.aspect_ratio;
-  if (saved.quality) document.getElementById('param-quality').value = saved.quality;
-  if (saved.generation_speed) document.getElementById('param-speed').value = saved.generation_speed;
-  const qualityDefaults = QUALITY_DEFAULTS[value('param-quality')];
-  document.getElementById('param-sampler').value = saved.sampler_mode ||
-    (value('param-speed') === 'auto' ? 'euler' : qualityDefaults.sampler_mode);
+  const qualitySelect = document.getElementById('param-quality');
+  const profileList = capabilities?.quality?.profiles;
+  if (Array.isArray(profileList) && profileList.length) {
+    qualitySelect.innerHTML = profileList.map((profile) => {
+      const available = profile.available === true || profile.availability === 'READY';
+      const resolution = String(profile.resolution || '').replace('x', '×');
+      const label = `${profile.id} · ${resolution}${available ? '' : ' · 暂不可用'}`;
+      return `<option value="${esc(profile.id)}" ${available ? '' : 'disabled'} title="${esc(profile.availability_reason || '')}">${esc(label)}</option>`;
+    }).join('');
+  }
+  if (saved.quality) {
+    const quality = String(saved.quality).trim().toUpperCase();
+    qualitySelect.value = ({HIGH: 'NATIVE_HIGH', DIAGNOSTIC: 'DRAFT', PRODUCTION: 'STANDARD'})[quality] || quality;
+  } else qualitySelect.value = 'NATIVE_HIGH';
+  const deliveryFps = document.getElementById('param-delivery-fps');
+  if (saved.delivery_fps != null) deliveryFps.value = String(saved.delivery_fps);
   if (saved.seed != null) document.getElementById('param-seed').value = String(saved.seed);
-  if (saved.sigma_points != null) document.getElementById('param-steps').value = String(saved.sigma_points);
-  document.getElementById('param-velocity').checked = !!saved.velocity_cache;
-  document.getElementById('param-cache-dit').checked = !!saved.cache_dit;
   syncViewportParams();
 }
 
@@ -235,7 +240,7 @@ async function refreshEstimate() {
       const min = Math.max(1, Math.round(estimate.min_seconds / 60));
       const max = Math.max(min, Math.round(estimate.max_seconds / 60));
       const confidence = estimate.confidence === 'history' ? '高' : '中';
-      note.textContent = `预计生成时间：约 ${min}–${max} 分钟 · 依据：${estimate.estimate_basis || '已验证成功记录'} · ${estimate.parameters?.resolution || currentParams().resolution} · ${estimate.parameters?.duration || currentParams().duration}秒 · ${estimate.parameters?.steps || currentParams().steps || 50}步 · 置信度：${confidence}`;
+      note.textContent = `预计生成时间：约 ${min}–${max} 分钟 · 依据：${estimate.estimate_basis || '已验证成功记录'} · ${estimate.parameters?.resolution || '配置解析中'} · ${estimate.parameters?.duration || currentParams().duration}秒 · ${estimate.parameters?.steps || '—'}步 · 置信度：${confidence}`;
     }
   } catch (_) { note.textContent = '预计生成时间：正在估算'; }
 }
@@ -247,6 +252,10 @@ function renderOutputDirectory() {
 
 function refUrl(ref) { return ref && ref.preview_ready ? ref.preview_url : null; }
 function renderRefs() {
+  const dayNight = currentWorkflow() === '02_Day_Night_Transition';
+  document.getElementById('single-reference-controls').hidden = dayNight;
+  document.getElementById('day-night-reference-slots').hidden = !dayNight;
+  if (dayNight) { renderDayNightRefs(); return; }
   const currentId = (study && study.current_reference_asset_id) || (project && project.current_reference_asset_id);
   selectedRef = refs.find((r) => r.id === currentId)
     || refs.find((r) => r.state === 'PENDING')
@@ -276,6 +285,51 @@ function renderRefs() {
   showViewportRef(selectedRef);
 }
 
+function renderDayNightRefs() {
+  const slots = study?.reference_slots || [];
+  const firstSlot = slots.find((item) => item.role === 'first_frame');
+  const lastSlot = slots.find((item) => item.role === 'last_frame');
+  const firstRef = refs.find((item) => item.id === firstSlot?.asset_id) || null;
+  selectedRef = firstRef;
+  [['first_frame', firstSlot, 'first-frame'], ['last_frame', lastSlot, 'last-frame']]
+    .forEach(([role, slot, prefix]) => {
+      const file = pendingRoleFiles[role];
+      const preview = document.getElementById(`${prefix}-preview`);
+      const badge = document.getElementById(`${prefix}-state`);
+      if (file && pendingRoleUrls[role]) {
+        preview.innerHTML = `<img class="reference-image" src="${esc(pendingRoleUrls[role])}" alt="待上传${role === 'first_frame' ? '首帧' : '末帧'}">`;
+        badge.textContent = '待上传'; badge.className = 'badge warn';
+      } else if (slot?.preview_url) {
+        preview.innerHTML = `<img class="reference-image" src="${esc(slot.preview_url)}" alt="${role === 'first_frame' ? '已选首帧' : '已选末帧'}">`;
+        badge.textContent = slot.approved ? '已批准 ✓' : slot.approval_state === 'PENDING' ? '待审批' : '需重新选择';
+        badge.className = `badge ${slot.approved ? 'done' : 'warn'}`;
+      } else if (slot?.filename) {
+        preview.textContent = slot.filename;
+        badge.textContent = slot.approved ? '已批准 ✓ · 预览不可用' : '待处理';
+        badge.className = `badge ${slot.approved ? 'done' : 'warn'}`;
+      } else {
+        preview.textContent = role === 'first_frame' ? '选择开始画面' : '选择结束画面';
+        badge.textContent = '未上传'; badge.className = 'badge state';
+      }
+      document.getElementById(`choose-${prefix}-btn`).hidden = !!slot?.asset_id;
+      document.getElementById(`replace-${prefix}-btn`).hidden = !slot?.asset_id;
+      document.getElementById(`upload-${prefix}-btn`).disabled = !file;
+    });
+  const status = document.getElementById('reference-state');
+  if (study?.reference_approved) {
+    status.textContent = '首帧与末帧已批准 ✓'; status.className = 'badge done';
+  } else if (study?.reference_error?.includes('DUPLICATE')) {
+    status.textContent = '首末帧重复，请更换'; status.className = 'badge warn';
+  } else {
+    status.textContent = '需要首帧与末帧'; status.className = 'badge state';
+  }
+  if (firstRef?.state === 'APPROVED') showViewportRef(firstRef);
+  else {
+    document.getElementById('v-body').innerHTML = '<div class="v-empty">请分别添加开始画面与结束画面</div>';
+    document.getElementById('v-mode-chip').textContent = '日夜过渡 · 等待首末帧';
+  }
+}
+
 function showViewportRef(ref) {
   const url = refUrl(ref);
   document.getElementById('v-body').innerHTML = url
@@ -291,6 +345,14 @@ function previewPending(file) {
   document.getElementById('upload-btn').disabled = false;
   document.getElementById('reference-state').textContent = '待上传';
   document.getElementById('reference-state').className = 'badge warn';
+}
+
+function previewRolePending(role, file) {
+  if (pendingRoleUrls[role]) URL.revokeObjectURL(pendingRoleUrls[role]);
+  pendingRoleFiles[role] = file;
+  pendingRoleUrls[role] = URL.createObjectURL(file);
+  renderDayNightRefs();
+  updateGate();
 }
 
 async function uploadPending() {
@@ -311,6 +373,28 @@ async function uploadPending() {
     } catch (e) { showErr(e.message); }
   };
   reader.readAsDataURL(pendingFile);
+}
+
+async function uploadRolePending(role) {
+  const file = pendingRoleFiles[role];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const result = await post(`/api/projects/${projectId}/references/upload-approve`, {
+        filename: file.name, role, data_base64: String(reader.result).split(',')[1],
+      });
+      pendingRoleFiles[role] = null;
+      if (pendingRoleUrls[role]) URL.revokeObjectURL(pendingRoleUrls[role]);
+      pendingRoleUrls[role] = null;
+      clearErr(); project = result.project; study = result.study;
+      refs = (await get(`/api/projects/${projectId}`)).references || [];
+      intent = null; prompt = null;
+      renderRefs(); renderHeader(); updateGate();
+      if (study?.reference_approved) schedulePromptRefresh(80);
+    } catch (e) { showErr(e.message); }
+  };
+  reader.readAsDataURL(file);
 }
 
 function renderPrompt() {
@@ -347,7 +431,13 @@ function renderPrompt() {
 async function refreshPrompt() {
   const requestSerial = ++promptRequestSerial;
   const text = value('intent-text').trim();
-  if (!text || !selectedRef || selectedRef.state !== 'APPROVED') {
+  if (!text || !study?.reference_approved) {
+    prompt = null; renderPrompt(); updateGate(); return;
+  }
+  const selectedQuality = capabilities?.quality?.profiles?.find(
+    (item) => item.id === value('param-quality'));
+  if (selectedQuality && selectedQuality.available !== true
+      && selectedQuality.availability !== 'READY') {
     prompt = null; renderPrompt(); updateGate(); return;
   }
   try {
@@ -378,8 +468,11 @@ function schedulePromptRefresh(delay = 500) {
 }
 
 function syncViewportParams() {
+  const quality = capabilities?.quality?.profiles?.find(
+    (item) => item.id === value('param-quality'));
+  const resolution = quality?.resolution || '—';
   document.getElementById('v-params').textContent =
-    `${value('param-resolution').replace('x', '×')} · ${value('param-fps')}fps · ${value('param-duration')}s`;
+    `${resolution.replace('x', '×')} · 24fps · ${value('param-duration')}s · ${value('param-quality')}`;
 }
 
 function updateGate() {
@@ -393,33 +486,36 @@ function updateGate() {
   button.setAttribute('aria-disabled', String(button.disabled));
   const note = document.getElementById('gate-note');
   if (!study?.reference_uploaded) note.textContent = '请先添加参考图';
-  else if (!approved) note.textContent = '参考图已添加，等待上传并审批';
-  else if (!promptReady) note.textContent = '正在生成当前 H3 优化提示词…';
-  else if (!risk) note.textContent = '请确认参考图与设置';
-  else if (study.gate_reasons && study.gate_reasons.length) note.textContent = study.gate_reasons[0];
-  else note.textContent = '准备完成，可以生成';
+  else if (!approved) note.textContent = (study.gate_reasons || [])[0] || '参考图尚未满足当前视频类型的角色与审批要求';
+  else {
+    const quality = capabilities?.quality?.profiles?.find(
+      (item) => item.id === value('param-quality'));
+    if (quality && quality.available !== true && quality.availability !== 'READY') {
+      note.textContent = quality.availability_reason || '当前质量档位尚未通过执行验证';
+      button.disabled = true;
+      return;
+    }
+    if (Number(value('param-delivery-fps')) !== 24) {
+      note.textContent = '交付 30/48/60 FPS 需要尚未启用的后处理流程';
+      button.disabled = true;
+      return;
+    }
+    if (!promptReady) note.textContent = '正在生成当前 H3 优化提示词…';
+    else if (!risk) note.textContent = '请确认参考图与设置';
+    else if (study.gate_reasons && study.gate_reasons.length) note.textContent = study.gate_reasons[0];
+    else note.textContent = '准备完成，可以生成';
+  }
 }
 
 async function selectVideoType() {
   document.getElementById('video-type-help').textContent = TYPE_HELP[currentWorkflow()];
-  prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
+  renderArchitectureFidelity();
+  renderRefs();
+  prompt = null; renderPrompt(); updateGate(); refreshEstimate(); schedulePromptRefresh();
 }
 
 function selectQuality() {
-  const defaults = QUALITY_DEFAULTS[value('param-quality')];
-  document.getElementById('param-resolution').value = defaults.resolution;
-  // H3's res_multistep mode is the Draft profile. Auto acceleration stays on
-  // the sampler mode that supports it.
-  document.getElementById('param-sampler').value =
-    value('param-speed') === 'auto' ? 'euler' : defaults.sampler_mode;
-  prompt = null; renderPrompt(); syncViewportParams(); updateGate(); schedulePromptRefresh();
-}
-
-function selectSpeed() {
-  if (value('param-speed') === 'auto' && value('param-sampler') === 'res_multistep') {
-    document.getElementById('param-sampler').value = 'euler';
-  }
-  prompt = null; renderPrompt(); syncViewportParams(); updateGate(); schedulePromptRefresh();
+  prompt = null; renderPrompt(); syncViewportParams(); updateGate(); refreshEstimate(); schedulePromptRefresh();
 }
 
 async function generate() {
@@ -491,6 +587,19 @@ document.getElementById('choose-ref-btn').addEventListener('click', () => docume
 document.getElementById('replace-ref-btn').addEventListener('click', () => document.getElementById('ref-file').click());
 document.getElementById('ref-file').addEventListener('change', (e) => { if (e.target.files[0]) previewPending(e.target.files[0]); });
 document.getElementById('upload-btn').addEventListener('click', uploadPending);
+[
+  ['first_frame', 'first-frame'], ['last_frame', 'last-frame'],
+].forEach(([role, prefix]) => {
+  document.getElementById(`choose-${prefix}-btn`).addEventListener('click', () =>
+    document.getElementById(`${prefix}-file`).click());
+  document.getElementById(`replace-${prefix}-btn`).addEventListener('click', () =>
+    document.getElementById(`${prefix}-file`).click());
+  document.getElementById(`${prefix}-file`).addEventListener('change', (event) => {
+    if (event.target.files[0]) previewRolePending(role, event.target.files[0]);
+  });
+  document.getElementById(`upload-${prefix}-btn`).addEventListener('click', () =>
+    uploadRolePending(role));
+});
 document.getElementById('reference-dropzone').addEventListener('dragover', (e) => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); });
 document.getElementById('reference-dropzone').addEventListener('dragleave', (e) => e.currentTarget.classList.remove('drag-over'));
 document.getElementById('reference-dropzone').addEventListener('drop', (e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if (e.dataTransfer.files[0]) previewPending(e.dataTransfer.files[0]); });
@@ -504,7 +613,6 @@ document.getElementById('prompt-engine').addEventListener('change', () => {
 });
 document.getElementById('generate-btn').addEventListener('click', generate);
 document.getElementById('risk-check').addEventListener('change', updateGate);
-document.getElementById('param-fps').addEventListener('change', () => { syncViewportParams(); refreshEstimate(); });
 document.getElementById('rename-study-btn').addEventListener('click', async () => {
   const name = window.prompt('Study 名称', project?.name || '');
   if (!name || !name.trim()) return;
@@ -519,11 +627,13 @@ document.getElementById('choose-output-folder').addEventListener('click', async 
     renderOutputDirectory();
   } catch (e) { showErr(e.message); }
 });
-['param-duration','param-resolution','param-aspect','param-sampler','param-steps','param-velocity','param-cache-dit'].forEach((id) => {
+['param-duration','param-seed'].forEach((id) => {
   document.getElementById(id).addEventListener('change', () => { prompt = null; renderPrompt(); syncViewportParams(); updateGate(); refreshEstimate(); schedulePromptRefresh(); });
 });
 document.getElementById('param-quality').addEventListener('change', selectQuality);
-document.getElementById('param-speed').addEventListener('change', selectSpeed);
+document.getElementById('param-delivery-fps').addEventListener('change', () => {
+  prompt = null; renderPrompt(); updateGate(); refreshEstimate();
+});
 document.getElementById('save-provider-btn')?.addEventListener('click', saveProvider);
 document.getElementById('test-provider-btn')?.addEventListener('click', testProvider);
 document.getElementById('detect-provider-btn')?.addEventListener('click', detectProvider);

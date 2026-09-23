@@ -31,12 +31,34 @@ class OutputAPI:
         self.allow_mock_outputs = bool(allow_mock_outputs)
         self.runtime_paths = runtime_paths
 
+    def _job_references(self, project_id: str, job: Dict[str, Any]) -> list[dict[str, Any]]:
+        by_id = self.store.load_references(project_id)
+        snapshots = list(job.get("reference_assets_snapshot") or [])
+        ids = [str(item.get("asset_id") or "") for item in snapshots]
+        if not ids:
+            ids = [str(item.get("asset_id") or "")
+                   for item in job.get("reference_bindings") or []]
+        if ids:
+            return [by_id[asset_id] for asset_id in ids if asset_id in by_id]
+        current = self.store.load_project(project_id).get("current_reference_asset_id")
+        return [by_id[current]] if current in by_id else []
+
+    @staticmethod
+    def _reference_manifest(refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{
+            "asset_id": item.get("id"),
+            "role": item.get("role"),
+            "filename": Path(str(item.get("filename") or "reference")).name,
+            "sha256": item.get("sha256"),
+            "approval_state": item.get("state"),
+        } for item in refs]
+
     def build_output_package(self, project_id: str,
                              job: Dict[str, Any]) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
-        prompt = self.store.load_prompt(project_id)
+        prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id)
         intent = self.store.load_intent(project_id)
-        refs = list(self.store.load_references(project_id).values())
+        refs = self._job_references(project_id, job)
         package = self.store.package_dir(project_id)
         self.store.clear_package(project_id)
 
@@ -52,10 +74,10 @@ class OutputAPI:
         for ref in refs:
             stored = Path(ref["stored_path"]) if ref.get("stored_path") else None
             if stored and stored.is_file():
-                dest = input_dir / ref["filename"]
+                dest = input_dir / stored.name
                 dest.write_bytes(stored.read_bytes())
-        (input_dir / "references.json").write_text(
-            json.dumps(refs, indent=2, ensure_ascii=False), encoding="utf-8")
+        (input_dir / "references.json").write_text(json.dumps(
+            self._reference_manifest(refs), indent=2, ensure_ascii=False), encoding="utf-8")
 
         # workflow/ — read-only copy of the frozen workflow JSON
         workflow_name = job.get("workflow") or prompt.get("workflow")
@@ -82,6 +104,8 @@ class OutputAPI:
 
         # report/
         provenance = (prompt or {}).get("provenance", {})
+        execution_trace = dict(job.get("execution_trace") or {})
+        provenance = {**provenance, "execution_trace": execution_trace}
         (report_dir / "provenance.json").write_text(
             json.dumps(provenance, indent=2, ensure_ascii=False), encoding="utf-8")
         runtime_info = {
@@ -102,10 +126,13 @@ class OutputAPI:
             "job_id": job.get("id"),
             "workflow": workflow_name,
             "state": "COMPLETED",
-            "reference_hashes": {r["filename"]: r.get("sha256") for r in refs},
+            "reference_hashes": {
+                f"{r.get('role') or 'first_frame'}:{r.get('id')}": r.get("sha256")
+                for r in refs},
             "intent": intent,
             "prompt_hash": prompt.get("prompt_hash"),
             "provenance": provenance,
+            "execution_trace": execution_trace,
             "audit_log": self.store.load_audit(project_id),
             "runtime_info": runtime_info,
             "workflow_file_copied": workflow_copied,
@@ -122,21 +149,21 @@ class OutputAPI:
         import shutil
 
         project = self.store.load_project(project_id)
-        prompt = self.store.load_prompt(project_id)
+        prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id)
         package = self.store.package_dir(project_id)
         self.store.clear_package(project_id)
         for sub in ("input", "workflow", "prompt", "output", "report"):
             (package / sub).mkdir(parents=True, exist_ok=True)
 
         # input/ — approved reference files + manifest
-        refs = [r for r in self.store.load_references(project_id).values()
-                if r["state"] == "APPROVED"]
+        refs = [r for r in self._job_references(project_id, job)
+                if r.get("state") == "APPROVED"]
         for ref in refs:
             src = Path(ref["stored_path"]) if ref.get("stored_path") else None
             if src and src.is_file():
                 shutil.copy2(src, package / "input" / src.name)
-        (package / "input" / "references.json").write_text(
-            json.dumps(refs, indent=2, ensure_ascii=False), encoding="utf-8")
+        (package / "input" / "references.json").write_text(json.dumps(
+            self._reference_manifest(refs), indent=2, ensure_ascii=False), encoding="utf-8")
 
         # workflow/ — frozen asset copy (from workflow mapping YAML, read-only)
         from runtime.yaml_compat import safe_load
@@ -169,6 +196,7 @@ class OutputAPI:
             "generation_parameters": job.get("generation_parameters"),
             "prompt_hash": (request_prompt or {}).get("prompt_hash") or (prompt or {}).get("prompt_hash"),
             "prompt": (request_prompt or {}).get("prompt") or (prompt or {}).get("prompt"),
+            "execution_trace": dict(job.get("execution_trace") or {}),
         }
         (package / "prompt" / "prompt.json").write_text(
             json.dumps(prompt_record, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -186,7 +214,6 @@ class OutputAPI:
             "comfyui_version": "0.33.1",
             "safe_load": "H3_WINDOWS_SAFE_LOAD=pread",
             "workflow_asset": workflow_asset.name if workflow_asset else None,
-            "output_package": str(package),
         })
         (package / "report" / "runtime_info.json").write_text(
             json.dumps(runtime_info, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -199,6 +226,7 @@ class OutputAPI:
             "seed": job.get("seed"),
             "official_skill_revision": "2026-07-29-main-reviewed",
             "runtime": "native",
+            "execution_trace": dict(job.get("execution_trace") or {}),
         }
         (package / "report" / "provenance.json").write_text(
             json.dumps(provenance, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -213,6 +241,7 @@ class OutputAPI:
             "prompt_hash": (prompt or {}).get("prompt_hash"),
             "runtime_info": runtime_info,
             "provenance": provenance,
+            "execution_trace": dict(job.get("execution_trace") or {}),
             "status": "COMPLETED",
         }
         (package / "report" / "generation_report.json").write_text(

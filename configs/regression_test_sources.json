@@ -3,6 +3,13 @@
   "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
   "files": [
     {
+      "path": "tests/test_a4_profiles.py",
+      "tracked_status": "tracked",
+      "sha256": "99C1EAFEEB9C3866181314BF376A515C905D742641D5928F31C380698AED1748",
+      "discovered_test_count": 9,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_acceleration_profile.py",
       "tracked_status": "tracked",
       "sha256": "5425BAB940EDBAEAB0FE684DB6AD9C322B6BFDC088556B3007495FE5B3DF2715",
@@ -12,7 +19,7 @@
     {
       "path": "tests/test_advanced_workflows.py",
       "tracked_status": "tracked",
-      "sha256": "210B37E5CE287141EA07C13D23896A250379EA30A13D3384FB910E2F256F8232",
+      "sha256": "C43E3B8F5E6860647487668B2FDA3D5AAFF416DF081FD883E5CC41EE1B0A9F48",
       "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },
@@ -180,7 +187,7 @@
     {
       "path": "tests/test_final_product_job_path_and_ux.py",
       "tracked_status": "tracked",
-      "sha256": "7C0E75C6AC03E349BAC3B0775B4AD6B83009E2B686198570959EB18AAC73E999",
+      "sha256": "ADCF5FC308B6A5230BDF611ED5F55AF0D797BDDC3CCD02CAFB1C0A8DB01B6478",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
@@ -327,7 +334,7 @@
     {
       "path": "tests/test_owner_visible_product_truth.py",
       "tracked_status": "tracked",
-      "sha256": "C31C205C283064133AD6868C36E4D23B0AA25D6A70358DBA1CCFE50D56B6C5A6",
+      "sha256": "23D6BC2A4A7B1B729EDA746B6A18680C24EE3F82DDDB622DE558A17E003266CF",
       "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     },
@@ -348,14 +355,14 @@
     {
       "path": "tests/test_patch26b_ui_prototype.py",
       "tracked_status": "tracked",
-      "sha256": "0CBC09D297D057E8093D648BCA4D9C8039125803AAC685BF80A9DD9F2DBF172D",
+      "sha256": "630A0C863A378DB61F722548286BBBBB4E6A49F633A1FF07FC910D8489264BAF",
       "discovered_test_count": 20,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch27a_runtime_boundary.py",
       "tracked_status": "tracked",
-      "sha256": "CD0009DFAF15C125C5AB2ED7336BE033FC043F18B26226D71029808DE281A2B0",
+      "sha256": "C936D2D4272C1827D29EF2F36284F076007825ADC61F92CCD4271B7F7C5E6838",
       "discovered_test_count": 18,
       "classification": "CORE_REGRESSION"
     },
@@ -376,22 +383,22 @@
     {
       "path": "tests/test_patch27c2a_native_runtime.py",
       "tracked_status": "tracked",
-      "sha256": "F9DD15E30CA5C876C6D30B5FD1560898B3D458D881A18DFFFD2258569C3D17DF",
+      "sha256": "B93CC90DA0A59C02C89D0D27B659821B946E2154F00F83E357972A752ABA222A",
       "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch27c2b_multi_workflow_runtime.py",
       "tracked_status": "tracked",
-      "sha256": "9339BF9E11FB282423FFCF7EF268816DB7ECDE4286FA2CC19994D90E5EAD15CF",
+      "sha256": "7853740E40BE22CCF91B80BBA8D9F387CC72337902EC112A06B82F0E708772BE",
       "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_patch27d_ui_runtime_binding.py",
       "tracked_status": "tracked",
-      "sha256": "9908E1FA0134B3816A0B2ACF373F1D3A87E3714A8B181C01C152C51AD9A974F6",
-      "discovered_test_count": 7,
+      "sha256": "0CFB99687857FBDD3AD37B8A5A67CA9730F91BC02DD79DADB349B742D379C4AA",
+      "discovered_test_count": 14,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -495,7 +502,7 @@
     {
       "path": "tests/test_patch28i2_r2bf1_model_root_contract.py",
       "tracked_status": "tracked",
-      "sha256": "147488607FC03DA5BEBF55AAFBB70E6F9522D6A4BECBF3311190C8E27D0B84A3",
+      "sha256": "ECB65971AB26A46CEE79D0B6B79E5BCE233C157457FD72B3B5550A2D86D007CB",
       "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
@@ -614,14 +621,14 @@
     {
       "path": "tests/test_product_hardening.py",
       "tracked_status": "tracked",
-      "sha256": "C34A3B1383D025A5CC072D4ABB50E0F7FF36FF7910D229DA05845E6292356B27",
+      "sha256": "69B5CB42AA4355040796C1D556FE898F9FD2467F17F79E0FF29A6D1D5520CD5D",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_product_lifecycle_parity.py",
       "tracked_status": "tracked",
-      "sha256": "2506100C9F949F83EE2201126A1029FCC03AED39C4EA04EE91BA89B353EBCE8A",
+      "sha256": "67F40FDAF81F1A5193A081615DD3D3667796EB7CD25CF22B57DB5DE012DEFC2E",
       "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },

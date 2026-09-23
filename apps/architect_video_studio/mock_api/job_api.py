@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import inspect
+import math
 from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
 
@@ -42,7 +43,12 @@ from runtime.adapters.comfyui_client import (
 )
 from runtime.product_hardening import unique_comfy_filename
 from runtime.product_hardening import estimate_eta
-from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.a4_profiles import (
+    actual_execution_parameters,
+    normalize_quality_id,
+    resolve_product_parameters,
+)
+from runtime.reference_contract import reference_bindings, resolve_selected_references
 from runtime.generation_capabilities import (
     estimate_generation_range,
     lifecycle_state,
@@ -143,20 +149,26 @@ class JobAPI:
         if self.runtime_adapter is not None and self.runtime_paths is not None:
             self.runtime_paths.validate_for_job()
 
-        refs_by_id = self.store.load_references(project_id)
-        current_reference_id = project.get("current_reference_asset_id")
-        current_reference = refs_by_id.get(current_reference_id)
-        if not current_reference_id or not current_reference:
-            raise ValueError("REFERENCE_REQUIRED: 请先选择当前参考图")
-        if current_reference.get("state") != "APPROVED":
-            raise ValueError("REFERENCE_CONFIGURATION_ERROR: 当前参考图尚未批准")
-        approved = [current_reference]
-
         prompt = self.store.load_prompt(project_id)
         if prompt is None:
             raise ValueError("Prompt Gate: generate_prompt first")
         if not (prompt.get("verified") or {}).get("pass"):
             raise ValueError("Prompt Gate: official structure verification failed")
+        current_intent = self.store.load_intent(project_id) or {}
+        selected_workflow = current_intent.get("selected_workflow")
+        if selected_workflow and selected_workflow != prompt.get("workflow"):
+            raise ValueError(
+                "WORKFLOW_PROMPT_MISMATCH: 请重新生成当前视频类型的 Prompt。")
+        refs_by_id = self.store.load_references(project_id)
+        approved = resolve_selected_references(
+            project_id, project, refs_by_id, prompt.get("workflow"),
+            require_approved=True,
+            reference_root=self.store.input_dir(project_id))
+        selected_bindings = reference_bindings(approved)
+        prompt_bindings = prompt.get("reference_bindings")
+        if prompt.get("a4_profile") and prompt_bindings != selected_bindings:
+            raise ValueError(
+                "REFERENCE_PROMPT_MISMATCH: 参考图角色或审批身份已变化，请重新生成 Prompt。")
 
         try:
             normalized_motion = normalize_camera_motion(prompt["workflow"], camera_motion)
@@ -173,10 +185,40 @@ class JobAPI:
                 raise ValueError(f"MODEL_PATH_ERROR: 模型路径或工作流绑定未通过预检。{exc}") from exc
 
         try:
-            params = validate_workflow_parameters(
+            params, profile_context = resolve_product_parameters(
                 prompt["workflow"], generation_parameters, seed=int(seed))
+            params = validate_workflow_parameters(
+                prompt["workflow"], params, seed=int(seed))
         except ValueError as exc:
             raise ValueError(f"参数不符合 H3 生成契约: {exc}") from exc
+        prompt_params = prompt.get("generation_parameters") or {}
+        if prompt_params and (
+                normalize_quality_id(prompt_params.get("quality", "NATIVE_HIGH"))
+                != profile_context["quality_profile"]
+                or not math.isclose(
+                    float(prompt_params.get("duration", 4.0)),
+                    float(params["duration"]), rel_tol=0.0, abs_tol=1e-9)):
+            raise ValueError(
+                "QUALITY_PROFILE_PROMPT_MISMATCH: 请先按当前质量与时长重新生成 Prompt。")
+        prompt_profile = prompt.get("a4_profile") or {}
+        expected_profile_identity = {
+            "contract_version": profile_context["contract_version"],
+            "workflow_id": profile_context["workflow_id"],
+            "quality_profile": profile_context["quality_profile"],
+            "architecture_profile": profile_context["architecture_profile"],
+            "architecture_profile_version": profile_context[
+                "architecture_profile_version"],
+            "quality_profile_version": profile_context["quality_profile_version"],
+            "prompt_profile_version": profile_context["prompt_profile_version"],
+        }
+        if any(prompt_profile.get(key) != expected
+               for key, expected in expected_profile_identity.items()):
+            raise ValueError(
+                "A4_PROFILE_PROMPT_MISMATCH: 当前 Prompt 工作流/配置版本已过期，请重新生成。")
+        # The normalized parameter is the value the Golden binder will use;
+        # keep the Job row/audit seed identical even for legacy callers that
+        # provide it only inside generation_parameters.
+        seed = int(params["seed"])
 
         now = self.clock()
         job_id = self.store.new_id("job")
@@ -188,6 +230,30 @@ class JobAPI:
             "seed": int(seed),
             "camera_motion": normalized_motion,
             "generation_parameters": params,
+            "execution_trace": {
+                "contract_version": profile_context["contract_version"],
+                "quality_profile_version": profile_context["quality_profile_version"],
+                "prompt_profile_version": profile_context["prompt_profile_version"],
+                "architecture_profile_version": profile_context[
+                    "architecture_profile_version"],
+                "workflow_id": prompt["workflow"],
+                "workflow": prompt["workflow"],
+                "quality_profile": profile_context["quality_profile"],
+                "requested_quality_profile": profile_context["requested_quality_profile"],
+                "resolved_execution_profile": profile_context["resolved_execution_profile"],
+                "execution_mode": profile_context["execution_mode"],
+                "native_generation": dict(profile_context["native_generation"]),
+                "delivery": {**dict(profile_context["delivery"]),
+                             "status": "NOT_PRODUCED"},
+                "reference_bindings": selected_bindings,
+                "architecture_profile": profile_context["architecture_profile"],
+                "profile_parameter_overrides": profile_context["profile_parameter_overrides"],
+                "final_execution_parameters": dict(
+                    profile_context["final_execution_parameters"]),
+                "workflow_sha256": None,
+                "status": "WAITING_FOR_RUNTIME_BINDER" if self.runtime_adapter
+                          else "MOCK_NOT_BOUND",
+            },
             "runtime": "native" if self.runtime_adapter else "mock",
             "created_at": self.store.timestamp(),
             "started_at": now,
@@ -198,6 +264,18 @@ class JobAPI:
             "source_output_path": "",
             "failure_reason": "",
             "prompt_hash": prompt["prompt_hash"],
+            "prompt_snapshot": {
+                key: prompt.get(key)
+                for key in ("workflow", "mode", "prompt", "alignment",
+                            "integrated_multimodal_description", "overall_soundscape",
+                            "non_diegetic_music", "prompt_hash", "a4_profile",
+                            "reference_bindings", "provenance")
+            },
+            "reference_bindings": selected_bindings,
+            "reference_assets_snapshot": [
+                {**binding, "filename": str(ref.get("filename") or "")}
+                for binding, ref in zip(selected_bindings, approved)
+            ],
             "cancelled": False,
             # Native execution has no authoritative percentage until Comfy
             # emits a sampler event. ``None`` prevents a false 0% impression;
@@ -262,9 +340,9 @@ class JobAPI:
         workflow_id = str(request.workflow_id)
         workflow = json.loads(json.dumps(execution_payload, ensure_ascii=False))
         workflow_hash = canonical_workflow_sha256(workflow)
-        asset_hash = hashlib.sha256("|".join(
-            str(item.get("sha256") or item.get("id") or "")
-            for item in approved_refs
+        selected_ref_bindings = reference_bindings(approved_refs)
+        asset_hash = hashlib.sha256(json.dumps(
+            selected_ref_bindings, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")).hexdigest()
         prompt_hash = str((request.prompt_payload or {}).get("prompt_hash") or "")
         snapshot_id = hashlib.sha256(
@@ -279,6 +357,7 @@ class JobAPI:
             "execution_workflow_sha256": workflow_hash,
             "workflow_hash": workflow_hash,
             "asset_hash": asset_hash,
+            "reference_bindings": selected_ref_bindings,
             "prompt_hash": prompt_hash,
             "reference_filenames": [
                 str(item.get("path_or_ref") or item.get("filename") or "")
@@ -335,11 +414,29 @@ class JobAPI:
             project_id, job = self.store.find_job(job_id)
         project = self.store.load_project(project_id)
         refs_by_id = self.store.load_references(project_id)
-        current_reference = refs_by_id.get(project.get("current_reference_asset_id"))
-        # Job detail mirrors execution: historical approved references are
-        # history only; the current Study reference is the sole active input.
-        refs = ([current_reference] if current_reference
-                and current_reference.get("state") == "APPROVED" else [])
+        job_bindings = list(job.get("reference_bindings") or [])
+        if not job_bindings:
+            current_reference = refs_by_id.get(project.get("current_reference_asset_id"))
+            job_bindings = (reference_bindings([current_reference])
+                            if current_reference and current_reference.get("state") == "APPROVED"
+                            else [])
+        snapshots = {item.get("asset_id"): item
+                     for item in job.get("reference_assets_snapshot") or []}
+        refs = []
+        for binding in job_bindings:
+            item = refs_by_id.get(binding.get("asset_id"))
+            snapshot = snapshots.get(binding.get("asset_id"), {})
+            refs.append({
+                "asset_id": binding.get("asset_id"),
+                "role": binding.get("role"),
+                "filename": snapshot.get("filename") or (item or {}).get("filename"),
+                "sha256": binding.get("sha256"),
+                "approval_state": binding.get("approval_state"),
+                "preview_url": (
+                    f"/api/assets/{binding['asset_id']}/content?v={binding.get('sha256') or 1}"
+                    if item and (item.get("stored_path")
+                                 and Path(item["stored_path"]).is_file()) else None),
+            })
         prompt = self.store.load_prompt(project_id) or {}
         detail = (_decorate_job(_mock_runtime_blocked_job(job))
                   if job.get("runtime") == "mock" and not self.allow_mock_jobs
@@ -350,11 +447,8 @@ class JobAPI:
                 self.store, project_id, job))
         detail.update({
             "project": {"id": project_id, "name": project.get("name", "")},
-            "reference": ({
-                "asset_id": refs[0].get("id"),
-                "filename": refs[0].get("filename"),
-                "preview_url": f"/api/assets/{refs[0].get('id')}/content?v={refs[0].get('sha256') or refs[0].get('version', 1)}",
-            } if refs else None),
+            "reference": (dict(refs[0]) if refs else None),
+            "references": refs,
             "prompt_summary": str(prompt.get("prompt", ""))[:280],
             "parameters": dict(job.get("generation_parameters") or {}),
             "technical_details": {
@@ -366,6 +460,7 @@ class JobAPI:
                 "source_output_path": detail.get("source_output_path", ""),
                 "runtime_output_path": detail.get("runtime_output_path", ""),
                 "final_output_path": detail.get("final_output_path", ""),
+                "execution_trace": dict(job.get("execution_trace") or {}),
             },
         })
         return detail
@@ -459,7 +554,9 @@ class JobAPI:
         intent = self.store.load_intent(project_id) or {}
         workflow = str(prompt.get("workflow") or intent.get("selected_workflow")
                        or "05_Slow_Walkthrough")
-        params = validate_workflow_parameters(workflow, generation_parameters)
+        params, _profile_context = resolve_product_parameters(
+            workflow, generation_parameters)
+        params = validate_workflow_parameters(workflow, params)
         return estimate_generation_range(
             self.store.load_jobs(project_id).values(), workflow_id=workflow,
             duration=params["duration"], fps=params["fps"],
@@ -676,13 +773,25 @@ class JobAPI:
             return
         project = self.store.load_project(project_id)
         refs = self.store.load_references(project_id)
-        current = refs.get(project.get("current_reference_asset_id"))
-        prompt = self.store.load_prompt(project_id) or {}
+        ref_snapshots = list(job.get("reference_assets_snapshot") or [])
+        if ref_snapshots:
+            current_refs = []
+            for binding in ref_snapshots:
+                item = refs.get(binding.get("asset_id"))
+                if item:
+                    current_refs.append({**item, "state": binding.get("approval_state"),
+                                         "role": binding.get("role")})
+        else:
+            current = refs.get(project.get("current_reference_asset_id"))
+            current_refs = [current] if current else []
+        prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id) or {}
         request = self._build_request(
-            project_id, project, prompt, [current] if current else [],
+            project_id, project, prompt, current_refs,
             dict(job.get("generation_parameters") or {}), job.get("camera_motion"))
         output = self.runtime_adapter.client.collect_output(
             history, job_id, job.get("workflow", ""), {})
+        self._update_delivery_probe(
+            project_id, job, str(output.get("video_path", "")))
         self.output_api.build_real_output_package(project_id, job, output, request)
         runtime_output = str(output.get("video_path", ""))
         job["runtime_output_path"] = runtime_output
@@ -816,8 +925,11 @@ class JobAPI:
         intent = self.store.load_intent(project_id) or {}
         refs = [{
             "asset_id": r["id"],
+            "project_id": project_id,
             "role": r.get("role", "first_frame"),
+            "approval_state": r.get("state"),
             "path_or_ref": r.get("stored_path") or r.get("filename", "ref.png"),
+            "filename": r.get("filename", "ref.png"),
             "sha256": r.get("sha256"),
         } for r in approved_refs]
         return VideoGenerationRequest(
@@ -835,9 +947,26 @@ class JobAPI:
                 "overall_soundscape": prompt.get("overall_soundscape", ""),
                 "non_diegetic_music": "N/A",
                 "prompt_hash": prompt["prompt_hash"],
+                "a4_profile": prompt.get("a4_profile") or {},
+                "reference_bindings": list(prompt.get("reference_bindings") or []),
             },
             output_spec={"container": "mp4", "codec": "h264", "fps": params["fps"],
                          "resolution": params.get("resolution", "1344x768"),
+                         "native_generation": {
+                             "width": params["width"],
+                             "height": params["height"],
+                             "fps": params["fps"],
+                             "frame_count": params["frame_count"],
+                             "duration_seconds": params["resolved_duration_seconds"],
+                             "requested_duration_seconds": params["duration"],
+                         },
+                         "delivery": {"width": params["width"],
+                                      "height": params["height"],
+                                      "fps": params.get("delivery_fps", 24),
+                                      "upscale_method": None,
+                                      "interpolation_method": None,
+                                      "postprocess_applied": False,
+                                      "status": "NOT_PRODUCED"},
                          "report_format": "json"},
             gates={"reference_approved": True, "intent_confirmed": True,
                    "prompt_verified": True, "risk_reviewed": True},
@@ -863,6 +992,19 @@ class JobAPI:
             job["workflow_hash"] = job["workflow_snapshot"]["workflow_hash"]
             job["execution_workflow_sha256"] = job["workflow_snapshot"]["execution_workflow_sha256"]
             job["asset_hash"] = job["workflow_snapshot"]["asset_hash"]
+            trace = dict(job.get("execution_trace") or {})
+            trace["workflow_sha256"] = job["execution_workflow_sha256"]
+            if prepared and prepared.get("translated_payload"):
+                try:
+                    trace["final_execution_parameters"] = actual_execution_parameters(
+                        prepared["translated_payload"], str(request.workflow_id), trace)
+                    trace["status"] = "BOUND"
+                except (KeyError, TypeError, ValueError) as exc:
+                    trace["status"] = "TRACE_INCOMPLETE"
+                    trace["trace_error"] = type(exc).__name__
+            else:
+                trace["status"] = "TRACE_PAYLOAD_UNAVAILABLE"
+            job["execution_trace"] = trace
             self._save_job(project_id, job)
             generate = self.runtime_adapter.generate
             if prepared is not None and "prepared" in inspect.signature(generate).parameters:
@@ -887,9 +1029,10 @@ class JobAPI:
                 # cancellation. Runtime artifacts remain recoverable.
                 return
             job = latest
+            runtime_output = str(output.get("video_path", ""))
+            self._update_delivery_probe(project_id, job, runtime_output)
             self.output_api.build_real_output_package(
                 project_id, job, output, request)
-            runtime_output = str(output.get("video_path", ""))
             job["runtime_output_path"] = runtime_output
             job["source_output_path"] = runtime_output
             job["final_output_path"] = ""
@@ -956,7 +1099,7 @@ class JobAPI:
             self._sync_project_failed(project_id, job, job["technical_details"])
 
     def _record_progress(self, project_id: str, job_id: str,
-                         event: Dict[str, Any]) -> None:
+                          event: Dict[str, Any]) -> None:
         job = self.store.load_jobs(project_id).get(job_id)
         if not job or is_job_terminal(job):
             return
@@ -1054,6 +1197,38 @@ class JobAPI:
                                   previous_eta * 1.5 + 1.0)
                     job["eta_seconds"] = round(
                         previous_eta * 0.65 + bounded * 0.35, 1)
+        self._save_job(project_id, job)
+
+    def _update_delivery_probe(self, project_id: str, job: Dict[str, Any],
+                               video_path: str) -> None:
+        """Record only measured delivery properties; never infer post-processing."""
+        path = Path(video_path) if video_path else None
+        if path is None or not path.is_file():
+            return
+        trace = dict(job.get("execution_trace") or {})
+        delivery = dict(trace.get("delivery") or {})
+        try:
+            from runtime.media_probe import probe_media_file
+            probe = probe_media_file(path, runtime_paths=self.runtime_paths)
+        except Exception:
+            delivery["status"] = "PROBE_UNAVAILABLE"
+        else:
+            if probe and probe.get("available"):
+                delivery.update({
+                    "width": int(probe["width"]),
+                    "height": int(probe["height"]),
+                    "fps": float(probe["fps"]),
+                    "duration_seconds": float(probe["duration_seconds"]),
+                    "status": "PROBED",
+                    "probe_tool": probe.get("probe_tool"),
+                    "postprocess_applied": False,
+                    "upscale_method": None,
+                    "interpolation_method": None,
+                })
+            else:
+                delivery["status"] = "PROBE_UNAVAILABLE"
+        trace["delivery"] = delivery
+        job["execution_trace"] = trace
         self._save_job(project_id, job)
 
     def _stage_refs_to_comfy_input(self, project_id: str, request: Any) -> Dict[str, str]:

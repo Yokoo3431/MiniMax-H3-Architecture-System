@@ -17,6 +17,7 @@ from typing import Any, Mapping
 from runtime.adapters.runtime_adapter import REPO_ROOT
 from runtime.yaml_compat import safe_load
 from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.reference_contract import required_reference_roles
 
 
 REGISTRY_PATH = REPO_ROOT / "production_workflows" / "golden_workflow_registry.yaml"
@@ -135,8 +136,58 @@ def bind_golden_workflow(request: Mapping[str, Any], workflow_id: str) -> dict[s
     if len(refs) != expected_refs:
         raise GoldenWorkflowError(
             f"{workflow_id} requires {expected_refs} reference asset(s); got {len(refs)}")
-    params = normalize_generation_parameters(request.get("generation_parameters"))
+    expected_roles = required_reference_roles(workflow_id)
+    if len(refs) != len(expected_roles):
+        raise GoldenWorkflowError(
+            f"{workflow_id} requires role-ordered references {list(expected_roles)}")
+    asset_ids = [str(ref.get("asset_id") or "") for ref in refs]
+    content_hashes = [str(ref.get("sha256") or "").lower() for ref in refs]
+    for ref, role in zip(refs, expected_roles):
+        actual_role = ref.get("role") or ("first_frame" if len(refs) == 1 else None)
+        if actual_role != role:
+            raise GoldenWorkflowError(
+                f"{workflow_id} reference order must be {list(expected_roles)}")
+        if ref.get("approval_state") not in (None, "APPROVED"):
+            raise GoldenWorkflowError(f"{role} reference is not approved")
+        if (request.get("study_id") and ref.get("project_id")
+                and str(ref.get("project_id")) != str(request.get("study_id"))):
+            raise GoldenWorkflowError(f"{role} reference belongs to another Study")
+    if any(asset_ids) and (not all(asset_ids) or len(set(asset_ids)) != len(asset_ids)):
+        raise GoldenWorkflowError("reference asset IDs must be present and distinct")
+    if (len(content_hashes) > 1 and content_hashes[0]
+            and content_hashes[0] == content_hashes[1]):
+        raise GoldenWorkflowError("first and last references must have distinct content")
+    profile = (request.get("prompt_payload") or {}).get("a4_profile") or {}
+    if profile.get("contract_version") == "a4.1":
+        if any(ref.get("approval_state") != "APPROVED" for ref in refs):
+            raise GoldenWorkflowError("A4.1 references must carry approved status")
+        if any(str(ref.get("project_id") or "") != str(request.get("study_id") or "")
+               for ref in refs):
+            raise GoldenWorkflowError("A4.1 references must belong to the current Study")
     prompt_payload = request.get("prompt_payload") or {}
+    profile = prompt_payload.get("a4_profile") or {}
+    raw_params = request.get("generation_parameters") or {}
+    if profile.get("contract_version") == "a4.1":
+        from runtime.a4_profiles import resolve_product_parameters
+        try:
+            params, resolved_profile = resolve_product_parameters(
+                workflow_id, raw_params)
+        except (TypeError, ValueError) as exc:
+            raise GoldenWorkflowError(f"A4.1 execution profile rejected: {exc}") from exc
+        expected_params = {
+            **dict(resolved_profile.get("final_execution_parameters") or {}),
+            **params,
+        }
+        for key in params:
+            if raw_params.get(key) != params[key]:
+                raise GoldenWorkflowError(
+                    f"A4.1 generation parameter {key} differs from its selected profile")
+        for key in ("latent_length", "scheduler", "denoise", "acceleration"):
+            if key in raw_params and raw_params[key] != expected_params.get(key):
+                raise GoldenWorkflowError(
+                    f"A4.1 generation parameter {key} differs from its selected profile")
+    else:
+        params = normalize_generation_parameters(raw_params)
     prompt = str(prompt_payload.get("prompt") or "").strip()
     if not prompt:
         raise GoldenWorkflowError("current optimized prompt is empty")
@@ -150,7 +201,7 @@ def bind_golden_workflow(request: Mapping[str, Any], workflow_id: str) -> dict[s
     h3_inputs = h3.setdefault("inputs", {})
     h3_inputs.update({"prompt": prompt, "width": params["width"],
                       "height": params["height"],
-                      "length": int(round(float(params["duration"]) * params["fps"])) + 11})
+                      "length": int(params["frame_count"])})
     noise_id, noise = _node(graph, "RandomNoise")
     noise.setdefault("inputs", {})["noise_seed"] = int(params["seed"])
     sampler_id, sampler = _node(graph, "KSamplerSelect")

@@ -677,6 +677,14 @@ pre.prompt {
 .reference-image { width:100%; max-height:190px; object-fit:cover; border-radius:5px; display:block; }
 .reference-dropzone .btn { margin:8px 3px 0; }
 .reference-actions { display:flex; justify-content:flex-end; margin-top:8px; }
+.day-night-reference-slots { display:grid; gap:10px; }
+.day-night-reference-slots > p { margin:0; line-height:1.45; }
+.reference-slot { border:1px solid var(--border, #3b4440); border-radius:6px; padding:8px; min-width:0; }
+.reference-slot .section-title { margin-bottom:7px; }
+.reference-slot .btn { margin:6px 4px 0 0; }
+.slot-preview { min-height:104px; max-height:164px; background:rgba(0,0,0,.13); }
+.slot-preview .reference-image { max-height:154px; object-fit:contain; }
+.reference-slot [hidden], #day-night-reference-slots[hidden], #single-reference-controls[hidden] { display:none !important; }
 .prompt-skill-card { display:flex; flex-direction:column; gap:3px; margin-top:10px; border:1px solid #b7d9bd; background:#edf8ef; color:#2d6d3b; border-radius:6px; padding:9px 10px; }
 .prompt-details { margin-top:9px; border-top:1px solid var(--line); padding-top:8px; }
 .prompt-detail-row { display:grid; grid-template-columns:110px 1fr; gap:10px; padding:7px 0; border-bottom:1px dotted var(--line); font-size:12px; }
@@ -893,6 +901,8 @@ input[type=text], select, textarea { padding: 5px 8px; }
 .ux2-reference-thumb { min-height: 154px; }
 .primary-param-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .primary-param-grid select { font-weight: 600; }
+.field-label { display: block; margin: 8px 0 4px; color: var(--muted); font-size: 12px; }
+.readonly-field { min-height: var(--control-height); padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text-secondary); font-size: 13px; }
 .prompt-assistance { border-top: 1px solid var(--border-subtle); padding-top: 8px; }
 .prompt-assistance > summary,
 .advanced-settings > summary,
@@ -1037,6 +1047,9 @@ input[type=text], select, textarea { padding: 5px 8px; }
 .app-study .reference-dropzone { background: #1b2120; border-color: #566560; border-radius: 2px; padding: 7px; }
 .app-study .reference-preview { min-height: 168px; color: #9baba4; background: #121717; }
 .app-study .reference-image { max-height: 210px; }
+.app-study .reference-slot { border-color:#3d4a45; background:#171d1b; }
+.app-study .slot-preview { min-height:112px; max-height:164px; color:#9baba4; background:#121717; }
+.app-study .slot-preview .reference-image { max-height:154px; }
 .app-study .ux2-viewport {
   min-height: calc(100vh - 124px);
   border: 0;

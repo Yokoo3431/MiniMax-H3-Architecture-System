@@ -258,7 +258,7 @@ class TestGenerateGateWithoutApproval(unittest.TestCase):
             h.store.save_references(pid, refs)
             with self.assertRaises(ValueError) as ctx:
                 h.job_api.submit_job(pid, risk_reviewed=True)
-            self.assertIn("REFERENCE_CONFIGURATION_ERROR", str(ctx.exception))
+            self.assertIn("REFERENCE_NOT_APPROVED:first_frame", str(ctx.exception))
         finally:
             h.close()
 
@@ -284,7 +284,7 @@ class TestGenerateGateWithoutApproval(unittest.TestCase):
             h.store.save_references(pid, refs)
             with self.assertRaises(ValueError) as ctx:
                 h.prompt_api.generate_prompt(pid)
-            self.assertIn("no approved reference", str(ctx.exception))
+            self.assertIn("REFERENCE_NOT_APPROVED:first_frame", str(ctx.exception))
         finally:
             h.close()
 

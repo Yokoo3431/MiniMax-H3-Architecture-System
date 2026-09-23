@@ -54,7 +54,7 @@ class TestAdvancedWorkflowStaticContract(unittest.TestCase):
             camera_motion="slow_push",
             generation_parameters={
                 "duration": 4.0, "fps": 24, "resolution": "1344x768",
-                "steps": 50, "seed": 42, "quality": "standard",
+                "steps": 50, "seed": 42, "quality": "NATIVE_HIGH",
             },
             prompt_payload={"prompt": "test", "prompt_hash": "test-hash", "mode": "I2VA"},
         )

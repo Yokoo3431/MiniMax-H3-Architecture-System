@@ -44,7 +44,7 @@ def make_request(**overrides):
         "camera_motion": "slow_push",
         "generation_parameters": {
             "resolution": "1344x768", "fps": 24, "duration": 4.0,
-            "quality": "diagnostic", "seed": 777888999,
+            "quality": "high", "seed": 777888999,
         },
         "prompt_payload": {
             "mode": "I2VA",
@@ -152,7 +152,7 @@ class TestContractCompatibility(unittest.TestCase):
             req.reference_assets = [
                 {"asset_id": f"r{i}",
                  "role": "first_frame" if i == 0 else "last_frame",
-                 "path_or_ref": n, "sha256": "A" * 64}
+                 "path_or_ref": n, "sha256": ("A" if i == 0 else "B") * 64}
                 for i, n in enumerate(refs)]
             native = adapter.prepare(req)
             self.assertEqual(native["workflow_id"], workflow_id)

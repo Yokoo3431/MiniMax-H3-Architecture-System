@@ -29,6 +29,7 @@ def make_request(**overrides):
             {"asset_id": "ref-1", "role": "first_frame",
              "path_or_ref": "mock://assets/facade.png", "sha256": "A" * 64},
         ],
+        "guide_frames": [],
         "workflow_id": "01_Exterior_Hero",
         "camera_motion": "slow_push",
         "generation_parameters": {

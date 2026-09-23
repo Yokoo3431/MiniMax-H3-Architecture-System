@@ -68,8 +68,20 @@ def validate_request(request: Dict[str, Any],
     refs = request.get("reference_assets") or []
     if not isinstance(refs, list) or not refs:
         errors.append("reference_assets must be a non-empty list")
+        refs = []
+    elif any(not isinstance(ref, dict) for ref in refs):
+        errors.append("reference_assets entries must be objects")
+        refs = [ref for ref in refs if isinstance(ref, dict)]
+    try:
+        from runtime.reference_contract import validate_guide_frames
+        validate_guide_frames(request.get("guide_frames"))
+    except ValueError as exc:
+        errors.append(str(exc))
 
     params = request.get("generation_parameters") or {}
+    if not isinstance(params, dict):
+        errors.append("generation_parameters must be an object")
+        params = {}
     if params:
         resolution = params.get("resolution", "1344x768")
         res_allowed = (req.get("generation_parameters", {}).get("fields", {})
@@ -78,12 +90,11 @@ def validate_request(request: Dict[str, Any],
             errors.append(f"resolution {resolution!r} not allowed")
         if params.get("fps", 24) not in [24]:
             errors.append("fps must be 24")
-        # Preserve the pre-RC diagnostic/production aliases while exposing
-        # Draft/Standard/High in the new Studio.  The payload builder expands
-        # both aliases through the single H3 parameter normalizer.
-        if params.get("quality") not in (
-                None, "draft", "standard", "high", "diagnostic", "production"):
-            errors.append("quality must be draft|standard|high")
+        quality_ids = {"DRAFT", "PREVIEW", "BALANCED", "STANDARD",
+                       "NATIVE_HIGH", "ULTRA_1080", "ULTRA_2K"}
+        if params.get("quality") is not None and str(params["quality"]).upper() not in quality_ids | {
+                "HIGH", "DIAGNOSTIC", "PRODUCTION"}:
+            errors.append("quality must be one of the seven A4.1 profile IDs")
         try:
             duration = float(params.get("duration", 4.0))
             if not 4.0 <= duration <= 15.0:
@@ -98,6 +109,9 @@ def validate_request(request: Dict[str, Any],
             errors.append("generation_parameters.seed is required")
 
     prompt = request.get("prompt_payload") or {}
+    if not isinstance(prompt, dict):
+        errors.append("prompt_payload must be an object")
+        prompt = {}
     if prompt:
         if prompt.get("mode") not in ("I2VA", "FL2VA"):
             errors.append("prompt_payload.mode must be I2VA|FL2VA")
@@ -106,7 +120,107 @@ def validate_request(request: Dict[str, Any],
         if not prompt.get("prompt_hash"):
             errors.append("prompt_payload.prompt_hash is required")
 
+    a4_profile = prompt.get("a4_profile") or {}
+    if not isinstance(a4_profile, dict):
+        errors.append("prompt_payload.a4_profile must be an object")
+        a4_profile = {}
+    if a4_profile.get("contract_version") == "a4.1":
+        from runtime.a4_profiles import resolve_product_parameters
+        from runtime.reference_contract import reference_bindings, required_reference_roles
+        try:
+            expected_roles = required_reference_roles(str(request.get("workflow_id") or ""))
+            if len(refs) != len(expected_roles):
+                errors.append(f"A4.1 requires reference roles {list(expected_roles)}")
+            else:
+                asset_ids = []
+                hashes = []
+                for ref, role in zip(refs, expected_roles):
+                    if ref.get("role") != role:
+                        errors.append(f"A4.1 reference role order must be {list(expected_roles)}")
+                    if ref.get("project_id") != request.get("study_id"):
+                        errors.append(f"A4.1 reference {role} is not from this Study")
+                    if ref.get("approval_state") != "APPROVED":
+                        errors.append(f"A4.1 reference {role} is not approved")
+                    asset_ids.append(str(ref.get("asset_id") or ""))
+                    hashes.append(str(ref.get("sha256") or "").lower())
+                if not all(asset_ids) or len(set(asset_ids)) != len(asset_ids):
+                    errors.append("A4.1 reference asset IDs must be present and distinct")
+                if len(hashes) > 1 and hashes[0] and hashes[1] and hashes[0] == hashes[1]:
+                    errors.append("A4.1 first and last references must have distinct content")
+                prompt_refs = prompt.get("reference_bindings") or []
+                if prompt_refs != reference_bindings(refs):
+                    errors.append("A4.1 Prompt reference bindings differ from Job references")
+            resolved, resolved_profile = resolve_product_parameters(
+                str(request.get("workflow_id") or ""), params)
+            if params.get("quality") != resolved.get("quality"):
+                errors.append("A4.1 quality profile was not canonically resolved")
+            if (params.get("resolution") != resolved.get("resolution")
+                    or params.get("fps", 24) != 24
+                    or params.get("delivery_fps", 24) != 24):
+                errors.append("A4.1 native/delivery values do not match an executable profile")
+            for key in ("duration", "requested_duration_seconds",
+                        "resolved_duration_seconds", "frame_count", "latent_length"):
+                if params.get(key) != resolved.get(key):
+                    errors.append(
+                        f"A4.1 generation_parameters.{key} differs from the canonical H3 profile")
+            profile_bound_fields = (
+                "width", "height", "aspect_ratio", "native_generation_fps",
+                "steps", "sigma_points", "sampler_mode", "generation_speed",
+                "accel", "velocity_cache", "cache_dit", "velocity_stride",
+                "cache_dit_rdt", "cache_dit_mc", "cache_dit_warmup",
+                "allow_accel_with_res_multistep", "seed",
+            )
+            for key in profile_bound_fields:
+                if params.get(key) != resolved.get(key):
+                    errors.append(
+                        f"A4.1 generation_parameters.{key} differs from the canonical H3 profile")
+            profile_defaults = resolved_profile["final_execution_parameters"]
+            for key in ("scheduler", "denoise", "acceleration"):
+                if key in params and params.get(key) != profile_defaults.get(key):
+                    errors.append(
+                        f"A4.1 generation_parameters.{key} differs from the selected quality profile")
+            if ("quality_execution_mode" in params
+                    and str(params["quality_execution_mode"]).upper()
+                    != resolved_profile["execution_mode"]):
+                errors.append("A4.1 quality execution mode differs from the selected profile")
+            output_spec = request.get("output_spec") or {}
+            if not isinstance(output_spec, dict):
+                errors.append("output_spec must be an object")
+                output_spec = {}
+            native = output_spec.get("native_generation") or {}
+            delivery = output_spec.get("delivery") or {}
+            if not isinstance(native, dict) or not isinstance(delivery, dict):
+                errors.append("A4.1 native_generation and delivery must be objects")
+                native = native if isinstance(native, dict) else {}
+                delivery = delivery if isinstance(delivery, dict) else {}
+            if (output_spec.get("resolution") != resolved.get("resolution")
+                    or output_spec.get("fps") != 24):
+                errors.append("A4.1 output_spec legacy resolution/FPS aliases are inconsistent")
+            expected_native = {
+                "width": resolved["width"],
+                "height": resolved["height"],
+                "fps": 24,
+                "frame_count": resolved["frame_count"],
+                "duration_seconds": resolved["resolved_duration_seconds"],
+                "requested_duration_seconds": resolved["duration"],
+            }
+            if native != expected_native:
+                errors.append("A4.1 native output spec differs from the resolved H3 profile")
+            if (delivery.get("width"), delivery.get("height"), delivery.get("fps")) != (
+                    resolved["width"], resolved["height"], 24):
+                errors.append("A4.1 delivery spec must reflect native 24 FPS until postprocess exists")
+            if delivery.get("postprocess_applied") is not False:
+                errors.append("A4.1 cannot claim post-processing without an implemented pipeline")
+            if (delivery.get("upscale_method") is not None
+                    or delivery.get("interpolation_method") is not None):
+                errors.append("A4.1 cannot claim an unimplemented delivery method")
+        except (TypeError, ValueError) as exc:
+            errors.append(f"A4.1 execution contract rejected: {exc}")
+
     gates = request.get("gates") or {}
+    if not isinstance(gates, dict):
+        errors.append("gates must be an object")
+        gates = {}
     for gate in ("reference_approved", "intent_confirmed", "prompt_verified", "risk_reviewed"):
         if gates.get(gate) is not True:
             errors.append(f"gate {gate} must be true")
@@ -143,11 +257,13 @@ class VideoGenerationRequest:
         "prompt_verified": True,
         "risk_reviewed": True,
     })
+    guide_frames: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "study_id": self.study_id,
             "reference_assets": self.reference_assets,
+            "guide_frames": self.guide_frames,
             "workflow_id": self.workflow_id,
             "camera_motion": self.camera_motion,
             "generation_parameters": self.generation_parameters,
@@ -161,6 +277,7 @@ class VideoGenerationRequest:
         return cls(
             study_id=data["study_id"],
             reference_assets=data["reference_assets"],
+            guide_frames=data.get("guide_frames") or [],
             workflow_id=data["workflow_id"],
             camera_motion=data["camera_motion"],
             generation_parameters=data["generation_parameters"],

@@ -32,11 +32,13 @@ class TestProductHardening(unittest.TestCase):
         self.assertEqual(event["progress"], 68.0)
         self.assertAlmostEqual(estimate_eta(120, 68), 56.4705, places=2)
 
-        draft = normalize_generation_parameters({"quality": "draft"}, seed=7)
-        standard = normalize_generation_parameters({"quality": "standard"}, seed=7)
+        with self.assertRaisesRegex(
+                H3ParameterError, "QUALITY_PROFILE_UNAVAILABLE:DRAFT"):
+            normalize_generation_parameters({"quality": "draft"}, seed=7)
+        with self.assertRaisesRegex(
+                H3ParameterError, "QUALITY_PROFILE_UNAVAILABLE:STANDARD"):
+            normalize_generation_parameters({"quality": "standard"}, seed=7)
         high = normalize_generation_parameters({"quality": "high"}, seed=7)
-        self.assertEqual((draft["sigma_points"], draft["sampler_mode"]), (21, "res_multistep"))
-        self.assertEqual((standard["sigma_points"], standard["sampler_mode"]), (50, "euler"))
         self.assertEqual(high["resolution"], "1344x768")
         self.assertEqual(normalize_generation_parameters({"generation_speed": "auto"})["accel"], "auto")
         self.assertEqual(normalize_generation_parameters({"velocity_cache": True})["accel"], "manual-velocity")
@@ -71,7 +73,7 @@ class TestProductHardening(unittest.TestCase):
                     "duration": 8,
                     "resolution": "832x480",
                     "aspect_ratio": "16:9",
-                    "quality": "draft",
+                    "quality": "PREVIEW",
                     "generation_speed": "standard",
                     "seed": 19,
                 },
@@ -81,7 +83,7 @@ class TestProductHardening(unittest.TestCase):
         )
         self.assertEqual(payload["6"]["inputs"]["width"], 832)
         self.assertEqual(payload["6"]["inputs"]["height"], 480)
-        self.assertEqual(payload["6"]["inputs"]["length"], 203)
+        self.assertEqual(payload["6"]["inputs"]["length"], 192)
         self.assertEqual(payload["9"]["inputs"]["noise_seed"], 19)
         self.assertEqual(payload["2"]["inputs"]["clip_name"],
                          "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors")

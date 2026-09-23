@@ -8,7 +8,14 @@ builder without importing CUDA or loading a model.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping
+
+from runtime.a4_profiles import (
+    QUALITY_PROFILE_SPECS,
+    h3_frame_count_for_duration,
+    normalize_quality_id,
+)
 
 
 VIDEO_TYPES = (
@@ -28,13 +35,13 @@ RESOLUTION_PRESETS = {
 }
 ASPECT_RATIOS = ("auto", "16:9", "9:16", "1:1")
 QUALITY_PROFILES = {
-    # These are the actual H3 sampler contracts documented by the pinned node.
-    "draft": {"sigma_points": 21, "sampler_mode": "res_multistep",
-               "default_resolution": "832x480"},
-    "standard": {"sigma_points": 50, "sampler_mode": "euler",
-                  "default_resolution": "1024x576"},
-    "high": {"sigma_points": 50, "sampler_mode": "euler",
-              "default_resolution": "1344x768"},
+    profile_id: {
+        "sigma_points": int(spec["steps"]),
+        "sampler_mode": str(spec["sampler_mode"]),
+        "default_resolution": str(spec["resolution"]),
+    }
+    for profile_id, spec in QUALITY_PROFILE_SPECS.items()
+    if spec.get("availability") == "READY"
 }
 
 ACCELERATION_MODES = {
@@ -65,25 +72,47 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
                                     *, seed: int | None = None) -> dict[str, Any]:
     """Validate and expand friendly controls into the production H3 contract."""
     raw = dict(values or {})
-    quality = _text(raw.get("quality"), "standard")
-    # Backward-compatible aliases from the prior diagnostic/production UI.
-    quality = {"diagnostic": "draft", "production": "standard"}.get(quality, quality)
+    raw_quality = _text(raw.get("quality"), "NATIVE_HIGH")
+    try:
+        quality = normalize_quality_id(raw_quality)
+    except ValueError as exc:
+        raise H3ParameterError(str(exc)) from exc
     if quality not in QUALITY_PROFILES:
-        raise H3ParameterError("quality must be draft, standard, or high")
+        spec = QUALITY_PROFILE_SPECS[quality]
+        raise H3ParameterError(
+            f"QUALITY_PROFILE_UNAVAILABLE:{quality}: "
+            f"{spec.get('availability_reason', 'execution is not validated')}")
 
     try:
         duration = float(raw.get("duration", 4.0))
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise H3ParameterError("duration must be a number") from exc
-    if not 4.0 <= duration <= 15.0:
+    if not math.isfinite(duration) or not 4.0 <= duration <= 15.0:
         raise H3ParameterError("duration must be between 4 and 15 seconds")
+    try:
+        frame_count = h3_frame_count_for_duration(duration, 24)
+    except ValueError as exc:
+        raise H3ParameterError(str(exc)) from exc
+    resolved_duration = round(frame_count / 24, 6)
 
     try:
-        fps = int(raw.get("fps", 24))
-    except (TypeError, ValueError) as exc:
-        raise H3ParameterError("fps must be an integer") from exc
-    if fps != 24:
+        fps_value = float(raw.get("fps", 24))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise H3ParameterError("fps must be 24") from exc
+    if not math.isfinite(fps_value) or not math.isclose(
+            fps_value, 24.0, rel_tol=0.0, abs_tol=1e-9):
         raise H3ParameterError("current H3 Golden workflows support 24 fps only")
+    fps = 24
+
+    try:
+        delivery_fps_value = float(raw.get("delivery_fps", 24))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise H3ParameterError("delivery_fps must be 24") from exc
+    if not math.isfinite(delivery_fps_value) or not math.isclose(
+            delivery_fps_value, 24.0, rel_tol=0.0, abs_tol=1e-9):
+        raise H3ParameterError(
+            "DELIVERY_FPS_UNAVAILABLE: 30/48/60 FPS require a validated post-process pipeline")
+    delivery_fps = 24
 
     resolution = _resolution(raw.get("resolution") or QUALITY_PROFILES[quality]["default_resolution"])
     width, height = RESOLUTION_PRESETS[resolution]
@@ -127,7 +156,12 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
         "height": height,
         "aspect_ratio": aspect_ratio,
         "fps": fps,
-        "duration": round(duration, 3),
+        "native_generation_fps": 24,
+        "delivery_fps": delivery_fps,
+        "duration": duration,
+        "requested_duration_seconds": duration,
+        "resolved_duration_seconds": resolved_duration,
+        "frame_count": frame_count,
         "quality": quality,
         "seed": final_seed,
         "generation_speed": "auto" if speed == "auto" else "standard",

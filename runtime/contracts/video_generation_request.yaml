@@ -17,12 +17,60 @@ video_generation_request:
         type: string
       role:
         type: enum
-        allowed: ["first_frame", "last_frame", "context"]
+        allowed:
+          - "first_frame"
+          - "last_frame"
+          - "identity_reference"
+          - "style_reference"
+          - "material_reference"
+          - "site_reference"
+          - "motion_reference_video"
+          - "camera_reference_video"
+          - "audio_reference"
+          - "timeline_guide"
+          - "context"  # legacy metadata only; not an A4.1 execution role
       path_or_ref:
         type: string
       sha256:
         type: string
         nullable: true
+      project_id:
+        type: string
+      approval_state:
+        type: enum
+        allowed: ["PENDING", "APPROVED", "REJECTED"]
+
+  guide_frames:
+    type: list
+    required: false
+    default: []
+    execution: "metadata_only; MiniMaxH3AddGuide is not invoked in A4.1"
+    items:
+      asset_id:
+        type: string
+        required: true
+      role:
+        type: enum
+        allowed:
+          - "first_frame"
+          - "last_frame"
+          - "identity_reference"
+          - "style_reference"
+          - "material_reference"
+          - "site_reference"
+          - "motion_reference_video"
+          - "camera_reference_video"
+          - "audio_reference"
+          - "timeline_guide"
+      time_seconds:
+        type: number
+        minimum: 0
+      frame_index:
+        type: integer
+        minimum: 0
+      approval_state:
+        type: enum
+        allowed: ["PENDING", "APPROVED", "REJECTED"]
 
   workflow_id:
     type: enum
@@ -52,21 +100,43 @@ video_generation_request:
     fields:
       resolution:
         type: string
-        allowed: ["832x480", "1024x576", "1344x768"]
-        default: "1024x576"
+        allowed: ["672x384", "832x480", "1024x576", "1280x720", "1344x768", "1920x1080"]
+        default: "1344x768"
       fps:
         type: integer
         allowed: [24]
         default: 24
+        semantics: "legacy alias for native_generation_fps; never the delivery rate"
+      native_generation_fps:
+        type: integer
+        allowed: [24]
+        default: 24
+        derived: true
       duration:
         type: number
         minimum: 4.0
         maximum: 15.0
         default: 4.0
+        semantics: "requested duration seconds; resolved upward to H3 17k+5 frames at 24 FPS"
+      frame_count:
+        type: integer
+        derived: true
+        allowed_grid: "17k+5"
+      resolved_duration_seconds:
+        type: number
+        derived: true
       quality:
         type: enum
-        allowed: ["draft", "standard", "high"]
-        default: "standard"
+        allowed: ["DRAFT", "PREVIEW", "BALANCED", "STANDARD", "NATIVE_HIGH", "ULTRA_1080", "ULTRA_2K"]
+        default: "NATIVE_HIGH"
+      delivery_fps:
+        type: integer
+        allowed: [24, 30, 48, 60]
+        default: 24
+      quality_execution_mode:
+        type: enum
+        allowed: ["NATIVE_H3", "H3_REGENERATE_2K", "POST_UPSCALE_2K", "POST_UPSCALE"]
+        nullable: true
       aspect_ratio:
         type: enum
         allowed: ["auto", "16:9", "9:16", "1:1"]
@@ -138,6 +208,45 @@ video_generation_request:
       resolution:
         type: string
         default: "1344x768"
+      native_generation:
+        type: object
+        required: true
+        fields:
+          width:
+            type: integer
+          height:
+            type: integer
+          fps:
+            type: integer
+            allowed: [24]
+          frame_count:
+            type: integer
+            derived: true
+            allowed_grid: "17k+5"
+          duration_seconds:
+            type: number
+            derived: true
+          requested_duration_seconds:
+            type: number
+      delivery:
+        type: object
+        required: true
+        fields:
+          width:
+            type: integer
+          height:
+            type: integer
+          fps:
+            type: integer
+            allowed: [24, 30, 48, 60]
+          upscale_method:
+            type: string
+            nullable: true
+          interpolation_method:
+            type: string
+            nullable: true
+          postprocess_applied:
+            type: boolean
       preview_frames:
         type: list
         default: ["first", "0.25", "0.5", "0.75", "last"]

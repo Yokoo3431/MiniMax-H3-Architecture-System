@@ -133,7 +133,10 @@ class H3ModelRootContractTests(unittest.TestCase):
         for workflow in CANONICAL_WORKFLOWS:
             count = 2 if load_registry()["workflows"][workflow]["input_mode"] == "FL2VA" else 1
             request["reference_assets"] = [
-                {"path_or_ref": f"reference-{index}.png"} for index in range(count)
+                {"path_or_ref": f"reference-{index}.png",
+                 "role": "first_frame" if index == 0 else "last_frame",
+                 "sha256": ("A" if index == 0 else "B") * 64}
+                for index in range(count)
             ]
             payload = build_production_payload(request, workflow)
             self.assertEqual(payload["2"]["inputs"]["clip_name"],

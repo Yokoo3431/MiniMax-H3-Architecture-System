@@ -44,12 +44,13 @@ def make_request(workflow_id, refs=None, camera=None, seed=777888900):
     refs = refs or default_refs
     camera = camera or default_cam
     assets = [{"asset_id": f"r{i}", "role": ("first_frame" if i == 0 else "last_frame"),
-               "path_or_ref": n, "sha256": "A" * 64} for i, n in enumerate(refs)]
+               "path_or_ref": n, "sha256": ("A" if i == 0 else "B") * 64}
+              for i, n in enumerate(refs)]
     return VideoGenerationRequest(
         study_id="c2b_test", reference_assets=assets, workflow_id=workflow_id,
         camera_motion=camera,
         generation_parameters={"resolution": "1344x768", "fps": 24,
-                               "duration": 4.0, "quality": "diagnostic",
+                               "duration": 4.0, "quality": "high",
                                "seed": seed},
         prompt_payload={"mode": mode, "prompt": "For the target video, at 0.00 seconds ...",
                         "alignment": "a", "integrated_multimodal_description": "d",

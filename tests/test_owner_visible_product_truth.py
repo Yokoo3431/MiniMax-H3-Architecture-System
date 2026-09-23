@@ -97,6 +97,7 @@ class OwnerVisibleProductTruthTests(unittest.TestCase):
             ref_id = "ref-current"
             store.save_references(project["id"], {ref_id: {
                 "id": ref_id, "state": "APPROVED", "role": "first_frame",
+                "project_id": project["id"],
                 "filename": "ref.png", "stored_path": None, "sha256": "HASH"}})
             project["current_reference_asset_id"] = ref_id
             store.save_project(project)

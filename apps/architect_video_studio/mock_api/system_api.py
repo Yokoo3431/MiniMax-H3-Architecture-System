@@ -58,7 +58,23 @@ class SystemAPI:
 
     def capabilities(self) -> Dict[str, Any]:
         from runtime.generation_capabilities import capability_matrix
-        return {"workflows": capability_matrix()}
+        from runtime.a4_profiles import (
+            ARCHITECTURE_PROFILES, PRESERVATION_SEMANTICS,
+            architecture_profile_catalog, quality_profile_catalog,
+            workflow_quality_matrix,
+        )
+        return {
+            "workflows": capability_matrix(),
+            "a4_profiles": {
+                "contract_version": "a4.1",
+                "quality": quality_profile_catalog(),
+                "architecture": architecture_profile_catalog(),
+                "preservation_semantics": dict(PRESERVATION_SEMANTICS),
+                "workflow_quality_matrix": workflow_quality_matrix(),
+                "automatic_architecture_fidelity": True,
+                "profile_count": len(ARCHITECTURE_PROFILES),
+            },
+        }
 
     def pick_folder(self) -> Dict[str, Any]:
         """Open an app-owned native Windows folder picker when available."""

@@ -25,8 +25,8 @@ class TestFiveWorkflowCapabilityParity(unittest.TestCase):
         self.assertEqual(set(matrix), set(WORKFLOW_CAPABILITIES))
         for workflow, item in matrix.items():
             params = validate_workflow_parameters(workflow, {
-                "duration": 4, "fps": 24, "resolution": "1024x576",
-                "steps": 20, "sampler_mode": "euler", "quality": "standard",
+                "duration": 4, "fps": 24, "resolution": "832x480",
+                "steps": 21, "sampler_mode": "res_multistep", "quality": "PREVIEW",
             })
             self.assertEqual(item["mode"], "FL2VA" if workflow.startswith("02_") else "I2VA")
             self.assertEqual(params["fps"], 24)

@@ -15,18 +15,25 @@ from typing import Any, Dict, List
 from ..state_machine.machine import ProjectStateMachine
 from .store import StudioStore
 from .study_state import build_study_state
-from runtime.h3_generation_parameters import normalize_generation_parameters
+from runtime.a4_profiles import (
+    PROMPT_PROFILE_VERSION,
+    QUALITY_PROFILE_VERSION,
+    apply_architecture_profile,
+    h3_frame_count_for_duration,
+    resolve_product_parameters,
+)
 from runtime.prompt_provenance import (
     generation_parameters_hash,
     prompt_input_hash,
     reference_asset_hash,
     stable_hash,
 )
+from runtime.reference_contract import reference_bindings, resolve_selected_references
 from runtime.workflow_motion import normalize_camera_motion
 from runtime.h3_prompt_engine import (
     CLIReasoningProvider, OpenAICompatibleProvider, PromptReasoningRequest,
     CLI_PROVIDER_IDS, UniversalPromptEngine, discover_providers, provider_summary,
-    test_provider_configuration,
+    H3PromptValidator, test_provider_configuration,
 )
 
 FROZEN_WORKFLOWS = (
@@ -168,14 +175,13 @@ class PromptAPI:
             raise ValueError(f"workflow {workflow!r} not in frozen set {FROZEN_WORKFLOWS}")
 
         refs = self.store.load_references(project_id)
-        current_id = project.get("current_reference_asset_id")
-        current = refs.get(current_id)
-        approved = [current] if current and current.get("state") == "APPROVED" else []
-        if not approved:
-            raise ValueError(
-                "Reference Approval Gate: current reference is not approved "
-                "(no approved reference selected)"
-            )
+        approved = resolve_selected_references(
+            project_id, project, refs, workflow, require_approved=True,
+            reference_root=self.store.input_dir(project_id))
+        current = next((item for item in approved
+                        if item.get("role") == "first_frame"), approved[0])
+        current_id = current.get("id")
+        selected_bindings = reference_bindings(approved)
 
         reference_paths = [r["stored_path"] or r["filename"] for r in approved]
         reference_hash = reference_asset_hash(approved)
@@ -197,8 +203,10 @@ class PromptAPI:
             input_images=reference_paths,
             user_approved=True,
         )
-        frame_count = 107 if workflow == "02_Day_Night_Transition" else None
-        params = normalize_generation_parameters(generation_parameters)
+        params, profile_context = resolve_product_parameters(
+            workflow, generation_parameters)
+        frame_count = h3_frame_count_for_duration(params["duration"], params["fps"])
+        resolved_duration = round(frame_count / params["fps"], 6)
         started_at = self.store.timestamp()
         try:
             if self._custom_adapter:
@@ -206,7 +214,7 @@ class PromptAPI:
                     intent_obj,
                     workflow=workflow,
                     reference=ref_meta,
-                    duration_seconds=params["duration"],
+                    duration_seconds=resolved_duration,
                     frame_count=frame_count,
                     fps=float(params["fps"]),
                 )
@@ -222,15 +230,19 @@ class PromptAPI:
                 prompt = self._configured_engine().generate(
                     PromptReasoningRequest(
                         mode=mode,
-                        duration=float(params["duration"]),
+                        duration=resolved_duration,
                         user_intent=intent.get("natural_language", ""),
                         reference_role="first_and_last_frame" if mode == "FL2VA" else "first_frame",
                         reference_count=len(approved),
                         workflow_id=workflow,
                         camera_motion=camera_motion,
                         reference_image_path=reference_paths[0] if reference_paths else None,
+                        reference_image_paths=tuple(reference_paths),
+                        reference_roles=tuple(item.get("role", "first_frame")
+                                              for item in approved),
                         image_consent=bool(image_consent),
-                        metadata={"generation_parameters": params},
+                        metadata={"generation_parameters": params,
+                                  "a4_profile": profile_context},
                     ),
                     provider=prompt_engine,
                 )
@@ -261,6 +273,7 @@ class PromptAPI:
                 "skill_version": "unknown",
                 "input_intent_hash": stable_hash(intent.get("natural_language", "")),
                 "reference_asset_id": reference_id,
+                "reference_bindings": selected_bindings,
                 "reference_hash": reference_hash,
                 "optimized_prompt_hash": stable_hash(fallback),
                 "started_at": started_at, "completed_at": completed_at,
@@ -269,6 +282,22 @@ class PromptAPI:
             }
             self.store.save_prompt(project_id, record)
             return record
+        profiled_prompt = apply_architecture_profile(prompt.get("prompt", ""), workflow)
+        prompt["prompt"] = profiled_prompt
+        prompt["optimized_prompt"] = profiled_prompt
+        desc_start = profiled_prompt.find("integrated_multimodal_description:")
+        desc_start += len("integrated_multimodal_description:")
+        desc_end = profiled_prompt.find("\n\noverall_soundscape:", desc_start)
+        prompt["integrated_multimodal_description"] = (
+            profiled_prompt[desc_start:desc_end].strip())
+        validation = H3PromptValidator().validate(
+            profiled_prompt,
+            mode=prompt["mode"],
+            duration=params["duration"],
+            reference_count=len(approved),
+        )
+        prompt["validator_result"] = validation
+        prompt["verified"] = validation
         created_at = self.store.timestamp()
         params_hash = generation_parameters_hash(params)
         provenance = dict(prompt.get("provenance") or {})
@@ -277,11 +306,10 @@ class PromptAPI:
         engine_mode = str(prompt.get("engine_mode") or "OFFLINE_COMPILER")
         skill_executed = bool(prompt.get("skill_execution"))
         prompt_hash = stable_hash(prompt["prompt"])
-        validation = prompt.get("validator_result") or prompt.get("verified") or {"pass": False}
         skill_version = prompt.get("skill_version") or provenance.get("official_skill_revision", "unknown")
         skill_source = prompt.get("skill_source", "MiniMax-AI/MiniMax-H3/skills/h3-prompt-writing")
         reference_hashes = {
-            str(item.get("filename") or item.get("id") or "reference"): str(
+            f"{item.get('role') or 'first_frame'}:{item.get('id') or item.get('filename') or 'reference'}": str(
                 item.get("sha256") or item.get("id") or "MISSING_FILE"
             )
             for item in approved
@@ -328,9 +356,13 @@ class PromptAPI:
             "skill_invoked": skill_executed,
             "invocation_result": "PASS" if skill_executed else "OFFLINE_COMPILED",
             "workflow_id": workflow,
+            "a4_profile": profile_context,
+            "quality_profile_version": QUALITY_PROFILE_VERSION,
+            "prompt_profile_version": PROMPT_PROFILE_VERSION,
             "generation_mode": prompt.get("mode"),
             "raw_architect_intent": raw_architect_intent,
             "user_reference_hashes": reference_hashes,
+            "user_reference_bindings": selected_bindings,
             "user_reference_approved": True,
             "generated_prompt_hash": prompt_hash,
             "provider_evidence": prompt.get("evidence"),
@@ -353,6 +385,7 @@ class PromptAPI:
                 "skill_source": skill_source,
                 "input_intent_hash": stable_hash(intent.get("natural_language", "")),
                 "reference_asset_id": current_id,
+                "reference_bindings": selected_bindings,
                 "reference_hash": reference_hash,
                 "optimized_prompt_hash": prompt_hash,
             },
@@ -360,6 +393,9 @@ class PromptAPI:
             "original_intent": intent.get("natural_language", ""),
             "optimized_prompt": prompt["prompt"],
             "workflow_id": workflow,
+            "a4_profile": profile_context,
+            "quality_profile_version": QUALITY_PROFILE_VERSION,
+            "prompt_profile_version": PROMPT_PROFILE_VERSION,
             "reference_asset_hash": reference_hash,
             "generation_parameters_hash": params_hash,
             "input_hash": prompt_input_hash(
@@ -376,6 +412,7 @@ class PromptAPI:
             "skill_version": skill_version,
             "input_intent_hash": stable_hash(intent.get("natural_language", "")),
             "reference_asset_id": current_id,
+            "reference_bindings": selected_bindings,
             "reference_hash": reference_hash,
             "optimized_prompt_hash": prompt_hash,
             "started_at": started_at,

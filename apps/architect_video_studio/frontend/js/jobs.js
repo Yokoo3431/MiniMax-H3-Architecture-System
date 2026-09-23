@@ -101,10 +101,12 @@ async function openDetail(jobId, pid) {
     ? `<img class="job-reference-thumb" src="${esc(detail.reference.preview_url)}" alt="参考图"><div class="small muted mt">${esc(detail.reference.filename || '')}</div>`
     : '<div class="muted">无参考图</div>';
   const p = detail.parameters || {};
+  const trace = detail.technical_details?.execution_trace || {};
   document.getElementById('detail-summary').innerHTML = `
     <div class="kv"><span class="k">状态</span><span>${esc(detail.friendly_reason || friendlyState(detail))}</span></div>
     <div class="kv"><span class="k">进度</span><span>${esc(detail.progress == null ? '—' : Math.round(detail.progress) + '%')} · ${esc(detail.current_stage || '执行工作流')} · ${esc(formatJobEta(detail))}</span></div>
     <div class="kv"><span class="k">参数</span><span>${esc(`${p.duration ?? '—'}s · ${p.fps ?? '—'}fps · ${p.quality ?? '—'} · ${p.resolution ?? '—'}`)}</span></div>
+    <div class="kv"><span class="k">A4 配置</span><span>${esc(`${String(trace.quality_profile || p.quality || '—').toUpperCase()} · ${trace.architecture_profile || '—'} · ${trace.status || '—'}`)}</span></div>
     <div class="kv"><span class="k">提示词摘要</span><span>${esc(detail.prompt_summary || '—')}</span></div>
     ${detail.output_path ? `<div class="kv"><span class="k">视频文件</span><span class="small">${esc(detail.output_path)}</span></div>` : ''}`;
   const actions = document.getElementById('detail-actions');

@@ -50,6 +50,7 @@
       <aside class="reference-panel ux2-reference-drawer" aria-label="参考图">
 <section class="control-section reference-section ux2-inspector-section">
             <div class="section-title"><span>参考图</span><span id="reference-state" class="badge state" role="status" aria-live="polite">未上传</span></div>
+            <div id="single-reference-controls">
             <div id="reference-dropzone" class="reference-dropzone" tabindex="0">
               <div id="reference-preview" class="reference-preview ux2-reference-thumb">拖拽图片到这里，或点击选择</div>
               <input type="file" id="ref-file" accept="image/*" hidden>
@@ -60,6 +61,26 @@
             <div class="reference-actions">
               <select class="avs-select" id="ref-role" aria-label="参考图用途" hidden><option value="first_frame">first_frame</option></select>
               <button class="spectrum-Button btn ok" id="upload-btn" type="button" disabled>上传并审批</button>
+            </div>
+            </div>
+            <div id="day-night-reference-slots" class="day-night-reference-slots" hidden>
+              <p class="muted small">日夜过渡需要两张不同的图片；首帧和末帧分别审批并按角色绑定。</p>
+              <section class="reference-slot" aria-labelledby="first-frame-label">
+                <div class="section-title"><span id="first-frame-label">开始画面 · 首帧</span><span id="first-frame-state" class="badge state">未上传</span></div>
+                <div id="first-frame-preview" class="reference-preview slot-preview">选择开始画面</div>
+                <input type="file" id="first-frame-file" accept="image/*" hidden>
+                <button class="spectrum-Button btn" id="choose-first-frame-btn" type="button">选择首帧</button>
+                <button class="spectrum-Button btn ghost" id="replace-first-frame-btn" type="button" hidden>替换首帧</button>
+                <button class="spectrum-Button btn ok" id="upload-first-frame-btn" type="button" disabled>上传并审批首帧</button>
+              </section>
+              <section class="reference-slot" aria-labelledby="last-frame-label">
+                <div class="section-title"><span id="last-frame-label">结束画面 · 末帧</span><span id="last-frame-state" class="badge state">未上传</span></div>
+                <div id="last-frame-preview" class="reference-preview slot-preview">选择结束画面</div>
+                <input type="file" id="last-frame-file" accept="image/*" hidden>
+                <button class="spectrum-Button btn" id="choose-last-frame-btn" type="button">选择末帧</button>
+                <button class="spectrum-Button btn ghost" id="replace-last-frame-btn" type="button" hidden>替换末帧</button>
+                <button class="spectrum-Button btn ok" id="upload-last-frame-btn" type="button" disabled>上传并审批末帧</button>
+              </section>
             </div>
           </section>
       </aside>
@@ -124,26 +145,27 @@
         </section>
         <section class="control-section ux2-inspector-section">
           <div class="section-title"><span>生成设置</span><span class="muted small">H3</span></div>
-                    <div class="param-grid primary-param-grid">
+          <div class="param-grid primary-param-grid">
             <div><label for="param-duration">时长</label><select class="avs-select" id="param-duration"></select></div>
-            <div><label for="param-quality">质量</label><select class="avs-select" id="param-quality"><option value="draft">Draft</option><option value="standard" selected>Standard</option><option value="high">High</option></select></div>
+            <div><label for="param-quality">质量档位</label><select class="avs-select" id="param-quality">
+              <option value="DRAFT" disabled title="Experimental 672×384; not validated">DRAFT · 暂不可用</option>
+              <option value="PREVIEW">PREVIEW · 832×480</option>
+              <option value="BALANCED" disabled title="待完成 GPU 成本核验">BALANCED · 1024×576 · 待核验</option>
+              <option value="STANDARD" disabled title="1280×720 尚未通过产品验证">STANDARD · 1280×720 · 待验证</option>
+              <option value="NATIVE_HIGH" selected>NATIVE_HIGH · 1344×768</option>
+              <option value="ULTRA_1080" disabled title="需要真实后处理流程">ULTRA_1080 · 交付档 · 待后处理</option>
+              <option value="ULTRA_2K" disabled title="需显式选择 H3_REGENERATE_2K 或 POST_UPSCALE_2K；当前均未验证">ULTRA_2K · 待验证</option>
+            </select></div>
+            <div><label for="param-delivery-fps">交付帧率</label><select class="avs-select" id="param-delivery-fps">
+              <option value="24" selected>24 FPS · 原生 H3</option>
+              <option value="30" disabled title="需要帧插值后处理">30 FPS · 待后处理</option>
+              <option value="48" disabled title="需要帧插值后处理">48 FPS · 待后处理</option>
+              <option value="60" disabled title="需要帧插值后处理">60 FPS · 待后处理</option>
+            </select></div>
+            <div class="wide"><span class="field-label">Architecture Fidelity</span><div class="readonly-field" id="architecture-profile">Automatic · 按视频类型自动选择</div></div>
           </div>
-          <details class="advanced-settings mt"><summary>高级设置</summary>
-            <div class="param-grid mt secondary-param-grid">
-              <div><label for="param-resolution">分辨率</label><select class="avs-select" id="param-resolution"></select></div>
-              <div><label for="param-fps">帧率</label><select class="avs-select" id="param-fps"><option value="24">24 fps（已验证）</option></select></div>
-              <div><label for="param-aspect">画幅</label><select class="avs-select" id="param-aspect"><option value="auto">自动</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></div>
-              <div><label for="param-speed">生成速度</label><select class="avs-select" id="param-speed"><option value="standard">Standard（Golden 已验证）</option></select></div>
-            </div>
-          </details>
-          <details class="advanced-settings mt"><summary>技术细节</summary>
-            <div class="param-grid mt">
-              <div><label for="param-seed">Seed（可选）</label><input class="spectrum-Textfield avs-control" type="text" id="param-seed" placeholder="留空随机"></div>
-              <div><label for="param-steps">Sigma 点数</label><input class="spectrum-Textfield avs-control" type="number" id="param-steps" min="2" max="100" placeholder="随质量"></div>
-              <div><label for="param-sampler">采样器</label><select class="avs-select" id="param-sampler"><option value="euler">Euler</option><option value="res_multistep">Res Multi-step</option></select></div>
-              <label class="check-row wide"><input type="checkbox" id="param-velocity"> Velocity-cache（手动）</label>
-              <label class="check-row wide"><input type="checkbox" id="param-cache-dit"> Cache-DiT（手动）</label>
-            </div>
+          <details class="advanced-settings mt"><summary>可复现设置</summary>
+            <div class="param-grid mt"><div><label for="param-seed">Seed（可选）</label><input class="spectrum-Textfield avs-control" type="text" id="param-seed" placeholder="留空则开始生成时随机"></div></div>
           </details>
         </section>
 

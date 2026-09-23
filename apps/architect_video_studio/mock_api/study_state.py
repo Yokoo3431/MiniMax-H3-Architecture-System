@@ -16,6 +16,9 @@ from .job_state import (
     RECONCILIATION_GRACE_SECONDS, is_job_active, is_job_terminal,
     normalize_terminal_record,
 )
+from runtime.reference_contract import (
+    reference_bindings, required_reference_roles, resolve_selected_references,
+)
 
 
 def _job_age_seconds(job: Dict[str, Any]) -> float:
@@ -72,17 +75,65 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     if normalized:
         store.save_jobs(project_id, jobs_by_id)
 
-    approved = [r for r in refs if r.get("state") == "APPROVED"]
-    selected_id = project.get("current_reference_asset_id")
-    reference = next((r for r in approved if r.get("id") == selected_id), None)
-    reference_uploaded = bool(refs)
+    selected_workflow = intent.get("selected_workflow")
+    required_roles = required_reference_roles(selected_workflow)
+    refs_by_id = {str(item.get("id")): item for item in refs if item.get("id")}
+    selected_ids = project.get("selected_reference_asset_ids")
+    selected_ids = selected_ids if isinstance(selected_ids, dict) else {}
+    selected_records: list[Dict[str, Any]] = []
+    reference_slots: list[Dict[str, Any]] = []
+    slot_problems: list[str] = []
+    role_labels = {"first_frame": "首帧", "last_frame": "末帧"}
+    for role in required_roles:
+        asset_id = selected_ids.get(role)
+        if not asset_id and role == "first_frame":
+            asset_id = project.get("current_reference_asset_id")
+        record = refs_by_id.get(str(asset_id)) if asset_id else None
+        if record:
+            selected_records.append(record)
+        label = role_labels.get(role, role)
+        if not asset_id:
+            slot_problems.append(f"上传{label}")
+        elif not record:
+            slot_problems.append(f"重新选择{label}（引用已失效）")
+        elif str(record.get("project_id") or "") != str(project_id):
+            slot_problems.append(f"重新选择{label}（项目不匹配）")
+        elif record.get("role") != role:
+            slot_problems.append(f"重新选择{label}（用途不匹配）")
+        elif record.get("state") != "APPROVED":
+            slot_problems.append(f"批准{label}")
+        stored = record.get("stored_path") if record else None
+        preview_ready = bool(stored and Path(stored).is_file())
+        reference_slots.append({
+            "role": role,
+            "asset_id": str(asset_id) if asset_id else None,
+            "filename": record.get("filename") if record else None,
+            "approval_state": record.get("state") if record else "MISSING",
+            "approved": bool(record and record.get("state") == "APPROVED"
+                             and record.get("role") == role
+                             and str(record.get("project_id") or "") == str(project_id)),
+            "preview_ready": preview_ready,
+            "preview_url": (
+                f"/api/assets/{record['id']}/content?v={record.get('sha256') or record.get('version', 1)}"
+                if record and preview_ready else None),
+        })
+    try:
+        current_refs = resolve_selected_references(
+            project_id, project, refs_by_id, selected_workflow,
+            require_approved=True, reference_root=store.input_dir(project_id))
+        reference_error = None
+    except ValueError as exc:
+        current_refs = []
+        reference_error = str(exc)
+    reference = next((item for item in selected_records
+                      if item.get("role") == "first_frame"), None)
+    reference_uploaded = any(slot["asset_id"] for slot in reference_slots)
     reference_preview_ready = bool(
         reference and reference.get("stored_path")
-        and Path(reference["stored_path"]).is_file()
-    )
-    reference_approved = bool(reference)
-    selected_workflow = intent.get("selected_workflow")
-    current_refs = [reference] if reference and reference.get("state") == "APPROVED" else []
+        and Path(reference["stored_path"]).is_file())
+    reference_approved = len(current_refs) == len(required_roles)
+    if reference_error and "DUPLICATE" in reference_error:
+        slot_problems.append("首帧和末帧必须是不同的图像")
     approved_hash = reference_asset_hash(current_refs)
     prompt_ready = is_current_prompt(
         prompt,
@@ -91,7 +142,7 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         reference_hash=approved_hash,
         parameters=prompt.get("generation_parameters") if prompt else None,
         provider=prompt.get("prompt_engine_provider") if prompt else None,
-    )
+    ) and reference_approved
     prompt_confirmed = bool(
         prompt_ready and project.get("state") in {
             "USER_CONFIRM", "GPU_RUNNING", "QUALITY_CHECK", "COMPLETED",
@@ -102,11 +153,7 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     last_job = _latest(jobs)
     intent_ready = bool(intent and not intent.get("requires_user_confirmation"))
 
-    missing = []
-    if not reference_uploaded:
-        missing.append("上传参考图")
-    if not reference_approved:
-        missing.append("批准参考图")
+    missing = list(dict.fromkeys(slot_problems))
     if not intent_ready:
         missing.append("分析并确认意图")
     if not prompt_ready:
@@ -142,6 +189,10 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         "reference_asset_id": reference.get("id") if reference else None,
         "current_reference_asset_id": reference.get("id") if reference else None,
         "reference_role": reference.get("role") if reference else None,
+        "required_reference_roles": list(required_roles),
+        "reference_slots": reference_slots,
+        "reference_bindings": reference_bindings(selected_records),
+        "reference_error": reference_error,
         "reference_uploaded": reference_uploaded,
         "reference_preview_ready": reference_preview_ready,
         "reference_approved": reference_approved,

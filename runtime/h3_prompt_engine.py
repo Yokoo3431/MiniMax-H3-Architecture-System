@@ -32,6 +32,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from runtime.prompt_provenance import stable_hash
 from runtime.prompt_bridge.skill_version import check_skill_version
+from runtime.a4_profiles import H3_MAX_EFFECTIVE_DURATION_SECONDS
 
 
 MODES = ("T2VA", "I2VA", "FL2VA", "L2VA", "Ref2VA")
@@ -113,6 +114,8 @@ class PromptReasoningRequest:
     audio_preference: str | None = None
     reference_description: str | None = None
     reference_image_path: str | None = None
+    reference_image_paths: tuple[str, ...] = ()
+    reference_roles: tuple[str, ...] = ()
     current_prompt: str | None = None
     image_consent: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -134,8 +137,8 @@ class H3PromptValidator:
         errors: list[str] = []
         if mode not in MODES:
             errors.append(f"unsupported mode: {mode}")
-        if not 4 <= float(duration) <= 15:
-            errors.append("duration must be between 4 and 15 seconds")
+        if not 4 <= float(duration) <= H3_MAX_EFFECTIVE_DURATION_SECONDS:
+            errors.append("duration exceeds the 362-frame native H3 limit")
         if len(prompt or "") > 7000:
             errors.append("prompt exceeds 7000 Unicode characters")
         if "User intent focus:" in prompt or "user intent focus:" in prompt:
@@ -333,8 +336,9 @@ class OfflineH3Compiler:
         if mode not in MODES:
             raise H3PromptValidationError(f"unsupported mode: {mode}")
         duration = float(request.duration)
-        if not 4 <= duration <= 15:
-            raise H3PromptValidationError("duration must be between 4 and 15 seconds")
+        if not 4 <= duration <= H3_MAX_EFFECTIVE_DURATION_SECONDS:
+            raise H3PromptValidationError(
+                "duration exceeds the 362-frame native H3 limit")
         ref_count = int(request.reference_count or 0)
         description, sound = self._description(request, mode)
         music = "N/A"
@@ -515,6 +519,7 @@ class CLIReasoningProvider(PromptReasoningProvider):
         # Text-only providers must never receive a local image path.
         if not self.multimodal_capable or not request.image_consent:
             request_data["reference_image_path"] = None
+            request_data["reference_image_paths"] = ()
         return (
             "Follow the supplied official MiniMax H3 Skill specification. "
             "Return ONLY the final H3 prompt payload, with no explanation, "
@@ -551,9 +556,14 @@ class CLIReasoningProvider(PromptReasoningProvider):
             raise RuntimeError("configured CLI provider is unavailable")
         prompt_text = self._request_text(request, bundle)
         command = self._build_command(prompt_text)
+        reference_paths = request.reference_image_paths or (
+            (request.reference_image_path,) if request.reference_image_path else ())
         input_payload = None if self._is_antigravity() else json.dumps(
             {"request": dict(request.__dict__), "official_skill_bundle": bundle,
-             "reference_image": request.reference_image_path if self.multimodal_capable and request.image_consent else None},
+             "reference_image": request.reference_image_path if self.multimodal_capable and request.image_consent else None,
+             "reference_images": ([{"role": role, "path": path}
+                                   for role, path in zip(request.reference_roles, reference_paths)]
+                                  if self.multimodal_capable and request.image_consent else [])},
             ensure_ascii=False)
         completed = subprocess.run(
             command, input=input_payload, text=True, encoding="utf-8", errors="replace", capture_output=True,
@@ -597,16 +607,20 @@ class OpenAICompatibleProvider(PromptReasoningProvider):
         self.transport = transport
 
     def generate(self, request: PromptReasoningRequest, bundle: Mapping[str, Any]) -> dict[str, Any]:
-        if request.reference_image_path and not request.image_consent:
+        reference_paths = request.reference_image_paths or (
+            (request.reference_image_path,) if request.reference_image_path else ())
+        if reference_paths and not request.image_consent:
             raise PermissionError("explicit image consent is required before remote analysis")
         system = "Return only a complete MiniMax H3 prompt payload following the supplied official Skill specification."
         user = {"workflow_mode": normalize_mode(request.mode), "duration": request.duration,
                 "user_intent": request.user_intent, "reference_role": request.reference_role,
+                "reference_roles": list(request.reference_roles),
                 "reference_description": request.reference_description, "official_skill_bundle": bundle}
         content: list[dict[str, Any]] = [{"type": "text", "text": json.dumps(user, ensure_ascii=False)}]
-        if self.multimodal_capable and request.reference_image_path:
-            raw = Path(request.reference_image_path).read_bytes()
-            content.append({"type": "image_url", "image_url": {"url": "data:application/octet-stream;base64," + base64.b64encode(raw).decode("ascii")}})
+        if self.multimodal_capable and reference_paths:
+            for reference_path in reference_paths:
+                raw = Path(reference_path).read_bytes()
+                content.append({"type": "image_url", "image_url": {"url": "data:application/octet-stream;base64," + base64.b64encode(raw).decode("ascii")}})
         payload = {"model": self.model, "temperature": 0, "messages": [
             {"role": "system", "content": system}, {"role": "user", "content": content if len(content) > 1 else content[0]["text"]}
         ]}
