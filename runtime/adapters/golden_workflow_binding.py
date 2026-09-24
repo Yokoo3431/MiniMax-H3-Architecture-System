@@ -124,7 +124,8 @@ def validate_golden_workflow(workflow_id: str, payload: Mapping[str, Any] | None
             "base_sha256": canonical_payload_sha256(graph)}
 
 
-def bind_golden_workflow(request: Mapping[str, Any], workflow_id: str) -> dict[str, Any]:
+def bind_golden_workflow(request: Mapping[str, Any], workflow_id: str, *,
+                         allow_a4_2_candidate: bool = False) -> dict[str, Any]:
     entry = golden_entry(workflow_id)
     graph = json.loads(golden_path(workflow_id).read_text(encoding="utf-8"))
     validation = validate_golden_workflow(workflow_id, graph)
@@ -171,7 +172,8 @@ def bind_golden_workflow(request: Mapping[str, Any], workflow_id: str) -> dict[s
         from runtime.a4_profiles import resolve_product_parameters
         try:
             params, resolved_profile = resolve_product_parameters(
-                workflow_id, raw_params)
+                workflow_id, raw_params,
+                allow_a4_2_candidate=allow_a4_2_candidate)
         except (TypeError, ValueError) as exc:
             raise GoldenWorkflowError(f"A4.1 execution profile rejected: {exc}") from exc
         expected_params = {

@@ -64,6 +64,36 @@ def _contains_value(value: Any, needle: str) -> bool:
     return needle.lower() in json.dumps(value, ensure_ascii=False, default=str).lower()
 
 
+def _correlation_compatible(value: Any, *, avs_job_id: Optional[str],
+                            execution_workflow_sha256: Optional[str]) -> bool:
+    """Reject a direct prompt-id hit when its recorded identity contradicts the Job."""
+    found: dict[str, set[str]] = {
+        "avs_job_id": set(), "execution_workflow_sha256": set(),
+    }
+
+    def visit(item: Any) -> None:
+        if isinstance(item, dict):
+            for key in found:
+                candidate = item.get(key)
+                if candidate is not None:
+                    found[key].add(str(candidate))
+            for child in item.values():
+                visit(child)
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                visit(child)
+
+    visit(value)
+    expected = {
+        "avs_job_id": str(avs_job_id) if avs_job_id else None,
+        "execution_workflow_sha256": (
+            str(execution_workflow_sha256) if execution_workflow_sha256 else None),
+    }
+    return all(not found[key] or (expected[key] is not None
+                                  and found[key] == {expected[key]})
+               for key in found)
+
+
 class ComfyTransportUnavailable(RuntimeError):
     """The control-plane transport is unavailable; execution is unknown."""
 
@@ -553,9 +583,9 @@ class ComfyUIClient:
                          legacy_seed: Optional[int] = None) -> Dict[str, Any]:
         """Find an accepted task without submitting it again.
 
-        Correlation metadata is preferred. ``prompt_id`` is always safe to
-        query directly. The seed fallback is intentionally accepted only when
-        exactly one candidate matches, preventing accidental duplicate retry.
+        Correlation metadata is preferred. A persisted prompt id is accepted
+        only when its available correlation metadata does not contradict the
+        Job. Seed fallback is limited to legacy calls without stronger identity.
         """
         wanted = [str(value) for value in (avs_job_id, execution_workflow_sha256)
                   if value]
@@ -567,11 +597,17 @@ class ComfyUIClient:
             queue_error = exc
         candidates = []
         for candidate_id, entry in history.items():
-            if prompt_id and str(candidate_id) == str(prompt_id):
+            if wanted and _contains_all(entry, wanted):
                 candidates.append((str(candidate_id), entry))
-            elif wanted and _contains_all(entry, wanted):
+            elif (prompt_id and str(candidate_id) == str(prompt_id)
+                  and _correlation_compatible(
+                      entry, avs_job_id=avs_job_id,
+                      execution_workflow_sha256=execution_workflow_sha256)):
                 candidates.append((str(candidate_id), entry))
-        if not candidates and legacy_seed is not None:
+        # A seed is not an identity: controlled A/B arms intentionally reuse
+        # it. Never let a unique old history entry for that seed shadow a
+        # currently queued prompt carrying stronger Job/SHA correlation.
+        if not candidates and legacy_seed is not None and not prompt_id and not wanted:
             seed_matches = [(str(pid), entry) for pid, entry in history.items()
                             if _contains_value(entry, str(legacy_seed))]
             if len(seed_matches) == 1:
@@ -598,10 +634,13 @@ class ComfyUIClient:
                                    ("queue_pending", "RUNNING")):
                 for item in queue.get(bucket) or []:
                     candidate_id = _queue_prompt_id(item)
-                    if prompt_id and candidate_id == str(prompt_id):
+                    if candidate_id and wanted and _contains_all(item, wanted):
                         return {"status": status, "prompt_id": candidate_id,
                                 "source": "queue", "entry": item}
-                    if candidate_id and wanted and _contains_all(item, wanted):
+                    if (prompt_id and candidate_id == str(prompt_id)
+                            and _correlation_compatible(
+                                item, avs_job_id=avs_job_id,
+                                execution_workflow_sha256=execution_workflow_sha256)):
                         return {"status": status, "prompt_id": candidate_id,
                                 "source": "queue", "entry": item}
                     if candidate_id and legacy_seed is not None and _contains_value(

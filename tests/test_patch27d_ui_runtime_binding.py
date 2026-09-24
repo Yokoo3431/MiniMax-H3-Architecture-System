@@ -24,6 +24,8 @@ from apps.architect_video_studio.mock_api.project_api import ProjectAPI  # noqa:
 from apps.architect_video_studio.mock_api.prompt_api import PromptAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.reference_api import ReferenceAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
+from apps.architect_video_studio.mock_api.study_state import build_study_state  # noqa: E402
+from runtime.prompt_provenance import is_current_prompt, reference_asset_hash  # noqa: E402
 from runtime.adapters.runtime_adapter import validate_request  # noqa: E402
 from runtime.adapters.golden_workflow_binding import bind_golden_workflow  # noqa: E402
 from runtime.adapters.production_workflow_binding import canonical_workflow_sha256  # noqa: E402
@@ -135,6 +137,62 @@ class Harness:
 
 
 class TestApiContract(unittest.TestCase):
+    def test_offline_prompt_can_record_standard_candidate_but_job_stays_blocked(self):
+        h = Harness()
+        try:
+            pid = h.full_project()
+            params = {"quality": "STANDARD", "duration": 4.0,
+                      "fps": 24, "seed": 42}
+
+            with self.assertRaisesRegex(ValueError,
+                                        "QUALITY_PROFILE_UNAVAILABLE:STANDARD"):
+                h.prompt_api.generate_prompt(pid, generation_parameters=params)
+
+            prompt = h.prompt_api.generate_prompt(
+                pid, generation_parameters=params,
+                prompt_engine="OFFLINE_COMPILER", image_consent=False)
+            self.assertTrue(prompt["verified"]["pass"], prompt["verified"])
+            self.assertEqual(prompt["provider"], "OFFLINE_COMPILER")
+            self.assertEqual(prompt["engine_mode"], "OFFLINE_COMPILER")
+            self.assertEqual(prompt["a4_profile"]["availability"],
+                             "CANDIDATE_FOR_A4_2")
+            self.assertEqual(
+                (prompt["generation_parameters"]["width"],
+                 prompt["generation_parameters"]["height"]),
+                (1248, 704))
+            self.assertEqual(prompt["reference_bindings"][0]["role"],
+                             "first_frame")
+
+            intent = h.store.load_intent(pid)["natural_language"]
+            approved = resolve_selected_references(
+                pid, h.store.load_project(pid), h.store.load_references(pid),
+                prompt["workflow"], require_approved=True,
+                reference_root=h.store.input_dir(pid))
+            self.assertTrue(is_current_prompt(
+                prompt, intent=intent, workflow=prompt["workflow"],
+                reference_hash=reference_asset_hash(approved),
+                parameters=prompt["generation_parameters"],
+                provider="OFFLINE_COMPILER", allow_a4_2_candidate=True))
+            study = build_study_state(h.store, pid)
+            self.assertTrue(study["prompt_ready"], study.get("gate_reasons"))
+            self.assertFalse(study["generate_allowed"])
+            self.assertFalse(study["prompt_confirmed"])
+            self.assertEqual(study["generation_status"], "PROMPT_REVIEW")
+            self.assertTrue(any(
+                "STANDARD" in reason and "A4.2" in reason
+                for reason in study["gate_reasons"]))
+
+            # Prompt provenance is now current for review, but the normal Job
+            # route must still reject this unaccepted quality candidate.
+            with self.assertRaisesRegex(ValueError,
+                                       "QUALITY_PROFILE_UNAVAILABLE:STANDARD"):
+                h.job_api.submit_job(
+                    pid, seed=42, risk_reviewed=True,
+                    generation_parameters=params)
+            self.assertEqual(h.store.load_jobs(pid), {})
+        finally:
+            h.close()
+
     def test_submit_accepts_generation_params_and_camera(self):
         h = Harness()
         try:

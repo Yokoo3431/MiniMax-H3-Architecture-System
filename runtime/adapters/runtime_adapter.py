@@ -46,7 +46,8 @@ def _allowed(node: Any) -> List[str]:
 
 
 def validate_request(request: Dict[str, Any],
-                     contract: Optional[dict] = None) -> List[str]:
+                     contract: Optional[dict] = None, *,
+                     allow_a4_2_candidate: bool = False) -> List[str]:
     """Returns a list of contract violations (empty == valid)."""
     contract = contract or load_contract()
     req = contract["video_generation_request"]
@@ -151,7 +152,8 @@ def validate_request(request: Dict[str, Any],
                 if prompt_refs != reference_bindings(refs):
                     errors.append("A4.1 Prompt reference bindings differ from Job references")
             resolved, resolved_profile = resolve_product_parameters(
-                str(request.get("workflow_id") or ""), params)
+                str(request.get("workflow_id") or ""), params,
+                allow_a4_2_candidate=allow_a4_2_candidate)
             if params.get("quality") != resolved.get("quality"):
                 errors.append("A4.1 quality profile was not canonically resolved")
             if (params.get("resolution") != resolved.get("resolution")

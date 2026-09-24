@@ -972,14 +972,17 @@ class JobAPI:
                    "prompt_verified": True, "risk_reviewed": True},
         )
 
-    def _run_real_job(self, project_id: str, job_id: str, request: Any) -> None:
+    def _run_real_job(self, project_id: str, job_id: str, request: Any,
+                      prepared: Optional[Dict[str, Any]] = None,
+                      before_submit: Optional[Callable[[], Optional[bool]]] = None) -> None:
         job = self.store.load_jobs(project_id).get(job_id)
         if job is None:
             return
         try:
             self._stage_refs_to_comfy_input(project_id, request)
-            prepared = (self.runtime_adapter.prepare(request)
-                         if hasattr(self.runtime_adapter, "prepare") else None)
+            prepared = (prepared if prepared is not None else
+                        self.runtime_adapter.prepare(request)
+                        if hasattr(self.runtime_adapter, "prepare") else None)
             if prepared is not None and hasattr(self.runtime_adapter, "attach_job_identity"):
                 prepared = self.runtime_adapter.attach_job_identity(prepared, job_id)
             job = self.store.load_jobs(project_id).get(job_id) or job
@@ -1006,6 +1009,19 @@ class JobAPI:
                 trace["status"] = "TRACE_PAYLOAD_UNAVAILABLE"
             job["execution_trace"] = trace
             self._save_job(project_id, job)
+            if before_submit is not None:
+                # Acceptance runners persist an ambiguity marker immediately
+                # before the only /prompt boundary. After interruption they
+                # reconcile this exact Job instead of resubmitting it.
+                if before_submit() is False:
+                    return
+                # The callback writes through StudioStore, so refresh the local
+                # record before entering an exception path. Otherwise an old
+                # NOT_STARTED snapshot could overwrite the durable ambiguity
+                # marker after an uncertain /prompt failure.
+                job = self.store.load_jobs(project_id).get(job_id) or job
+                if job.get("cancelled") or job.get("state") == "CANCELLED":
+                    return
             generate = self.runtime_adapter.generate
             if prepared is not None and "prepared" in inspect.signature(generate).parameters:
                 snapshot = generate(request, prepared=prepared)
@@ -1071,13 +1087,22 @@ class JobAPI:
                 # An adapter error arriving after cancellation is not a new
                 # generation failure.
                 return
+            job = latest or job
             message = str(exc).lower()
             runtime_mismatch = "missing_node_type" in message or "node type" in message and "not found" in message
             category, friendly = _classify_failure(exc, runtime_mismatch=runtime_mismatch)
-            if isinstance(exc, (ComfyUICommunicationTimeout, ComfyUIOfflineError, ComfyProtocolError, GenerationTimeoutError)):
+            ambiguous_submission = (
+                before_submit is not None
+                and job.get("submission_state") in ("SUBMISSION_UNKNOWN", "RECONCILING")
+            )
+            if (ambiguous_submission or isinstance(
+                    exc, (ComfyUICommunicationTimeout, ComfyUIOfflineError,
+                          ComfyProtocolError, GenerationTimeoutError))):
                 # A transport timeout is ambiguous. The server may have
                 # accepted the prompt, so keep the Job reconnectable instead
-                # of poisoning it as a GPU/engine failure.
+                # of poisoning it as a retryable GPU/engine failure. This also
+                # covers non-timeout exceptions after an A4.2 submit boundary,
+                # until queue/history proves what ComfyUI accepted.
                 self._mark_reconciling(project_id, job, exc)
                 return
             job["state"] = "GPU_FAILED" if category == "GPU_ERROR" else "FAILED"

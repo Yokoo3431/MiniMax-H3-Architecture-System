@@ -113,7 +113,7 @@ Represent exactly these seven capability IDs and expose availability truthfully:
 | `DRAFT` | 672×384 class, 24 native FPS | Experimental until validated; must not execute by accidental Golden fallback |
 | `PREVIEW` | 832×480, 24 native FPS | Ready profile, with actual supported execution binding documented |
 | `BALANCED` | 1024×576, 24 native FPS | Ready only after GPU cost check |
-| `STANDARD` | 1280×720, 24 native FPS | Product preset to validate; do not confuse with prior 1024×576 A4 Standard |
+| `STANDARD` | A4.1 proposed 1280×720, 24 native FPS; superseded for A4.2 by the 32-aligned 1248×704 canvas | `CANDIDATE_FOR_A4_2`; unavailable to normal product submission until controlled GPU and owner visual gates pass |
 | `NATIVE_HIGH` | 1344×768, 24 native FPS | Highest current local H3 base-generation ceiling; preserve exact evidence/status |
 | `ULTRA_1080` | 1920×1080 delivery | Post-process required; no direct base-graph 1080p claim |
 | `ULTRA_2K` | Aspect-aware 2K delivery target | Must resolve explicitly to `H3_REGENERATE_2K` or `POST_UPSCALE_2K`; never bind 2K dimensions silently into the current Golden graph |
@@ -162,7 +162,7 @@ Primary capability references: [official H3 overview and license notice](https:/
 
 | Node / field | Official or local range | Golden value | A4.1 candidate/resolved value | Effect, resource/fidelity risk, validation |
 |---|---|---|---|---|
-| `MiniMaxH3ImageToVideo.width/height` | Official H3 base canvas uses a 768-px short-edge class, 32-pixel alignment and an approximately 768×1344 base area; 2K is a separate regenerate/delivery mode, not silent base-graph width. | 1344×768 in all five Golden templates. | PREVIEW 832×480 and NATIVE_HIGH 1344×768 are executable; DRAFT 672×384, BALANCED 1024×576, STANDARD 1280×720, ULTRA_1080 and ULTRA_2K remain fail-closed. | Pixel count generally increases compute and memory pressure; resource slope is an estimate only. Higher canvas can expose/encourage architectural detail but can also increase hallucinated detail. Static binder/profile tests pass; no A4.1 VRAM/quality measurement. |
+| `MiniMaxH3ImageToVideo.width/height` | Official H3 base canvas uses 32-pixel alignment; 2K is a separate regenerate/delivery mode, not silent base-graph width. | 1344×768 in all five Golden templates. | PREVIEW 832×480 and NATIVE_HIGH 1344×768 remain executable; STANDARD 1248×704 is the isolated A4.2 candidate; DRAFT 672×384, BALANCED 1024×576, ULTRA_1080 and ULTRA_2K remain fail-closed. | Pixel count generally increases compute and memory pressure; resource slope is an estimate only. Higher canvas can expose/encourage architectural detail but can also increase hallucinated detail. A4.1 has no GPU evidence; A4.2 must measure both arms and receive owner visual review before readiness. |
 | `MiniMaxH3ImageToVideo.length` / requested duration | Official input accepts frame counts and snaps upward to `17k+5`; official H3 is 24 FPS, nominal 4–15 s. Grid examples: 107, 124, 243, 362. | 107 frames (4.458 s) in checked-in Golden templates. | Studio accepts requested 4–15 s; `ceil(requested_seconds×24)` then snaps upward to the next `17k+5` count. Examples: 4→107 (4.458 s), 5→124 (5.167 s), 10→243 (10.125 s), 15→362 (15.083 s). Trace records requested duration and resolved frame count/effective duration separately. | More frames increase temporal work/runtime and may increase memory pressure; longer clips raise drift/continuity risk. CPU tests verify the lattice, bound graph and trace. 107 is local-minimum evidence but below the current upstream trained-range note (~124–362); do not silently describe requested seconds as exact output seconds. |
 | `BasicScheduler.steps` | H3 graph uses Comfy scheduler steps; product contract constrains 2–100. No claim that more steps are monotonically better. | 20. | PREVIEW 21; NATIVE_HIGH 50; other tiers unavailable. | More steps ordinarily increase sampling time; peak VRAM may be dominated by canvas/model and is not measured here. Architectural fidelity can improve or regress; fixed-prompt/seed A/B plus measured peak VRAM/time required before changing defaults. Static bind only. |
 | `KSamplerSelect.sampler_name` | Local executable allow-list: `res_multistep`, `euler`. | `res_multistep`. | PREVIEW `res_multistep`; NATIVE_HIGH `euler`; profile fully determines it. | Changes denoising trajectory and motion/detail; no isolated sampler comparison in A4.1. Do not infer a quality ranking from profile names. |
@@ -177,9 +177,17 @@ Primary capability references: [official H3 overview and license notice](https:/
 
 Research references for future stages: [HM-RunningHub](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3), [H3 Guide](https://github.com/ethanfel/ComfyUI-MiniMax-H3-Guide), [MiniMaxDirector](https://github.com/imbutus/ComfyUI-MiniMaxDirector), [H3 Director fork](https://github.com/dmulxw/comfyui-minimaxh3-director), [VFI](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation), [FlashVSR](https://github.com/1038lab/ComfyUI-FlashVSR), and [SeedVR2](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler).
 
-### A4.1 forbidden scope
+### A4.1 forbidden scope (historical; applies only to the A4.1 task)
 
 Do not install VFI, FlashVSR, SeedVR2, Director/custom nodes, new H3 weights, ControlNet, or a new ComfyUI core. Do not implement Add Guide, Ref2VA, 6DoF camera control, 1080p/2K processing, A4.2 GPU tests, or later stages. No GPU is required for A4.1. Do not expose owner prompts/media or credentials to tools or repository artifacts.
+
+### A4.2 controlled native-quality evidence update (2026-09-24)
+
+The A4.1 `STANDARD=1280×720` proposal is superseded because 720 is not divisible by 32. A4.2 uses `1248×704` (39×22 alignment units), displayed only as “720p-class”; it remains `CANDIDATE_FOR_A4_2` and must stay fail-closed in ordinary product/API submissions. The acceptance-only opt-in is limited to the controlled runner.
+
+The authorized comparison is exactly two sequential native GPU jobs on one existing approved-reference `04_Drone_Aerial` Study: STANDARD 1248×704 vs NATIVE_HIGH 1344×768, with all other graph values held equal (4 seconds requested, 107 H3 frames, 24 native/delivery FPS, seed 42, 50 steps, Euler/simple, denoise 1.0, acceleration off). The final bound workflow payloads must differ only in the H3 width and height fields before either `/prompt` submission. A timeout is reconciled against the same `prompt_id`/history and is never retried automatically. Do not run BALANCED or alter Golden V1, production ComfyUI 0.33.1, A5, or delivery processing.
+
+At publication, this section defined the experiment only and made no quality claim. It is superseded by the completed A4.2 owner closeout below.
 
 ### Required tests and acceptance
 
@@ -211,3 +219,36 @@ commit sync gate: remote durable progress remains G 22% / total 88.00% until
 the A4.1 commit is pushed and the remote branch head is verified equal to the
 final local SHA. After that gate passes, remote progress is G 27% / total
 88.50% with A–F unchanged.
+
+## A4.2 final closeout — owner review (2026-09-24)
+
+### Controlled acceptance outcome
+
+The single authorized STANDARD (1248×704) and NATIVE_HIGH (1344×768) GPU arms both passed technical execution and media acceptance. They used the same workflow, Prompt/reference binding, seed, requested duration, frame count, sampler, scheduler, steps, denoise and acceleration setting; resolution and Job-specific output identity were the intended differences. Raw Job identifiers, Prompt identifiers, media, paths, and local runtime records are deliberately omitted from this tracked product record.
+
+### Owner visual review
+
+| Arm | Geometry | Reference | Material | Temporal | Hallucination | Overall |
+|---|---:|---:|---:|---:|---:|---:|
+| STANDARD | 4 | 4 | 4 | 4 | 4 | 3 |
+| NATIVE_HIGH | 4 | 4 | 4 | 4 | 4 | 3 |
+
+Owner qualitative comment:
+
+> High is somewhat clearer, but the overall difference is not large. The numeric scoring is difficult because the two generations have different camera motion, so a strict visual A/B score is ambiguous. Without materially higher resolution, it is difficult to evaluate true high-fidelity architectural performance; continued evaluation of these relatively low resolutions has limited value.
+
+Classification: `TECHNICAL_ACCEPTANCE_PASS` and `QUALITY_TIER_PROMOTION_INCONCLUSIVE`. The Owner scores are comparable; the slight perceived sharpness difference does not establish a meaningful product-quality or cost advantage. Different generated camera motion further limits a strict perceptual A/B conclusion. This does not classify NATIVE_HIGH as a winner.
+
+### Capability decision
+
+- `STANDARD`, 1248×704: retain `CANDIDATE_FOR_A4_2`; **not READY** and not a normal production default. Technical execution is proven, but a production-useful middle-tier quality/cost advantage is not.
+- `NATIVE_HIGH`, 1344×768: retain its existing `READY` state. It is technically validated and was perceived as somewhat clearer, but no dramatic superiority is established.
+- Do not alter DRAFT, PREVIEW, BALANCED, ULTRA_1080, or ULTRA_2K. Do not schedule more nearby-resolution GPU arms to tune STANDARD.
+
+### Product and comparison-method findings
+
+The tested 1248×704 → 1344×768 native-resolution range did not create a sufficiently clear visual separation to justify further investment in intermediate native-resolution tiers. Future high-quality evaluation should prioritize materially higher delivery resolution through separately validated upscale/regeneration paths (A8); this records a product finding only, does not reorder the roadmap, and does not implement A8.
+
+Resolution changes can alter generated trajectory, camera motion, and composition even when seed, Prompt, reference, workflow, sampler, scheduler, and steps are held constant. Future resolution comparisons must not be treated as deterministic or pixel-aligned frame-by-frame A/B without a stronger motion/camera-control mechanism. This limitation should inform later Director and camera-control work.
+
+No additional GPU jobs were submitted. Golden V1, ComfyUI 0.33.1, production port 8189, models, release branches, and tags remain unchanged. A4.2 closes as “tested and not promoted” only after the specified regression, privacy, commit, push, and remote-verification gates pass; A5 remains out of scope.

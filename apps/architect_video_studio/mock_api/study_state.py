@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from .store import StudioStore
 from runtime.prompt_provenance import is_current_prompt, reference_asset_hash
+from runtime.a4_profiles import QUALITY_PROFILE_SPECS
 from .job_state import (
     RECONCILIATION_GRACE_SECONDS, is_job_active, is_job_terminal,
     normalize_terminal_record,
@@ -135,6 +136,17 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     if reference_error and "DUPLICATE" in reference_error:
         slot_problems.append("首帧和末帧必须是不同的图像")
     approved_hash = reference_asset_hash(current_refs)
+    profile_identity = prompt.get("a4_profile") or {}
+    allow_a4_2_prompt_candidate = (
+        prompt.get("prompt_engine_provider") == "OFFLINE_COMPILER"
+        and profile_identity.get("quality_profile") == "STANDARD"
+        and profile_identity.get("availability") == "CANDIDATE_FOR_A4_2"
+    )
+    candidate_prompt_only = (
+        allow_a4_2_prompt_candidate
+        and QUALITY_PROFILE_SPECS["STANDARD"].get("availability")
+        == "CANDIDATE_FOR_A4_2"
+    )
     prompt_ready = is_current_prompt(
         prompt,
         intent=str(intent.get("natural_language") or ""),
@@ -142,9 +154,10 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         reference_hash=approved_hash,
         parameters=prompt.get("generation_parameters") if prompt else None,
         provider=prompt.get("prompt_engine_provider") if prompt else None,
+        allow_a4_2_candidate=allow_a4_2_prompt_candidate,
     ) and reference_approved
     prompt_confirmed = bool(
-        prompt_ready and project.get("state") in {
+        prompt_ready and not candidate_prompt_only and project.get("state") in {
             "USER_CONFIRM", "GPU_RUNNING", "QUALITY_CHECK", "COMPLETED",
             "GPU_FAILED", "QUALITY_FAILED"
         }
@@ -158,6 +171,8 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         missing.append("分析并确认意图")
     if not prompt_ready:
         missing.append("生成 Prompt 预览")
+    if prompt_ready and candidate_prompt_only:
+        missing.append("STANDARD 待 A4.2 GPU 验收，仅可审阅，暂不可生成")
     if active_job:
         missing.append("当前任务完成")
 
@@ -165,6 +180,8 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     # Study gates are satisfied, the Study is ready again.
     if active_job:
         current_state = "GENERATING"
+    elif prompt_ready and candidate_prompt_only:
+        current_state = "PROMPT_REVIEW"
     elif project.get("state") == "COMPLETED":
         # COMPLETED describes the last Job, not a permanently closed Study.
         # Keep the Study ready for another Job with the same approved asset.

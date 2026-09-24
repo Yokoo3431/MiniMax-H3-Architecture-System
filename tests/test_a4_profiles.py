@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from decimal import Decimal
 import unittest
 from pathlib import Path
 import sys
@@ -18,6 +19,7 @@ from runtime.a4_profiles import (
     normalize_quality_id,
     quality_profile_catalog,
     resolve_product_parameters,
+    validate_native_canvas,
     workflow_quality_matrix,
 )
 from runtime.adapters.golden_workflow_binding import (
@@ -28,6 +30,13 @@ from runtime.adapters.golden_workflow_binding import (
 from runtime.h3_prompt_engine import H3PromptValidator
 from runtime.prompt_provenance import a4_profile_identity, prompt_input_hash
 from runtime.reference_contract import REFERENCE_ROLES, validate_guide_frames
+from runtime.h3_generation_parameters import (
+    H3ParameterError, normalize_generation_parameters,
+)
+from runtime.a4_2_quality_acceptance import (
+    A4_2AcceptanceError, A4_2AcceptanceRuntimeAdapter,
+    _standard_arm_passed, compare_execution_payloads,
+)
 
 
 class TestA4Profiles(unittest.TestCase):
@@ -137,6 +146,104 @@ class TestA4Profiles(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "24 fps"):
             resolve_product_parameters("01_Exterior_Hero", {"fps": 24.5})
 
+    def test_a4_2_standard_candidate_is_aligned_and_opt_in_only(self):
+        self.assertEqual(validate_native_canvas(1248, 704), (1248, 704))
+        self.assertEqual(validate_native_canvas(1344, 768), (1344, 768))
+        for width, height in ((1280, 720), (1248.5, 704),
+                              (Decimal("1248.5"), 704), (0, 704), (1248, -32)):
+            with self.subTest(canvas=(width, height)), self.assertRaises(ValueError):
+                validate_native_canvas(width, height)
+
+        with self.assertRaisesRegex(H3ParameterError, "QUALITY_PROFILE_UNAVAILABLE:STANDARD"):
+            normalize_generation_parameters({"quality": "STANDARD"})
+        with self.assertRaisesRegex(ValueError, "QUALITY_PROFILE_UNAVAILABLE:STANDARD"):
+            resolve_product_parameters("04_Drone_Aerial", {
+                "quality": "STANDARD", "duration": 4, "seed": 42})
+
+        standard, standard_profile = resolve_product_parameters(
+            "04_Drone_Aerial", {
+                "quality": "STANDARD", "duration": 4, "fps": 24,
+                "delivery_fps": 24, "seed": 42,
+            }, allow_a4_2_candidate=True)
+        high, high_profile = resolve_product_parameters(
+            "04_Drone_Aerial", {
+                "quality": "NATIVE_HIGH", "duration": 4, "fps": 24,
+                "delivery_fps": 24, "seed": 42,
+            })
+        self.assertEqual((standard["width"], standard["height"]), (1248, 704))
+        self.assertEqual((high["width"], high["height"]), (1344, 768))
+        self.assertEqual((standard["steps"], high["steps"]), (50, 50))
+        self.assertEqual((standard["sampler_mode"], high["sampler_mode"]),
+                         ("euler", "euler"))
+        self.assertEqual((standard["frame_count"], high["frame_count"]), (107, 107))
+        self.assertEqual(standard_profile["availability"], "CANDIDATE_FOR_A4_2")
+        standard_catalog = next(
+            p for p in quality_profile_catalog()["profiles"] if p["id"] == "STANDARD")
+        self.assertIn("Owner review did not establish a meaningful quality/cost separation",
+                      standard_catalog["availability_reason"])
+        self.assertEqual(high_profile["availability"], "READY")
+        self.assertFalse(next(p for p in quality_profile_catalog()["profiles"]
+                              if p["id"] == "STANDARD")["available"])
+
+        reference = [{
+            "asset_id": "ref-a4-2", "project_id": "study-a4-2",
+            "role": "first_frame", "approval_state": "APPROVED",
+            "sha256": "B" * 64, "path_or_ref": "same-approved-reference.png",
+        }]
+        prompt_payload = {
+            "prompt": "same architecture intent for both acceptance arms",
+            "a4_profile": {"contract_version": "a4.1"},
+        }
+        with self.assertRaisesRegex(GoldenWorkflowError,
+                                    "QUALITY_PROFILE_UNAVAILABLE:STANDARD"):
+            bind_golden_workflow({
+                "study_id": "study-a4-2", "reference_assets": reference,
+                "generation_parameters": standard,
+                "prompt_payload": prompt_payload,
+            }, "04_Drone_Aerial")
+        standard_graph = bind_golden_workflow({
+            "study_id": "study-a4-2", "reference_assets": reference,
+            "generation_parameters": standard,
+            "prompt_payload": prompt_payload,
+        }, "04_Drone_Aerial", allow_a4_2_candidate=True)
+        high_graph = bind_golden_workflow({
+            "study_id": "study-a4-2", "reference_assets": reference,
+            "generation_parameters": high,
+            "prompt_payload": prompt_payload,
+        }, "04_Drone_Aerial")
+        gate = compare_execution_payloads(standard_graph, high_graph)
+        self.assertTrue(gate["pass"])
+        self.assertEqual(gate["only_variable"],
+                         "MiniMaxH3ImageToVideo.width,height")
+        route_adapter = A4_2AcceptanceRuntimeAdapter(client=object())
+        standard_route = route_adapter.attach_job_identity(
+            {"translated_payload": deepcopy(standard_graph)}, "job-standard")
+        high_route = route_adapter.attach_job_identity(
+            {"translated_payload": deepcopy(high_graph)}, "job-native-high")
+        prefixes = tuple(
+            next(node for node in route["translated_payload"].values()
+                 if node.get("class_type") == "SaveVideo")["inputs"]["filename_prefix"]
+            for route in (standard_route, high_route)
+        )
+        self.assertNotEqual(prefixes[0], prefixes[1])
+        isolated_gate = compare_execution_payloads(
+            standard_route["translated_payload"], high_route["translated_payload"],
+            operational_output_prefixes=prefixes)
+        self.assertEqual(isolated_gate["per_job_output_isolation"],
+                         "PASS_NON_GENERATION_METADATA_ONLY")
+        changed = deepcopy(high_route["translated_payload"])
+        changed["7"]["inputs"]["sampler_name"] = "res_multistep"
+        with self.assertRaisesRegex(A4_2AcceptanceError,
+                                    "differ beyond H3 width/height"):
+            compare_execution_payloads(
+                standard_route["translated_payload"], changed,
+                operational_output_prefixes=prefixes)
+        self.assertFalse(_standard_arm_passed({"state": "FAILED"}))
+        self.assertFalse(_standard_arm_passed({
+            "state": "COMPLETED", "acceptance_evidence": {"pass": False}}))
+        self.assertTrue(_standard_arm_passed({
+            "state": "COMPLETED", "acceptance_evidence": {"pass": True}}))
+
     def test_quality_selection_ignores_retired_internal_overrides(self):
         params, profile = resolve_product_parameters(
             "01_Exterior_Hero",
@@ -227,6 +334,13 @@ class TestA4Profiles(unittest.TestCase):
             prompt_input_hash("intent", "04_Drone_Aerial", "ref", preview),
             prompt_input_hash("intent", "04_Drone_Aerial", "ref", high),
         )
+        candidate = {"quality": "STANDARD", "duration": 4, "fps": 24, "seed": 42}
+        candidate_identity = a4_profile_identity(
+            "04_Drone_Aerial", candidate, allow_a4_2_candidate=True)
+        self.assertEqual(candidate_identity["quality_profile"], "STANDARD")
+        self.assertEqual(a4_profile_identity(
+            "04_Drone_Aerial", {**candidate, "seed": float("inf")},
+            allow_a4_2_candidate=True), {})
 
     def test_unavailable_profiles_delivery_fps_and_future_guides_fail_closed(self):
         for profile in ("DRAFT", "BALANCED", "STANDARD", "ULTRA_1080", "ULTRA_2K"):
@@ -272,7 +386,8 @@ class TestA4Profiles(unittest.TestCase):
         js = (root / "apps/architect_video_studio/frontend/js/workspace.js").read_text(encoding="utf-8")
         for label in ("日夜过渡需要两张不同的图片", "选择首帧", "选择末帧",
                       "上传并审批首帧", "上传并审批末帧", "交付帧率",
-                      "Architecture Fidelity"):
+                      "Architecture Fidelity", "STANDARD · 720p-class · 保持候选",
+                      "原生画布 1248×704"):
             self.assertIn(label, html)
         for retired_id in ("param-resolution", "param-sampler", "param-steps",
                            "param-velocity", "param-cache-dit", "param-speed"):

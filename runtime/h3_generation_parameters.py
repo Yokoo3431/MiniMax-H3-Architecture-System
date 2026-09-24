@@ -15,6 +15,7 @@ from runtime.a4_profiles import (
     QUALITY_PROFILE_SPECS,
     h3_frame_count_for_duration,
     normalize_quality_id,
+    validate_native_canvas,
 )
 
 
@@ -31,6 +32,7 @@ VIDEO_TYPE_IDS = tuple(item[0] for item in VIDEO_TYPES)
 RESOLUTION_PRESETS = {
     "832x480": (832, 480),
     "1024x576": (1024, 576),
+    "1248x704": (1248, 704),
     "1344x768": (1344, 768),
 }
 ASPECT_RATIOS = ("auto", "16:9", "9:16", "1:1")
@@ -69,7 +71,8 @@ def _resolution(value: Any) -> str:
 
 
 def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
-                                    *, seed: int | None = None) -> dict[str, Any]:
+                                    *, seed: int | None = None,
+                                    allow_a4_2_candidate: bool = False) -> dict[str, Any]:
     """Validate and expand friendly controls into the production H3 contract."""
     raw = dict(values or {})
     raw_quality = _text(raw.get("quality"), "NATIVE_HIGH")
@@ -77,8 +80,20 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
         quality = normalize_quality_id(raw_quality)
     except ValueError as exc:
         raise H3ParameterError(str(exc)) from exc
-    if quality not in QUALITY_PROFILES:
-        spec = QUALITY_PROFILE_SPECS[quality]
+    quality_settings = QUALITY_PROFILES.get(quality)
+    spec = QUALITY_PROFILE_SPECS[quality]
+    candidate_allowed = (
+        allow_a4_2_candidate
+        and quality == "STANDARD"
+        and spec.get("availability") == "CANDIDATE_FOR_A4_2"
+    )
+    if quality_settings is None and candidate_allowed:
+        quality_settings = {
+            "sigma_points": int(spec["steps"]),
+            "sampler_mode": str(spec["sampler_mode"]),
+            "default_resolution": str(spec["resolution"]),
+        }
+    if quality_settings is None:
         raise H3ParameterError(
             f"QUALITY_PROFILE_UNAVAILABLE:{quality}: "
             f"{spec.get('availability_reason', 'execution is not validated')}")
@@ -114,8 +129,13 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
             "DELIVERY_FPS_UNAVAILABLE: 30/48/60 FPS require a validated post-process pipeline")
     delivery_fps = 24
 
-    resolution = _resolution(raw.get("resolution") or QUALITY_PROFILES[quality]["default_resolution"])
+    resolution = _resolution(raw.get("resolution") or quality_settings["default_resolution"])
     width, height = RESOLUTION_PRESETS[resolution]
+    try:
+        width, height = validate_native_canvas(width, height)
+    except ValueError as exc:
+        raise H3ParameterError(
+            str(exc)) from exc
     aspect_ratio = _text(raw.get("aspect_ratio"), "auto")
     if aspect_ratio not in ASPECT_RATIOS:
         raise H3ParameterError("aspect_ratio must be auto, 16:9, 9:16, or 1:1")
@@ -134,12 +154,12 @@ def normalize_generation_parameters(values: Mapping[str, Any] | None = None,
     accel = ACCELERATION_MODES[advanced_accel or speed]
 
     try:
-        steps = int(raw.get("steps") or QUALITY_PROFILES[quality]["sigma_points"])
+        steps = int(raw.get("steps") or quality_settings["sigma_points"])
     except (TypeError, ValueError) as exc:
         raise H3ParameterError("steps must be an integer") from exc
     if steps < 2 or steps > 100:
         raise H3ParameterError("steps must be between 2 and 100 sigma points")
-    sampler_mode = _text(raw.get("sampler_mode"), QUALITY_PROFILES[quality]["sampler_mode"])
+    sampler_mode = _text(raw.get("sampler_mode"), quality_settings["sampler_mode"])
     if sampler_mode not in ("euler", "res_multistep"):
         raise H3ParameterError("sampler_mode must be euler or res_multistep")
 

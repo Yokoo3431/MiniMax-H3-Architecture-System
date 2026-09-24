@@ -20,7 +20,7 @@ native_runtime_request:
       references: list            # reference asset bindings (role -> path/ref)
       prompt: object              # official prompt payload (never re-authored here)
     video:
-      resolution: string          # 1344x768 | 1280x720
+      resolution: string          # 1344x768 | 1248x704 (A4.2 candidate)
       fps: integer                # 24
       duration: number            # seconds
     generation:

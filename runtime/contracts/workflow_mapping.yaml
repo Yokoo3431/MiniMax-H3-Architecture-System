@@ -24,7 +24,7 @@ workflow_registry:
     output_contract:
       container: mp4
       codec: h264
-      resolution: ["1344x768", "1280x720"]
+      resolution: ["1344x768", "1248x704"]
       fps: [24]
       preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
 
@@ -40,7 +40,7 @@ workflow_registry:
     output_contract:
       container: mp4
       codec: h264
-      resolution: ["1344x768", "1280x720"]
+      resolution: ["1344x768", "1248x704"]
       fps: [24]
       preview_frames: ["first", "0.2", "0.4", "0.6", "0.8", "last"]
 
@@ -55,7 +55,7 @@ workflow_registry:
     output_contract:
       container: mp4
       codec: h264
-      resolution: ["1344x768", "1280x720"]
+      resolution: ["1344x768", "1248x704"]
       fps: [24]
       preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
 
@@ -70,7 +70,7 @@ workflow_registry:
     output_contract:
       container: mp4
       codec: h264
-      resolution: ["1344x768", "1280x720"]
+      resolution: ["1344x768", "1248x704"]
       fps: [24]
       preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
 
@@ -85,7 +85,7 @@ workflow_registry:
     output_contract:
       container: mp4
       codec: h264
-      resolution: ["1344x768", "1280x720"]
+      resolution: ["1344x768", "1248x704"]
       fps: [24]
       preview_frames: ["first", "0.25", "0.5", "0.75", "last"]
 

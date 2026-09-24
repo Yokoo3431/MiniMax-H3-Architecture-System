@@ -124,7 +124,8 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                  clock: Optional[Callable[[], float]] = None,
                  comfy_input_dir: Optional[str] = None,
                  production_binding: bool = False,
-                 runtime_paths: Optional[RuntimePathContract] = None) -> None:
+                 runtime_paths: Optional[RuntimePathContract] = None,
+                 allow_a4_2_candidate: bool = False) -> None:
         super().__init__(contract_path)
         self.client = client or ComfyUIClient()
         self.workflow_mapping = safe_load(
@@ -133,6 +134,9 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         self.comfy_input_dir = Path(comfy_input_dir) if comfy_input_dir else None
         self.production_binding = bool(production_binding)
         self.runtime_paths = runtime_paths
+        # Candidate quality tiers are accepted only by the explicit A4.2
+        # evidence runner. Product/API callers keep the fail-closed default.
+        self.allow_a4_2_candidate = bool(allow_a4_2_candidate)
         self.jobs: Dict[str, Dict[str, Any]] = {}
         self.progress_callback = None
         self.submission_callback = None
@@ -194,7 +198,9 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         if self.production_binding and hasattr(self.client, "object_info"):
             self.preflight()
         data = request.to_dict() if isinstance(request, VideoGenerationRequest) else dict(request)
-        errors = validate_request(data, self.contract)
+        errors = validate_request(
+            data, self.contract,
+            allow_a4_2_candidate=self.allow_a4_2_candidate)
         if errors:
             raise ValueError("VideoGenerationRequest contract violation: " + "; ".join(errors))
         workflow_id = data["workflow_id"]
@@ -218,7 +224,9 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 f"camera_motion {data.get('camera_motion')!r} not supported by "
                 f"{workflow_id}: {sorted(supported_cameras)}")
         golden = golden_entry(workflow_id)
-        payload = bind_golden_workflow(data, workflow_id)
+        payload = bind_golden_workflow(
+            data, workflow_id,
+            allow_a4_2_candidate=self.allow_a4_2_candidate)
         source = str(golden["golden_path"])
         return {
             "job_id": f"native-{uuid.uuid4().hex[:12]}",

@@ -203,8 +203,16 @@ class PromptAPI:
             input_images=reference_paths,
             user_approved=True,
         )
+        # A4.2 may compile the STANDARD candidate for prompt review, but this
+        # opt-in is metadata/prompt-only. JobAPI deliberately keeps the default
+        # fail-closed resolver and cannot execute the candidate before evidence.
+        allow_a4_2_prompt_candidate = (
+            str(prompt_engine or "").upper() == "OFFLINE_COMPILER"
+            and not self._custom_adapter
+        )
         params, profile_context = resolve_product_parameters(
-            workflow, generation_parameters)
+            workflow, generation_parameters,
+            allow_a4_2_candidate=allow_a4_2_prompt_candidate)
         frame_count = h3_frame_count_for_duration(params["duration"], params["fps"])
         resolved_duration = round(frame_count / params["fps"], 6)
         started_at = self.store.timestamp()
@@ -350,7 +358,9 @@ class PromptAPI:
             "skill_version": skill_version,
             "multimodal": bool(prompt.get("multimodal_capable")),
             "input_fingerprint": prompt_input_hash(
-                intent.get("natural_language", ""), workflow, reference_hash, params, provider_name),
+                intent.get("natural_language", ""), workflow, reference_hash,
+                params, provider_name,
+                allow_a4_2_candidate=allow_a4_2_prompt_candidate),
             "output_hash": prompt_hash,
             "validator_result": validation,
             "skill_invoked": skill_executed,
@@ -400,7 +410,8 @@ class PromptAPI:
             "generation_parameters_hash": params_hash,
             "input_hash": prompt_input_hash(
                 intent.get("natural_language", ""), workflow,
-                reference_hash, params, provider_name),
+                reference_hash, params, provider_name,
+                allow_a4_2_candidate=allow_a4_2_prompt_candidate),
             "generated_at": created_at,
             "adapter_version": provenance.get("adapter_revision", ""),
             "bridge_version": provenance.get("bridge_revision", ""),

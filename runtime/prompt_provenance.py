@@ -28,7 +28,8 @@ def generation_parameters_hash(parameters: Mapping[str, Any] | None) -> str:
 
 
 def a4_profile_identity(workflow: str,
-                        parameters: Mapping[str, Any] | None = None) -> dict[str, str]:
+                        parameters: Mapping[str, Any] | None = None,
+                        *, allow_a4_2_candidate: bool = False) -> dict[str, str]:
     """Return the versioned automatic profiles that condition an A4 prompt."""
     from runtime.a4_profiles import resolve_execution_profile
 
@@ -40,8 +41,9 @@ def a4_profile_identity(workflow: str,
             duration=values.get("duration", 4.0),
             fps=values.get("fps", 24),
             seed=values.get("seed", 42),
+            allow_a4_2_candidate=allow_a4_2_candidate,
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         # Legacy non-A4 fixtures remain hashable without inventing a profile.
         return {}
     return {
@@ -55,14 +57,17 @@ def a4_profile_identity(workflow: str,
 
 
 def prompt_input_hash(intent: str, workflow: str, reference_hash: str,
-                     parameters: Mapping[str, Any] | None = None,
-                     provider: str | None = None) -> str:
+                      parameters: Mapping[str, Any] | None = None,
+                      provider: str | None = None, *,
+                      allow_a4_2_candidate: bool = False) -> str:
     payload = {
         "original_intent": intent,
         "workflow_id": workflow,
         "reference_asset_hash": reference_hash,
         "generation_parameters_hash": generation_parameters_hash(parameters),
-        "a4_profile_identity": a4_profile_identity(workflow, parameters),
+        "a4_profile_identity": a4_profile_identity(
+            workflow, parameters,
+            allow_a4_2_candidate=allow_a4_2_candidate),
     }
     if provider:
         payload["prompt_engine_provider"] = provider
@@ -72,11 +77,14 @@ def prompt_input_hash(intent: str, workflow: str, reference_hash: str,
 def is_current_prompt(prompt: Mapping[str, Any] | None, *, intent: str,
                       workflow: str, reference_hash: str,
                       parameters: Mapping[str, Any] | None = None,
-                      provider: str | None = None) -> bool:
+                      provider: str | None = None,
+                      allow_a4_2_candidate: bool = False) -> bool:
     if not prompt or not prompt.get("verified", {}).get("pass"):
         return False
     effective_provider = provider or prompt.get("prompt_engine_provider")
-    expected = prompt_input_hash(intent, workflow, reference_hash, parameters, effective_provider)
+    expected = prompt_input_hash(
+        intent, workflow, reference_hash, parameters, effective_provider,
+        allow_a4_2_candidate=allow_a4_2_candidate)
     return (
         prompt.get("status", "CURRENT") == "CURRENT"
         and prompt.get("workflow") == workflow

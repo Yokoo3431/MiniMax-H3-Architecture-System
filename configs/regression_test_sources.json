@@ -3,10 +3,17 @@
   "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
   "files": [
     {
+      "path": "tests/test_a4_2_acceptance_runner.py",
+      "tracked_status": "tracked",
+      "sha256": "7527DB9E11664C6661B883D821AF60E818FAACD63F89B154C843DEBF1BACDF47",
+      "discovered_test_count": 12,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_a4_profiles.py",
       "tracked_status": "tracked",
-      "sha256": "99C1EAFEEB9C3866181314BF376A515C905D742641D5928F31C380698AED1748",
-      "discovered_test_count": 9,
+      "sha256": "1CB71A0631F125519D064B8C546EEF0C8BAF0BFF61D5D8EE919680F9BCF0942D",
+      "discovered_test_count": 10,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -103,8 +110,8 @@
     {
       "path": "tests/test_comfyui_submission_reconciliation.py",
       "tracked_status": "tracked",
-      "sha256": "AB4FFA0C3702479C7242E6F4227A1A56D34A8695BFDE435CC4ADC65C4A1023D0",
-      "discovered_test_count": 5,
+      "sha256": "E68B9FF4DEC7560F2FB4017BC291C9414A0954769068702A734584B839C49B29",
+      "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -397,8 +404,8 @@
     {
       "path": "tests/test_patch27d_ui_runtime_binding.py",
       "tracked_status": "tracked",
-      "sha256": "0CFB99687857FBDD3AD37B8A5A67CA9730F91BC02DD79DADB349B742D379C4AA",
-      "discovered_test_count": 14,
+      "sha256": "3AAF35B26E5551F36420834C028DDCD52314AE58252705B424135732C4E89298",
+      "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },
     {

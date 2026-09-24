@@ -17,12 +17,31 @@ PROMPT_PROFILE_VERSION = "a4-architecture-v1"
 ARCHITECTURE_PROFILE_VERSION = "a4-architecture-v1"
 PROFILE_CONTRACT_VERSION = "a4.1"
 H3_NATIVE_FPS = 24
+H3_NATIVE_CANVAS_ALIGNMENT = 32
 H3_FRAME_GRID_MODULUS = 17
 H3_FRAME_GRID_OFFSET = 5
 H3_MAX_NATIVE_FRAME_COUNT = 362
 H3_MIN_REQUESTED_DURATION_SECONDS = 4.0
 H3_MAX_REQUESTED_DURATION_SECONDS = 15.0
 H3_MAX_EFFECTIVE_DURATION_SECONDS = H3_MAX_NATIVE_FRAME_COUNT / H3_NATIVE_FPS
+
+
+def validate_native_canvas(width: int, height: int) -> tuple[int, int]:
+    try:
+        if isinstance(width, bool) or isinstance(height, bool):
+            raise ValueError
+        canvas_width, canvas_height = int(width), int(height)
+        if canvas_width != width or canvas_height != height:
+            raise ValueError
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("native H3 canvas dimensions must be integers") from exc
+    if (canvas_width <= 0 or canvas_height <= 0
+            or canvas_width % H3_NATIVE_CANVAS_ALIGNMENT
+            or canvas_height % H3_NATIVE_CANVAS_ALIGNMENT):
+        raise ValueError(
+            f"native H3 canvas must be positive and aligned to "
+            f"{H3_NATIVE_CANVAS_ALIGNMENT} pixels")
+    return canvas_width, canvas_height
 
 
 def h3_frame_count_for_duration(duration_seconds: float,
@@ -106,10 +125,10 @@ QUALITY_PROFILE_SPECS: dict[str, dict[str, Any]] = {
     },
     "STANDARD": {
         "id": "STANDARD",
-        "label": "STANDARD",
-        "availability": "UNAVAILABLE",
-        "availability_reason": "1280×720 product preset is not yet validated or enabled by the current Golden value contract.",
-        "resolution": "1280x720",
+        "label": "STANDARD · 720p-class",
+        "availability": "CANDIDATE_FOR_A4_2",
+        "availability_reason": "1248×704 passed controlled A4.2 execution, but Owner review did not establish a meaningful quality/cost separation from NATIVE_HIGH; it remains a candidate and normal execution stays disabled.",
+        "resolution": "1248x704",
         "steps": 50,
         "sampler_mode": "euler",
         "scheduler": "simple",
@@ -137,7 +156,7 @@ QUALITY_PROFILE_SPECS: dict[str, dict[str, Any]] = {
         "evidence": ["native Golden acceptance at 1344x768/24fps",
                      "A1 comparison records at 1344x768/24fps"],
         "standard_diff": {
-            "resolution": {"from": "1280x720", "to": "1344x768"},
+            "resolution": {"from": "1248x704", "to": "1344x768"},
         },
     },
     "ULTRA_1080": {
@@ -303,7 +322,8 @@ def normalize_quality_id(value: Any) -> str:
 
 
 def require_available_quality_profile(quality_id: str, *,
-                                      execution_mode: str | None = None
+                                      execution_mode: str | None = None,
+                                      allow_a4_2_candidate: bool = False
                                       ) -> dict[str, Any]:
     """Fail closed for profiles that have not reached their execution gate."""
     quality = QUALITY_PROFILE_SPECS[quality_id]
@@ -318,7 +338,12 @@ def require_available_quality_profile(quality_id: str, *,
         raise ValueError(
             f"QUALITY_EXECUTION_MODE_MISMATCH:{quality_id}: expected "
             f"{quality['execution_mode']}")
-    if quality.get("availability") != "READY":
+    candidate_allowed = (
+        allow_a4_2_candidate
+        and quality_id == "STANDARD"
+        and quality.get("availability") == "CANDIDATE_FOR_A4_2"
+    )
+    if quality.get("availability") != "READY" and not candidate_allowed:
         raise ValueError(
             f"QUALITY_PROFILE_UNAVAILABLE:{quality_id}: "
             f"{quality.get('availability_reason', 'execution is not validated')}")
@@ -338,10 +363,12 @@ def resolve_execution_profile(workflow_id: str, quality_profile: Any,
                               *, duration: float = 4.0,
                               fps: int = 24, seed: int = 42,
                               delivery_fps: int = 24,
-                              execution_mode: str | None = None) -> dict[str, Any]:
+                              execution_mode: str | None = None,
+                              allow_a4_2_candidate: bool = False) -> dict[str, Any]:
     quality_id = normalize_quality_id(quality_profile)
     quality = require_available_quality_profile(
-        quality_id, execution_mode=execution_mode)
+        quality_id, execution_mode=execution_mode,
+        allow_a4_2_candidate=allow_a4_2_candidate)
     architecture = resolve_architecture_profile(workflow_id)
     try:
         duration_value = float(duration)
@@ -364,6 +391,7 @@ def resolve_execution_profile(workflow_id: str, quality_profile: Any,
             "DELIVERY_FPS_UNAVAILABLE: only native 24 FPS is executable; "
             "30/48/60 FPS require a validated post-process pipeline")
     width, height = (int(part) for part in quality["resolution"].split("x"))
+    width, height = validate_native_canvas(width, height)
     frame_count = h3_frame_count_for_duration(duration_value, fps_value)
     resolved_duration = round(frame_count / H3_NATIVE_FPS, 6)
     params = {
@@ -428,7 +456,8 @@ def resolve_execution_profile(workflow_id: str, quality_profile: Any,
 
 def resolve_product_parameters(workflow_id: str,
                                values: Mapping[str, Any] | None = None,
-                               *, seed: int | None = None
+                               *, seed: int | None = None,
+                               allow_a4_2_candidate: bool = False
                                ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Resolve the simple Studio contract, ignoring retired internal knobs.
 
@@ -448,9 +477,11 @@ def resolve_product_parameters(workflow_id: str,
         seed=chosen_seed,
         delivery_fps=raw.get("delivery_fps", 24),
         execution_mode=raw.get("quality_execution_mode"),
+        allow_a4_2_candidate=allow_a4_2_candidate,
     )
     params = normalize_generation_parameters(
-        profile["final_execution_parameters"])
+        profile["final_execution_parameters"],
+        allow_a4_2_candidate=allow_a4_2_candidate)
     return params, profile
 
 

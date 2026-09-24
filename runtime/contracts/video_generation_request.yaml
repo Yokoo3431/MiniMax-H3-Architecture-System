@@ -100,7 +100,7 @@ video_generation_request:
     fields:
       resolution:
         type: string
-        allowed: ["672x384", "832x480", "1024x576", "1280x720", "1344x768", "1920x1080"]
+        allowed: ["672x384", "832x480", "1024x576", "1248x704", "1344x768", "1920x1080"]
         default: "1344x768"
       fps:
         type: integer
