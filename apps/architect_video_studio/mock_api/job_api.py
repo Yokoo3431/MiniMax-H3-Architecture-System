@@ -53,6 +53,10 @@ from runtime.reference_contract import reference_bindings, resolve_selected_refe
 from runtime.multiframe_guides import (
     GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, resolve_guide_bindings,
 )
+from runtime.result_pipeline import (
+    ResultIdentityError, classify_result_failure, expected_save_video_identity,
+    sanitize_result_error, summarize_history_outputs,
+)
 from runtime.adapters.multiframe_guide_capability import (
     MultiFrameGuideCapabilityAdapter,
 )
@@ -103,11 +107,124 @@ class JobAPI:
         self.experimental_comfy_input_dir = experimental_comfy_input_dir
         self.runtime_paths = runtime_paths
         self._threads: Dict[str, threading.Thread] = {}
+        self._recovery_locks: Dict[str, threading.Lock] = {}
         self._idle_memory_since: Optional[float] = None
         self._idle_memory_last_probe: float = 0.0
         self._idle_memory_last_release: Optional[float] = None
         self.auto_release_idle_memory = os.environ.get(
             "AVS_AUTO_RELEASE_IDLE_MEMORY", "1").strip().lower() not in ("0", "false", "off")
+
+    @staticmethod
+    def _result_identity_for_event(job: dict) -> dict:
+        pipeline = job.get("result_pipeline") or {}
+        expected = pipeline.get("expected_output_identity") or {}
+        prefix = str(expected.get("filename_prefix") or "")
+        prefix_digest = hashlib.sha256(prefix.encode("utf-8")).hexdigest() if prefix else ""
+        return {
+            "node_id": str(expected.get("node_id") or ""),
+            "node_type": str(expected.get("node_type") or ""),
+            "filename_prefix_sha256": prefix_digest,
+            "workflow_sha256": str(job.get("execution_workflow_sha256") or ""),
+        }
+
+    def _record_result_event(self, project_id: str, job_id: str,
+                             stage: str, status: str, *,
+                             error: BaseException | str | None = None,
+                             error_code: str = "",
+                             candidates: Optional[List[dict]] = None,
+                             detail: Optional[dict] = None) -> None:
+        """Persist bounded, path-free result-pipeline evidence best-effort."""
+        job = self.store.load_jobs(project_id).get(job_id)
+        if not job:
+            return
+        pipeline = dict(job.get("result_pipeline") or {})
+        expected = pipeline.get("expected_output_identity") or {}
+        clean_candidates = []
+        prefix_leaf = Path(str(expected.get("filename_prefix") or "")).name
+        for item in (candidates or [])[:32]:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("filename") or "")
+            name = Path(name.replace("\\", "/")).name
+            subfolder = str(item.get("subfolder") or "").replace("\\", "/")
+            parts = subfolder.split("/") if subfolder else []
+            if (subfolder.startswith("/") or ":" in subfolder
+                    or "<PATH>" in sanitize_result_error(subfolder)
+                    or any(part in ("", ".", "..") for part in parts)
+                    or any(not all(char.isalnum() or char in "_.-" for char in part)
+                           for part in parts)):
+                subfolder = "<INVALID>"
+            clean_candidates.append({
+                "node_id": str(item.get("node_id") or "")[:64],
+                "field": str(item.get("field") or "")[:24],
+                "filename": (name[:240] if prefix_leaf and name.startswith(prefix_leaf)
+                             else "<UNMATCHED>"),
+                "subfolder": subfolder[:240],
+                "type": str(item.get("type") or "")[:32],
+                "format": str(item.get("format") or "")[:64],
+                "size": item.get("size") if isinstance(item.get("size"), int) else None,
+            })
+        safe_code = "".join(
+            char for char in str(error_code).upper()
+            if char.isalnum() or char in "_-")[:80]
+        if isinstance(error, ResultIdentityError):
+            message = sanitize_result_error(error)
+        elif error:
+            # Runtime exceptions can embed user prompt text or serialized node
+            # inputs. Persist the type/code only; never persist that payload.
+            message = f"Result pipeline operation failed ({safe_code or type(error).__name__})."
+        else:
+            message = ""
+        record = {
+            "timestamp": self.store.timestamp(),
+            "job_id": job_id,
+            "prompt_id": str(job.get("prompt_id") or ""),
+            "workflow_sha256": str(job.get("execution_workflow_sha256") or ""),
+            "runtime_identity": dict(
+                (job.get("execution_trace") or {}).get("runtime_identity") or {}),
+            "expected_output_identity": self._result_identity_for_event(job),
+            "stage": str(stage)[:64],
+            "status": str(status)[:24],
+            "error_type": (type(error).__name__ if isinstance(error, BaseException) else
+                           ("RuntimeError" if error else "")),
+            "error_code": safe_code,
+            "failure_classification": classify_result_failure(
+                safe_code,
+                runtime_target=str((job.get("execution_trace") or {}).get(
+                    "runtime_identity", {}).get("target") or "")),
+            "message": message,
+            "observed_output_candidates": clean_candidates,
+            "media_probe_status": str(
+                ((job.get("execution_trace") or {}).get("delivery") or {}).get("status") or "UNKNOWN"),
+            "packaging_status": str(pipeline.get("packaging_status") or "NOT_STARTED"),
+            "detail": {k: v for k, v in (detail or {}).items()
+                       if k in {"history_status", "output_count", "media_bytes",
+                                "media_sha256", "probe_status", "package_built"}},
+        }
+        try:
+            self.store.append_job_result_event(project_id, job_id, record)
+        except Exception:
+            # The diagnostic journal must never turn a successful generation
+            # into a failed one; the Job snapshot remains the primary record.
+            pass
+        events = list(pipeline.get("events") or [])
+        events.append(record)
+        pipeline.update({"schema_version": 1, "current_stage": record["stage"],
+                         "status": record["status"], "events": events[-40:]})
+        if record["stage"] == "COMFY_HISTORY":
+            pipeline["history_outputs"] = clean_candidates
+        if record["stage"] == "PACKAGING":
+            pipeline["packaging_status"] = record["status"]
+        job["result_pipeline"] = pipeline
+        try:
+            self._save_job(project_id, job)
+        except Exception:
+            # Preserve the original failure in the independent JSONL sidecar.
+            pass
+
+    def _runtime_output_fingerprint(self, runtime_adapter) -> str:
+        client = getattr(runtime_adapter, "client", None)
+        return str(getattr(client, "output_root_fingerprint", "") or "")
 
     def _adapter_for_target(self, runtime_target: str):
         if runtime_target == "production":
@@ -335,6 +452,8 @@ class JobAPI:
                 "runtime_identity": {
                     "target": runtime_target,
                     "port": 8190 if runtime_target == "experimental" else 8189,
+                    "output_root_fingerprint": (
+                        self._runtime_output_fingerprint(runtime_adapter) or None),
                 },
                 "architecture_profile": profile_context["architecture_profile"],
                 "profile_parameter_overrides": profile_context["profile_parameter_overrides"],
@@ -388,6 +507,15 @@ class JobAPI:
             "progress_message": "准备参考图",
             "runtime_output_path": "",
             "final_output_path": "",
+            "result_pipeline": {
+                "schema_version": 1,
+                "current_stage": "PREPARING",
+                "status": "PENDING",
+                "expected_output_identity": None,
+                "history_outputs": [],
+                "packaging_status": "NOT_STARTED",
+                "events": [],
+            },
         }
         history = self.store.load_jobs(project_id).values()
         job["estimated_time"] = estimate_generation_range(
@@ -854,7 +982,7 @@ class JobAPI:
             job["failure_code"] = category
             job["error_category"] = category
             job["user_message"] = friendly
-            job["technical_details"] = f"{type(exc).__name__}: {exc}"
+            job["technical_details"] = f"{type(exc).__name__}: {category}"
             job["failure_reason"] = job["technical_details"]
             self._save_job(project, job)
             self._sync_project_failed(project, job, job["technical_details"])
@@ -868,17 +996,24 @@ class JobAPI:
         job["failure_code"] = code
         job["error_category"] = code
         job["user_message"] = "正在同步 ComfyUI 任务状态"
-        job["technical_details"] = f"{type(exc).__name__}: {exc}"
+        job["technical_details"] = f"{type(exc).__name__}: {code}"
         job["failure_reason"] = job["technical_details"]
         if "RECONCILING" not in job.get("stages", []):
             job.setdefault("stages", []).append("RECONCILING")
         self._save_job(project_id, job)
 
     def _finish_reconciled_job(self, project_id: str, job_id: str,
-                               history: Dict[str, Any]) -> None:
+                               history: Optional[Dict[str, Any]] = None, *,
+                               output: Optional[Dict[str, Any]] = None,
+                               allow_failed_recovery: bool = False) -> None:
         project_id, job = self.store.find_job(job_id)
-        if is_job_terminal(job):
+        if job.get("state") == "COMPLETED":
             # Terminal owner state wins over late history/observer callbacks.
+            if self.output_api._job_media_path(project_id, job) is not None:
+                return
+        if (is_job_terminal(job)
+                and not (allow_failed_recovery
+                         and job.get("state") in ("FAILED", "GPU_FAILED", "COMPLETED"))):
             return
         project = self.store.load_project(project_id)
         refs = self.store.load_references(project_id)
@@ -902,28 +1037,157 @@ class JobAPI:
         runtime_adapter = self._adapter_for_job(job)
         if runtime_adapter is None:
             raise RuntimeError("persisted runtime target is no longer configured")
-        output = runtime_adapter.client.collect_output(
-            history, job_id, job.get("workflow", ""), {})
-        self._update_delivery_probe(
-            project_id, job, str(output.get("video_path", "")))
-        self.output_api.build_real_output_package(project_id, job, output, request)
+        snapshot = job.get("workflow_snapshot") or {}
+        workflow = snapshot.get("workflow")
+        workflow_sha = str(job.get("execution_workflow_sha256") or "")
+        if not workflow_sha or not isinstance(workflow, dict):
+            raise ResultIdentityError(
+                "WORKFLOW_IDENTITY_MISSING", "the durable execution graph is unavailable")
+        from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
+        if canonical_workflow_sha256(workflow) != workflow_sha:
+            raise ResultIdentityError(
+                "WORKFLOW_IDENTITY_MISMATCH", "the durable execution graph hash changed")
+        expected = expected_save_video_identity(workflow, job_id, workflow_sha)
+        pipeline = dict(job.get("result_pipeline") or {})
+        persisted_expected = pipeline.get("expected_output_identity")
+        if persisted_expected and persisted_expected != expected:
+            raise ResultIdentityError(
+                "OUTPUT_IDENTITY_MISMATCH", "persisted SaveVideo identity does not match the Job")
+        client = getattr(runtime_adapter, "client", None)
+        if client is None or not hasattr(client, "collect_output"):
+            raise RuntimeError("RESULT_RUNTIME_UNAVAILABLE: selected runtime cannot collect output")
+        runtime_identity = dict((job.get("execution_trace") or {}).get("runtime_identity") or {})
+        expected_root = str(runtime_identity.get("output_root_fingerprint") or "")
+        current_root = str(getattr(client, "output_root_fingerprint", "") or "")
+        if expected_root and expected_root != current_root:
+            raise ResultIdentityError(
+                "RUNTIME_OUTPUT_IDENTITY_MISMATCH",
+                "selected runtime output root differs from the Job's runtime")
+        prompt_id = str(job.get("prompt_id") or "")
+        if not prompt_id:
+            raise ResultIdentityError(
+                "PROMPT_OUTPUT_ASSOCIATION_FAILURE",
+                "the durable Studio Job has no Comfy prompt identity")
+        if output is None:
+            history = dict(history or {})
+            if str(history.get("prompt_id") or prompt_id) != prompt_id:
+                raise ResultIdentityError(
+                    "PROMPT_OUTPUT_ASSOCIATION_FAILURE",
+                    "history prompt identity does not match the Studio Job")
+            history.setdefault("prompt_id", prompt_id)
+            candidates = summarize_history_outputs(history)
+            self._record_result_event(project_id, job_id, "OUTPUT_DISCOVERY", "STARTED",
+                                      candidates=candidates)
+            try:
+                output = client.collect_output(
+                    history, job_id, job.get("workflow", ""), {
+                        "expected_prompt_id": prompt_id,
+                        "expected_output_identity": expected,
+                        "execution_workflow_sha256": workflow_sha,
+                        "studio_job_id": job_id,
+                        "runtime_target": str(job.get("runtime_target") or "production"),
+                    })
+            except Exception as exc:
+                error_code = (getattr(exc, "code", "")
+                              or str(exc).split(":", 1)[0])
+                failure_stage = ("MEDIA_PROBE" if str(error_code).startswith(
+                    "MEDIA_PROBE") else "OUTPUT_DISCOVERY")
+                self._record_result_event(
+                    project_id, job_id, failure_stage, "FAILED", error=exc,
+                    error_code=error_code,
+                    candidates=candidates)
+                raise
+            self._record_result_event(project_id, job_id, "OUTPUT_DISCOVERY", "PASS",
+                                      candidates=candidates)
+        else:
+            runtime_info = output.get("runtime_info") or {}
+            observed = runtime_info.get("observed_output") or {}
+            prefix_leaf = Path(str(expected.get("filename_prefix") or "")).name
+            observed_name = Path(str(observed.get("filename") or "")).name
+            if (str(runtime_info.get("prompt_id") or "") != prompt_id
+                    or str(runtime_info.get("studio_job_id") or "") != job_id
+                    or str(runtime_info.get("workflow_sha256") or "") != workflow_sha
+                    or str(runtime_info.get("output_root_fingerprint") or "") != current_root
+                    or str(observed.get("node_id") or "") != str(expected["node_id"])
+                    or not observed_name.startswith(prefix_leaf)):
+                raise ResultIdentityError(
+                    "OUTPUT_IDENTITY_MISMATCH",
+                    "collected output does not match the durable Job identity")
+            if expected_root and current_root and expected_root != current_root:
+                raise ResultIdentityError(
+                    "RUNTIME_OUTPUT_IDENTITY_MISMATCH",
+                    "collected media came from a different runtime output root")
+        pipeline["expected_output_identity"] = expected
+        runtime_info = output.get("runtime_info") or {}
+        observed_output = runtime_info.get("observed_output") or {}
+        pipeline["observed_output_identity"] = {
+            "prompt_id": prompt_id,
+            "studio_job_id": job_id,
+            "workflow_sha256": workflow_sha,
+            "runtime_output_fingerprint": str(
+                runtime_info.get("output_root_fingerprint") or current_root),
+            "node_id": str(observed_output.get("node_id") or expected["node_id"]),
+            "filename": Path(str(observed_output.get("filename") or "")).name,
+            "subfolder": str(observed_output.get("subfolder") or "").replace("\\", "/"),
+            "size": observed_output.get("size"),
+            "format": str(observed_output.get("format") or "")[:64],
+        }
+        pipeline["current_stage"] = "OUTPUT_DISCOVERY"
+        pipeline["status"] = "PASS"
+        job["result_pipeline"] = pipeline
         runtime_output = str(output.get("video_path", ""))
+        if (not runtime_output or not Path(runtime_output).is_file()
+                or Path(runtime_output).stat().st_size <= 0):
+            raise ResultIdentityError("OUTPUT_FILE_MISSING", "runtime returned no media file")
+        job["runtime_output_path"] = runtime_output
+        job["source_output_path"] = runtime_output
+        job["result_pipeline"]["runtime_output_fingerprint"] = current_root
+        self._save_job(project_id, job)
+        self._record_result_event(project_id, job_id, "MEDIA_PROBE", "STARTED")
+        self._update_delivery_probe(project_id, job, runtime_output)
+        delivery_status = str((job.get("execution_trace") or {}).get(
+            "delivery", {}).get("status") or "PROBE_UNAVAILABLE")
+        self._record_result_event(
+            project_id, job_id, "MEDIA_PROBE",
+            "PASS" if delivery_status == "PROBED" else "UNAVAILABLE",
+            detail={"probe_status": delivery_status,
+                    "media_bytes": Path(runtime_output).stat().st_size
+                    if Path(runtime_output).is_file() else None})
+        self._record_result_event(project_id, job_id, "PACKAGING", "STARTED")
+        try:
+            self.output_api.build_real_output_package(project_id, job, output, request)
+        except Exception as exc:
+            self._record_result_event(
+                project_id, job_id, "PACKAGING", "FAILED", error=exc,
+                error_code=str(exc).split(":", 1)[0])
+            raise
+        self._record_result_event(
+            project_id, job_id, "PACKAGING", "PASS",
+            detail={"package_built": True,
+                    "media_bytes": Path(runtime_output).stat().st_size})
         job["runtime_output_path"] = runtime_output
         job["source_output_path"] = runtime_output
         job["final_output_path"] = ""
         job["output_path"] = runtime_output
+        self._record_result_event(project_id, job_id, "OUTPUT_DELIVERY", "STARTED")
         try:
             final_video = self.output_api.copy_to_study_output(
                 project_id, job, runtime_output)
         except Exception as exc:  # delivery failure is not generation failure
             job["delivery_state"] = "OUTPUT_DELIVERY_FAILED"
-            job["delivery_error"] = f"{type(exc).__name__}: {exc}"
+            job["delivery_error"] = sanitize_result_error(
+                f"{type(exc).__name__}: {exc}")
             job["user_message"] = "视频已生成，但复制到指定目录失败"
+            self._record_result_event(
+                project_id, job_id, "OUTPUT_DELIVERY", "FAILED", error=exc,
+                error_code="OUTPUT_DELIVERY_FAILURE")
         else:
             job["final_output_path"] = str(final_video)
             job["output_path"] = str(final_video)
             job["delivery_state"] = "DELIVERED"
             job["delivery_error"] = ""
+            self._record_result_event(project_id, job_id, "OUTPUT_DELIVERY", "PASS",
+                                      detail={"media_bytes": final_video.stat().st_size})
         job["state"] = "COMPLETED"
         job["lifecycle_state"] = "SUCCEEDED"
         job["submission_state"] = "ACKNOWLEDGED"
@@ -933,7 +1197,16 @@ class JobAPI:
         job.setdefault("stages", []).append("COMPLETED")
         job["package_built"] = True
         self._normalize_terminal_job(job, "COMPLETED")
-        self._save_job(project_id, job)
+        self._record_result_event(project_id, job_id, "RESULT_PERSISTENCE", "STARTED")
+        try:
+            self._save_job(project_id, job)
+        except Exception as exc:
+            self._record_result_event(
+                project_id, job_id, "RESULT_PERSISTENCE", "FAILED", error=exc,
+                error_code="RESULT_PERSISTENCE_FAILURE")
+            raise
+        self._record_result_event(project_id, job_id, "RESULT_PERSISTENCE", "PASS",
+                                  detail={"package_built": True})
         self._sync_project_complete(project_id, job)
 
     def _restore_guide_bindings(self, project_id: str, job: dict) -> list[dict]:
@@ -1000,6 +1273,148 @@ class JobAPI:
             # Public reads must remain available when the runtime is stopped;
             # the existing OUTPUT_ERROR projection explains the missing file.
             return False
+
+    def recover_result(self, job_id: str) -> Dict[str, Any]:
+        """Reconcile one already-submitted native Job without a new /prompt."""
+        lock = self._recovery_locks.setdefault(job_id, threading.Lock())
+        with lock:
+            project_id, job = self.store.find_job(job_id)
+            if job.get("runtime") != "native":
+                raise ValueError("RESULT_RECOVERY_NATIVE_ONLY")
+            if job.get("state") == "CANCELLED" or job.get("cancelled"):
+                raise ValueError("RESULT_RECOVERY_CANCELLED_JOB")
+            if job.get("state") == "COMPLETED":
+                media = self.output_api._job_media_path(project_id, job)
+                if media is not None:
+                    return _decorate_job(job)
+
+            prompt_id = str(job.get("prompt_id") or "")
+            workflow_sha = str(job.get("execution_workflow_sha256") or "")
+            snapshot = job.get("workflow_snapshot") or {}
+            workflow = snapshot.get("workflow")
+            if not prompt_id or not workflow_sha or not isinstance(workflow, dict):
+                raise ValueError("RESULT_RECOVERY_IDENTITY_INCOMPLETE")
+            from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
+            if canonical_workflow_sha256(workflow) != workflow_sha:
+                raise ValueError("RESULT_RECOVERY_WORKFLOW_SHA_MISMATCH")
+            expected = expected_save_video_identity(workflow, job_id, workflow_sha)
+            pipeline = dict(job.get("result_pipeline") or {})
+            prior_expected = pipeline.get("expected_output_identity")
+            if prior_expected and prior_expected != expected:
+                raise ValueError("RESULT_RECOVERY_OUTPUT_IDENTITY_MISMATCH")
+
+            runtime_adapter = self._adapter_for_job(job)
+            client = getattr(runtime_adapter, "client", None)
+            if runtime_adapter is None or client is None or not hasattr(client, "get_history"):
+                raise ValueError("RESULT_RECOVERY_RUNTIME_UNAVAILABLE")
+            runtime_identity = dict((job.get("execution_trace") or {}).get(
+                "runtime_identity") or {})
+            expected_port = runtime_identity.get("port")
+            actual_port = urlsplit(str(getattr(client, "base_url", ""))).port
+            if expected_port is not None and actual_port != int(expected_port):
+                raise ValueError("RESULT_RECOVERY_RUNTIME_TARGET_MISMATCH")
+            current_root = str(getattr(client, "output_root_fingerprint", "") or "")
+            saved_root = str(runtime_identity.get("output_root_fingerprint") or "")
+            if saved_root and saved_root != current_root:
+                raise ValueError("RESULT_RECOVERY_OUTPUT_ROOT_MISMATCH")
+            if not current_root:
+                raise ValueError("RESULT_RECOVERY_OUTPUT_ROOT_UNIDENTIFIED")
+            pipeline["expected_output_identity"] = expected
+            job["result_pipeline"] = pipeline
+            self._save_job(project_id, job)
+            self._record_result_event(project_id, job_id, "RECOVERY", "STARTED")
+
+            # Reuse a prior, durably associated file only when every identity
+            # field and the explicit runtime output-root fingerprint match.
+            observed = pipeline.get("observed_output_identity") or {}
+            output = None
+            if (observed.get("prompt_id") == prompt_id
+                    and observed.get("studio_job_id") == job_id
+                    and observed.get("workflow_sha256") == workflow_sha
+                    and observed.get("runtime_output_fingerprint") == current_root
+                    and observed.get("node_id") == expected.get("node_id")):
+                expected_prefix = str(expected.get("filename_prefix") or "")
+                prefix_path = Path(expected_prefix.replace("\\", "/"))
+                expected_folder = "" if str(prefix_path.parent) == "." else str(prefix_path.parent)
+                filename = Path(str(observed.get("filename") or "")).name
+                subfolder = str(observed.get("subfolder") or "").replace("\\", "/")
+                root = Path(str(getattr(client, "output_root", ""))).expanduser().resolve()
+                candidate = (root / subfolder / filename).resolve()
+                try:
+                    candidate.relative_to(root)
+                    within_root = True
+                except ValueError:
+                    within_root = False
+                if (within_root and subfolder == expected_folder
+                        and filename.startswith(prefix_path.name)
+                        and candidate.is_file() and candidate.stat().st_size > 0):
+                    output = {
+                        "job_id": f"recovered-{job_id}",
+                        "video_path": str(candidate),
+                        "workflow_id": job.get("workflow"),
+                        "metadata": {},
+                        "runtime_info": {
+                            "prompt_id": prompt_id,
+                            "studio_job_id": job_id,
+                            "workflow_sha256": workflow_sha,
+                            "output_root_fingerprint": current_root,
+                            "observed_output": {
+                                "node_id": observed.get("node_id"),
+                                "filename_prefix": expected_prefix,
+                                "filename": filename,
+                                "subfolder": subfolder,
+                                "size": candidate.stat().st_size,
+                                "format": observed.get("format") or "",
+                            },
+                        },
+                    }
+
+            try:
+                if output is None:
+                    # Exact prompt lookup on the Job-selected runtime only.
+                    history = client.get_history(prompt_id)
+                    status = history.get("status") or {}
+                    if (str(status.get("status_str") or "").lower() != "success"
+                            or not status.get("completed")):
+                        raise ResultIdentityError(
+                            "COMFY_HISTORY_NOT_TERMINAL_SUCCESS",
+                            "the exact Comfy prompt has no terminal-success history")
+                    history = dict(history)
+                    if str(history.get("prompt_id") or prompt_id) != prompt_id:
+                        raise ResultIdentityError(
+                            "PROMPT_OUTPUT_ASSOCIATION_FAILURE",
+                            "history prompt identity does not match the Studio Job")
+                    history.setdefault("prompt_id", prompt_id)
+                    self._record_result_event(
+                        project_id, job_id, "COMFY_HISTORY", "COMPLETED",
+                        candidates=summarize_history_outputs(history),
+                        detail={"history_status": "COMPLETED",
+                                "output_count": len(summarize_history_outputs(history))})
+                    self._finish_reconciled_job(
+                        project_id, job_id, history,
+                        allow_failed_recovery=True)
+                else:
+                    self._finish_reconciled_job(
+                        project_id, job_id, output=output,
+                        allow_failed_recovery=True)
+            except Exception as exc:
+                self._record_result_event(
+                    project_id, job_id, "RECOVERY", "FAILED", error=exc,
+                    error_code=getattr(exc, "code", "") or str(exc).split(":", 1)[0])
+                raise
+            recovered_project, recovered = self.store.find_job(job_id)
+            if (recovered.get("state") != "COMPLETED"
+                    or self.output_api._job_media_path(recovered_project, recovered) is None):
+                error = ResultIdentityError(
+                    "RESULT_RECOVERY_INCOMPLETE",
+                    "reconciliation did not produce a Job-bound media Result")
+                self._record_result_event(
+                    project_id, job_id, "RECOVERY", "FAILED", error=error,
+                    error_code=error.code)
+                raise ValueError(error.code)
+            self._record_result_event(project_id, job_id, "RECOVERY", "PASS",
+                                      detail={"package_built": True})
+            return _decorate_job(self.store.find_job(job_id)[1])
 
     def retry_output_delivery(self, job_id: str) -> Dict[str, Any]:
         """Retry only the destination copy; never rerun Comfy generation."""
@@ -1142,6 +1557,35 @@ class JobAPI:
             job["asset_hash"] = job["workflow_snapshot"]["asset_hash"]
             trace = dict(job.get("execution_trace") or {})
             trace["workflow_sha256"] = job["execution_workflow_sha256"]
+            is_native_comfy = (getattr(runtime_adapter, "name", "") == "native"
+                               and hasattr(getattr(runtime_adapter, "client", None),
+                                           "collect_output"))
+            if is_native_comfy:
+                try:
+                    expected_output = expected_save_video_identity(
+                        job["workflow_snapshot"]["workflow"], job_id,
+                        job["execution_workflow_sha256"])
+                except Exception as exc:
+                    self._record_result_event(
+                        project_id, job_id, "SAVE_VIDEO_CONTRACT", "FAILED",
+                        error=exc, error_code=getattr(exc, "code", "SAVE_VIDEO_CONTRACT_INVALID"))
+                    raise
+                pipeline = dict(job.get("result_pipeline") or {})
+                pipeline["expected_output_identity"] = expected_output
+                job["result_pipeline"] = pipeline
+                trace["runtime_identity"] = dict(trace.get("runtime_identity") or {})
+                trace["runtime_identity"]["output_root_fingerprint"] = (
+                    self._runtime_output_fingerprint(runtime_adapter) or None)
+                if prepared is not None:
+                    prepared["_result_event_callback"] = lambda event: self._record_result_event(
+                        project_id, job_id,
+                        str(event.get("stage") or "OUTPUT_DISCOVERY"),
+                        str(event.get("status") or "UNKNOWN"),
+                        error=event.get("error"),
+                        error_code=str(event.get("error_code") or ""),
+                        candidates=event.get("candidates"),
+                        detail=event.get("detail"),
+                    )
             if prepared and prepared.get("guide_capability"):
                 trace["runtime_capability"] = prepared["guide_capability"]
             if prepared and prepared.get("translated_payload"):
@@ -1156,6 +1600,9 @@ class JobAPI:
                 trace["status"] = "TRACE_PAYLOAD_UNAVAILABLE"
             job["execution_trace"] = trace
             self._save_job(project_id, job)
+            if is_native_comfy:
+                self._record_result_event(
+                    project_id, job_id, "SAVE_VIDEO_CONTRACT", "PASS")
             if before_submit is not None:
                 # Acceptance runners persist an ambiguity marker immediately
                 # before the only /prompt boundary. After interruption they
@@ -1192,36 +1639,45 @@ class JobAPI:
                 # cancellation. Runtime artifacts remain recoverable.
                 return
             job = latest
-            runtime_output = str(output.get("video_path", ""))
-            self._update_delivery_probe(project_id, job, runtime_output)
-            self.output_api.build_real_output_package(
-                project_id, job, output, request)
-            job["runtime_output_path"] = runtime_output
-            job["source_output_path"] = runtime_output
-            job["final_output_path"] = ""
-            job["output_path"] = runtime_output
-            try:
-                final_video = self.output_api.copy_to_study_output(
-                    project_id, job, runtime_output)
-            except Exception as delivery_exc:
-                job["delivery_state"] = "OUTPUT_DELIVERY_FAILED"
-                job["delivery_error"] = f"{type(delivery_exc).__name__}: {delivery_exc}"
-                job["user_message"] = "视频已生成，但复制到指定目录失败"
+            if is_native_comfy:
+                self._finish_reconciled_job(project_id, job_id, output=output)
             else:
-                job["final_output_path"] = str(final_video)
-                job["output_path"] = str(final_video)
-                job["delivery_state"] = "DELIVERED"
-                job["delivery_error"] = ""
-            job["state"] = "COMPLETED"
-            job["lifecycle_state"] = "SUCCEEDED"
-            job["progress"] = 100.0
-            job["current_stage"] = "保存视频"
-            job["eta_seconds"] = 0.0
-            job["stages"].append("COMPLETED")
-            job["package_built"] = True
-            self._normalize_terminal_job(job, "COMPLETED")
-            self._save_job(project_id, job)
-            self._sync_project_complete(project_id, job)
+                # Lightweight runtime fakes preserve the historical CPU-only
+                # adapter contract; the strong Comfy identity gate above is
+                # mandatory for the production NativeRuntimeAdapter path.
+                runtime_output = str(output.get("video_path", ""))
+                self._update_delivery_probe(project_id, job, runtime_output)
+                self._record_result_event(project_id, job_id, "PACKAGING", "STARTED")
+                self.output_api.build_real_output_package(
+                    project_id, job, output, request)
+                job["runtime_output_path"] = runtime_output
+                job["source_output_path"] = runtime_output
+                job["final_output_path"] = ""
+                job["output_path"] = runtime_output
+                try:
+                    final_video = self.output_api.copy_to_study_output(
+                        project_id, job, runtime_output)
+                except Exception as delivery_exc:
+                    job["delivery_state"] = "OUTPUT_DELIVERY_FAILED"
+                    job["delivery_error"] = sanitize_result_error(
+                        f"{type(delivery_exc).__name__}: {delivery_exc}")
+                    job["user_message"] = "视频已生成，但复制到指定目录失败"
+                else:
+                    job["final_output_path"] = str(final_video)
+                    job["output_path"] = str(final_video)
+                    job["delivery_state"] = "DELIVERED"
+                    job["delivery_error"] = ""
+                job["state"] = "COMPLETED"
+                job["lifecycle_state"] = "SUCCEEDED"
+                job["progress"] = 100.0
+                job["current_stage"] = "保存视频"
+                job["eta_seconds"] = 0.0
+                job.setdefault("stages", []).append("COMPLETED")
+                job["package_built"] = True
+                self._normalize_terminal_job(job, "COMPLETED")
+                self._save_job(project_id, job)
+                self._sync_project_complete(project_id, job)
+            job = self.store.load_jobs(project_id).get(job_id) or job
             self.store.append_audit(project_id, {
                 "actor": "runtime", "event": "job_completed",
                 "from": "GPU_RUNNING", "to": "COMPLETED",
@@ -1238,6 +1694,17 @@ class JobAPI:
             message = str(exc).lower()
             runtime_mismatch = "missing_node_type" in message or "node type" in message and "not found" in message
             category, friendly = _classify_failure(exc, runtime_mismatch=runtime_mismatch)
+            result_stage = str((job.get("result_pipeline") or {}).get(
+                "current_stage") or "")
+            if result_stage in {
+                    "COMFY_HISTORY", "OUTPUT_DISCOVERY", "MEDIA_PROBE",
+                    "PACKAGING", "RESULT_PERSISTENCE", "SAVE_VIDEO_CONTRACT",
+                    "SAVE_VIDEO_NODE", "COMFY_EXECUTION", "RECOVERY",
+                    "OUTPUT_DELIVERY"}:
+                self._record_result_event(
+                    project_id, job_id, result_stage, "FAILED", error=exc,
+                    error_code=(getattr(exc, "code", "")
+                                or str(exc).split(":", 1)[0]))
             ambiguous_submission = (
                 before_submit is not None
                 and job.get("submission_state") in ("SUBMISSION_UNKNOWN", "RECONCILING")
@@ -1257,7 +1724,25 @@ class JobAPI:
             job["failure_code"] = category
             job["error_category"] = category
             job["user_message"] = friendly
-            job["technical_details"] = f"{type(exc).__name__}: {exc}"
+            if result_stage in {
+                    "COMFY_HISTORY", "OUTPUT_DISCOVERY", "MEDIA_PROBE",
+                    "PACKAGING", "RESULT_PERSISTENCE", "SAVE_VIDEO_CONTRACT",
+                    "SAVE_VIDEO_NODE", "COMFY_EXECUTION", "RECOVERY",
+                    "OUTPUT_DELIVERY"}:
+                failure_code = (getattr(exc, "code", "")
+                                or str(exc).split(":", 1)[0])
+                safe_code = "".join(char for char in str(failure_code).upper()
+                                    if char.isalnum() or char in "_-")[:80]
+                job["technical_details"] = (
+                    f"{type(exc).__name__}: {safe_code or 'RESULT_PIPELINE_FAILURE'}")
+            elif getattr(runtime_adapter, "name", "") == "native":
+                safe_code = "".join(char for char in str(category).upper()
+                                    if char.isalnum() or char in "_-")[:80]
+                job["technical_details"] = (
+                    f"{type(exc).__name__}: {safe_code or 'RUNTIME_FAILURE'}")
+            else:
+                job["technical_details"] = sanitize_result_error(
+                    f"{type(exc).__name__}: {exc}")
             if category == "COMFYUI_CRASHED":
                 job["technical_details"] = (
                     "COMFYUI_NATIVE_CRASH: " + job["technical_details"]

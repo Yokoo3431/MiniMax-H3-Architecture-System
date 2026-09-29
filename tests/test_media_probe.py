@@ -100,6 +100,10 @@ class TestOutputManifestProbeWiring(unittest.TestCase):
             (package / "output").mkdir(parents=True)
             media = package / "output" / "video.mp4"
             media.write_bytes(b"fixture")
+            (package / "report").mkdir(parents=True, exist_ok=True)
+            (package / "report" / "generation_report.json").write_text(
+                json.dumps({"job_id": "job-test", "status": "COMPLETED"}),
+                encoding="utf-8")
             job = {
                 "id": "job-test",
                 "runtime": "native",

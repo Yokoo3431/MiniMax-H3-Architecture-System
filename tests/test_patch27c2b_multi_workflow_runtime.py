@@ -6,6 +6,7 @@ parameter mapping, output collector, error mapping.
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -172,13 +173,19 @@ class TestParameterMapping(unittest.TestCase):
 
 class TestOutputCollector(unittest.TestCase):
     def test_collect_animated_image_output(self):
-        client = ComfyUIClient(output_root=r"C:\mock\output")
-        out = client.collect_output({
+        history = {
             "outputs": {"15": {"images": [
                 {"filename": "02_C2B_00001_.mp4", "subfolder": "video",
-                 "type": "output", "animated": True}]}}},
-            "job-x", "02_Day_Night_Transition", metadata={})
-        self.assertTrue(out["video_path"].endswith("video/02_C2B_00001_.mp4"))
+                 "type": "output", "animated": True}]}}}
+        with tempfile.TemporaryDirectory() as output_root:
+            media = Path(output_root) / "video" / "02_C2B_00001_.mp4"
+            media.parent.mkdir(parents=True)
+            media.write_bytes(b"synthetic-video")
+            client = ComfyUIClient(output_root=output_root)
+            out = client.collect_output(
+                history, "job-x", "02_Day_Night_Transition", metadata={})
+        self.assertEqual(Path(out["video_path"]).parent.name, "video")
+        self.assertEqual(Path(out["video_path"]).name, "02_C2B_00001_.mp4")
         self.assertEqual(out["workflow_id"], "02_Day_Night_Transition")
 
     def test_missing_output_rejected(self):

@@ -62,6 +62,9 @@ from runtime.adapters.multiframe_guide_capability import (
     MultiFrameGuideCapabilityAdapter,
 )
 from runtime.multiframe_guides import compile_native_guides
+from runtime.result_pipeline import (
+    expected_save_video_identity, summarize_history_outputs,
+)
 
 WORKFLOW_MAPPING = REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml"
 GOLDEN_05_PATH = REPO_ROOT / "production_workflows" / "golden" / "05_Slow_Walkthrough.json"
@@ -396,6 +399,7 @@ class NativeRuntimeAdapter(RuntimeAdapter):
     # ------------------------------------------------------------------ #
     def generate(self, request: Any, prepared: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         native_req = prepared or self.prepare(request)
+        result_event_callback = native_req.get("_result_event_callback")
         if native_req.get("execution_workflow_sha256") != canonical_workflow_sha256(
                 native_req["translated_payload"]):
             raise ComfyUIExecutionError("EXECUTION_WORKFLOW_IDENTITY_MISMATCH")
@@ -428,6 +432,8 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                           "status": "ACKNOWLEDGED"})
             self.jobs[job_id]["status"] = "EXECUTING"
             self.jobs[job_id]["stages"].append("EXECUTING")
+            if callable(result_event_callback):
+                result_event_callback({"stage": "COMFY_EXECUTION", "status": "STARTED"})
             state = self.poll(
                 prompt_id,
                 timeout_seconds=native_req["control"]["history_timeout_seconds"],
@@ -441,8 +447,27 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             history = self.client.get_history(prompt_id)
             request_data = self.jobs[job_id]["request"]
             workflow_id = request_data.get("workflow_id", "01_Exterior_Hero")
+            execution_sha = str(native_req.get("execution_workflow_sha256") or "")
+            external_job_id = str(native_req.get("avs_job_id") or "")
+            expected_output = expected_save_video_identity(
+                native_req["translated_payload"], external_job_id, execution_sha)
+            history = dict(history)
+            # get_history(prompt_id) is an exact-key lookup. Comfy's history
+            # value commonly omits the key it was fetched under; retain that
+            # queried identity for the downstream strong-association gate.
+            history.setdefault("prompt_id", prompt_id)
+            callback = result_event_callback
+            candidates = summarize_history_outputs(history)
+            if callable(callback):
+                callback({"stage": "COMFY_EXECUTION", "status": "PASS"})
+            if callable(callback):
+                callback({"stage": "COMFY_HISTORY", "status": "COMPLETED",
+                          "candidates": candidates,
+                          "detail": {"history_status": "COMPLETED",
+                                     "output_count": len(candidates)}})
             metadata = {
                 "study_id": native_req["study_id"],
+                "studio_job_id": external_job_id,
                 "workflow_id": workflow_id,
                 "camera_motion": self._request_field(request, "camera_motion", "slow_push"),
                 "resolution": self._request_param(request, "resolution", "1344x768"),
@@ -451,8 +476,32 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 "quality": self._request_param(request, "quality", "diagnostic"),
                 "seed": self._request_param(request, "seed", 42),
                 "prompt_hash": self._request_prompt_hash(request),
+                "expected_prompt_id": prompt_id,
+                "expected_output_identity": expected_output,
+                "execution_workflow_sha256": execution_sha,
             }
-            output = self.collect(history, job_id, workflow_id, metadata)
+            if callable(callback):
+                callback({"stage": "OUTPUT_DISCOVERY", "status": "STARTED",
+                          "candidates": candidates})
+            try:
+                output = self.collect(history, job_id, workflow_id, metadata)
+            except Exception as exc:
+                error_code = (getattr(exc, "code", "")
+                              or str(exc).split(":", 1)[0])
+                failure_stage = ("MEDIA_PROBE" if str(error_code).startswith(
+                    "MEDIA_PROBE") else "OUTPUT_DISCOVERY")
+                if callable(callback):
+                    callback({"stage": failure_stage, "status": "FAILED",
+                              "error": exc,
+                              "error_code": error_code})
+                raise
+            if callable(callback):
+                callback({"stage": "OUTPUT_DISCOVERY", "status": "PASS",
+                          "candidates": candidates,
+                          "detail": {"media_bytes": Path(
+                              str(output.get("video_path") or "")).stat().st_size
+                              if Path(str(output.get("video_path") or "")).is_file()
+                              else None}})
             self.jobs[job_id]["output"] = output
             self.jobs[job_id]["status"] = "COMPLETED"
             self.jobs[job_id]["stages"].append("COMPLETED")
@@ -476,6 +525,15 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             raise
         except ComfyUIExecutionError as exc:
             code = self._execution_error_code(str(exc))
+            if callable(result_event_callback):
+                lowered = str(exc).lower()
+                stage = ("SAVE_VIDEO_NODE" if "savevideo" in lowered
+                         or "save video" in lowered else "COMFY_EXECUTION")
+                result_event_callback({
+                    "stage": stage, "status": "FAILED", "error": exc,
+                    "error_code": ("SAVE_VIDEO_NODE_FAILURE" if stage == "SAVE_VIDEO_NODE"
+                                    else code),
+                })
             self._fail(job_id, "execution error", code, str(exc))
             raise
         except Exception as exc:

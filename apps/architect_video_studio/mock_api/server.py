@@ -367,6 +367,9 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/jobs/([^/]+)/retry-output", path)
             if m and method == "POST":
                 return self._ok(apis["job"].retry_output_delivery(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/recover-result", path)
+            if m and method == "POST":
+                return self._ok(apis["job"].recover_result(m.group(1)))
             m = re.fullmatch(r"/api/jobs/([^/]+)/cancel", path)
             if m and method == "POST":
                 return self._ok(apis["job"].cancel(m.group(1)))
@@ -375,7 +378,21 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 return self._ok(apis["output"].get_result(m.group(1)))
             m = re.fullmatch(r"/api/jobs/([^/]+)/media", path)
             if m and method == "GET":
-                self._send_media(apis["output"].media_path(m.group(1)))
+                job_id = m.group(1)
+                try:
+                    self._send_media(apis["output"].media_path(job_id))
+                except Exception as exc:
+                    job_api = apis.get("job")
+                    if job_api is not None and hasattr(job_api, "_record_result_event"):
+                        try:
+                            project_id, job = store.find_job(job_id)
+                            if job.get("runtime") == "native":
+                                job_api._record_result_event(
+                                    project_id, job_id, "HTTP_SERVING", "FAILED",
+                                    error=exc, error_code="HTTP_MEDIA_SERVING_FAILURE")
+                        except Exception:
+                            pass
+                    raise
                 return
             m = re.fullmatch(r"/api/jobs/([^/]+)/report", path)
             if m and method == "GET":

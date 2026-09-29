@@ -443,7 +443,7 @@ class TestOutputPackage(unittest.TestCase):
                 if h.job_api.get_job(job["id"])["state"] == "COMPLETED":
                     break
                 time.sleep(0.1)
-            pkg = h.store.package_dir(pid)
+            pkg = h.store.job_package_dir(pid, job["id"])
             for sub in ("input", "workflow", "prompt", "output", "report"):
                 self.assertTrue((pkg / sub).is_dir(), sub)
             self.assertTrue((pkg / "output" / "video.mp4").is_file())

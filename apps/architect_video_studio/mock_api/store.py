@@ -267,6 +267,42 @@ class StudioStore:
     def package_dir(self, project_id: str) -> Path:
         return self.project_dir(project_id) / "output_package"
 
+    def job_package_dir(self, project_id: str, job_id: str) -> Path:
+        """Return an output package root owned by one immutable Job identity."""
+        value = str(job_id or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", value):
+            raise ValueError("unsafe job id")
+        root = (self.package_dir(project_id) / "jobs" / value).resolve()
+        if not root.is_relative_to(self.package_dir(project_id).resolve()):
+            raise ValueError("unsafe job package path")
+        return root
+
+    def job_result_events_file(self, project_id: str, job_id: str) -> Path:
+        value = str(job_id or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", value):
+            raise ValueError("unsafe job id")
+        return self.project_dir(project_id) / "result_pipeline" / f"{value}.jsonl"
+
+    def append_job_result_event(self, project_id: str, job_id: str,
+                                record: Dict[str, Any]) -> None:
+        """Persist a path-free result event separately from the Job snapshot.
+
+        This sidecar retains the last failure evidence if publishing jobs.json
+        itself fails during Result persistence.
+        """
+        self.append_jsonl(self.job_result_events_file(project_id, job_id), record)
+
+    def load_job_result_events(self, project_id: str,
+                               job_id: str) -> List[Dict[str, Any]]:
+        path = self.job_result_events_file(project_id, job_id)
+        if not path.is_file():
+            return []
+        rows = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rows.append(json.loads(line))
+        return rows
+
     def clear_package(self, project_id: str) -> None:
         d = self.package_dir(project_id)
         if d.is_dir():

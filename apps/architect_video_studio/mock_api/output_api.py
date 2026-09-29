@@ -8,6 +8,8 @@ Jobs expose their verified packaged media through a job-bound URL.
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -148,12 +150,34 @@ class OutputAPI:
         import hashlib
         import shutil
 
+        video_path = Path(str(output.get("video_path") or ""))
+        if not video_path.is_file() or video_path.stat().st_size <= 0:
+            raise ValueError("OUTPUT_FILE_MISSING: verified runtime video is unavailable")
         project = self.store.load_project(project_id)
         prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id)
-        package = self.store.package_dir(project_id)
-        self.store.clear_package(project_id)
+        package = self.store.job_package_dir(project_id, str(job.get("id") or ""))
         for sub in ("input", "workflow", "prompt", "output", "report"):
             (package / sub).mkdir(parents=True, exist_ok=True)
+
+        def sha256_file(path: Path) -> str:
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            return digest.hexdigest()
+
+        media_sha256 = sha256_file(video_path)
+        existing_report = package / "report" / "generation_report.json"
+        existing_video = package / "output" / "video.mp4"
+        if existing_report.is_file() and existing_video.is_file():
+            try:
+                prior = json.loads(existing_report.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                prior = {}
+            if (self._report_matches_job(prior, job)
+                    and prior.get("media_sha256") == media_sha256
+                    and sha256_file(existing_video) == media_sha256):
+                return self.manifest(project_id, job)
 
         # input/ — approved reference files + manifest
         refs = [r for r in self._job_references(project_id, job)
@@ -254,17 +278,29 @@ class OutputAPI:
             json.dumps(prompt_record, indent=2, ensure_ascii=False), encoding="utf-8")
 
         # output/
-        video_path = Path(output["video_path"])
-        if not video_path.is_file() or video_path.stat().st_size <= 0:
-            raise ValueError(
-                f"OUTPUT_ERROR: real video output is missing or empty: {video_path}")
-        shutil.copy2(video_path, package / "output" / "video.mp4")
+        packaged_video = package / "output" / "video.mp4"
+        if video_path.resolve() != packaged_video.resolve():
+            staged_video = package / "output" / f".video.{uuid.uuid4().hex}.partial"
+            shutil.copy2(video_path, staged_video)
+            if staged_video.stat().st_size != video_path.stat().st_size:
+                staged_video.unlink(missing_ok=True)
+                raise ValueError("PACKAGING_COPY_FAILURE: media size verification failed")
+            os.replace(staged_video, packaged_video)
+        if sha256_file(packaged_video) != media_sha256:
+            raise ValueError("PACKAGING_COPY_FAILURE: media hash verification failed")
 
         # report/
         runtime_info = dict(output.get("runtime_info") or {})
         runtime_capability = trace.get("runtime_capability") or {}
         runtime_identity = trace.get("runtime_identity") or {}
         runtime_info.update({
+            "job_id": str(job.get("id") or ""),
+            "prompt_id": str(job.get("prompt_id") or ""),
+            "execution_workflow_sha256": str(
+                job.get("execution_workflow_sha256") or ""),
+            "output_root_fingerprint": str(
+                runtime_info.get("output_root_fingerprint") or
+                runtime_identity.get("output_root_fingerprint") or ""),
             "comfyui_version": (runtime_info.get("comfyui_version")
                                 or runtime_capability.get("version")
                                 or "unknown"),
@@ -294,6 +330,9 @@ class OutputAPI:
             "project_id": project_id,
             "project_name": project["name"],
             "job_id": job.get("id"),
+            "prompt_id": job.get("prompt_id"),
+            "execution_workflow_sha256": job.get("execution_workflow_sha256"),
+            "media_sha256": media_sha256,
             "workflow": job.get("workflow"),
             "seed": job.get("seed"),
             "camera_motion": job.get("camera_motion"),
@@ -362,16 +401,21 @@ class OutputAPI:
 
     def get_report(self, job_id: str) -> Dict[str, Any]:
         project_id, job = self.store.find_job(job_id)
-        report_path = self.store.package_dir(project_id) / "report" / "report.json"
+        package = self._package_dir_for_job(project_id, job)
+        report_path = package / "report" / "report.json"
         if report_path.is_file():
-            return json.loads(report_path.read_text(encoding="utf-8"))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            if self._report_matches_job(report, job):
+                return report
 
         # Native output packages historically used generation_report.json.
         # Normalize that existing report shape at the API boundary instead of
         # treating optional packaging metadata as a completed-video failure.
-        generation_report = self.store.package_dir(project_id) / "report" / "generation_report.json"
+        generation_report = package / "report" / "generation_report.json"
         if generation_report.is_file():
             report = json.loads(generation_report.read_text(encoding="utf-8"))
+            if not self._report_matches_job(report, job):
+                raise ValueError(f"REPORT_IDENTITY_MISMATCH: report does not belong to Job {job_id}")
             project = self.store.load_project(project_id)
             refs = self.store.load_references(project_id)
             report.setdefault("project_id", project_id)
@@ -387,9 +431,67 @@ class OutputAPI:
             return report
         raise ValueError(f"report not built for job {job_id}")
 
-    def _package_video_path(self, project_id: str) -> Path | None:
-        """Return only the Job-owned packaged MP4, never a request path."""
-        output_root = (self.store.package_dir(project_id) / "output").resolve()
+    @staticmethod
+    def _report_matches_job(report: Dict[str, Any], job: Dict[str, Any]) -> bool:
+        """Require persisted identity before trusting a legacy shared package."""
+        if not isinstance(report, dict):
+            return False
+        expected_job = str(job.get("id") or "")
+        expected_prompt = str(job.get("prompt_id") or "")
+        expected_sha = str(job.get("execution_workflow_sha256") or "")
+        runtime_info = report.get("runtime_info") or {}
+        trace = report.get("execution_trace") or {}
+        provenance = report.get("provenance") or {}
+        observed_job = str(report.get("job_id") or runtime_info.get("job_id") or "")
+        observed_prompt = str(report.get("prompt_id") or runtime_info.get("prompt_id") or "")
+        observed_sha = str(
+            report.get("execution_workflow_sha256")
+            or trace.get("workflow_sha256")
+            or provenance.get("execution_trace", {}).get("workflow_sha256")
+            or "")
+        if observed_job and observed_job != expected_job:
+            return False
+        if observed_prompt and expected_prompt and observed_prompt != expected_prompt:
+            return False
+        if observed_sha and expected_sha and observed_sha != expected_sha:
+            return False
+        return bool((observed_job and observed_job == expected_job)
+                    or (observed_prompt and expected_prompt
+                        and observed_prompt == expected_prompt)
+                    or (observed_sha and expected_sha and observed_sha == expected_sha))
+
+    def _package_dir_for_job(self, project_id: str,
+                             job: Dict[str, Any]) -> Path:
+        """Prefer the Job-scoped package; accept legacy package only by identity."""
+        job_id = str(job.get("id") or "")
+        if job_id:
+            path = self.store.job_package_dir(project_id, job_id)
+            if path.is_dir() and any(path.iterdir()):
+                return path
+        legacy = self.store.package_dir(project_id)
+        for name in ("report.json", "generation_report.json"):
+            candidate = legacy / "report" / name
+            if candidate.is_file():
+                try:
+                    report = json.loads(candidate.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if self._report_matches_job(report, job):
+                    return legacy
+        return self.store.job_package_dir(project_id, job_id) if job_id else legacy
+
+    def _package_video_path(self, project_id: str,
+                            job: Dict[str, Any]) -> Path | None:
+        """Return a packaged MP4 only from the matching Job package."""
+        package = self._package_dir_for_job(project_id, job)
+        report_path = package / "report" / "generation_report.json"
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not self._report_matches_job(report, job):
+            return None
+        output_root = (package / "output").resolve()
         candidate = (output_root / "video.mp4").resolve()
         try:
             candidate.relative_to(output_root)
@@ -403,15 +505,16 @@ class OutputAPI:
                         job: Dict[str, Any]) -> Path | None:
         """Resolve a completed Job's media within AVS-owned output roots."""
         project = self.store.load_project(project_id)
+        package = self._package_dir_for_job(project_id, job)
         roots = [
-            (self.store.package_dir(project_id) / "output").resolve(),
+            (package / "output").resolve(),
             self.store.output_directory(project).resolve(),
         ]
         candidates = []
         for value in (job.get("final_output_path"), job.get("output_path")):
             if value:
                 candidates.append(Path(value).resolve())
-        package_video = self._package_video_path(project_id)
+        package_video = self._package_video_path(project_id, job)
         if package_video is not None:
             candidates.append(package_video)
         for candidate in candidates:
@@ -453,7 +556,7 @@ class OutputAPI:
         return out
 
     def manifest(self, project_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
-        package = self.store.package_dir(project_id)
+        package = self._package_dir_for_job(project_id, job)
         media = self._job_media_path(project_id, job)
         ffprobe = None
         if media is not None and job.get("runtime") == "native":

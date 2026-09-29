@@ -9,6 +9,7 @@ Covers:
 """
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -79,6 +80,18 @@ def fake_history():
     }
 
 
+def materialize_fake_video(output_root, history):
+    """Mirror a history-listed artifact inside the selected fake runtime root."""
+    for node_output in history.get("outputs", {}).values():
+        for field in ("videos", "images", "gifs"):
+            for item in node_output.get(field, []):
+                if str(item.get("type", "")).lower() != "output":
+                    continue
+                target = Path(output_root) / str(item.get("subfolder") or "") / item["filename"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"synthetic-video")
+
+
 class FakeClient:
     """In-memory ComfyUI client duck-type (no network, no GPU)."""
 
@@ -89,7 +102,8 @@ class FakeClient:
         self.offline = offline
         self.timeout = timeout
         self.submitted = []
-        self.output_root = output_root or str(Path(__file__).parent)
+        self._output_tmp = None
+        self.output_root = output_root
 
     def submit_workflow(self, payload, client_id=None):
         if self.offline:
@@ -109,8 +123,29 @@ class FakeClient:
         return self.history
 
     def collect_output(self, history, job_id, workflow_id, metadata=None):
+        metadata = metadata or {}
+        expected = metadata.get("expected_output_identity")
+        if self.output_root is None:
+            self._output_tmp = tempfile.TemporaryDirectory()
+            self.output_root = self._output_tmp.name
+        if expected:
+            filename = f"{Path(expected['filename_prefix']).name}_00001_.mp4"
+            history = {
+                "prompt_id": metadata["expected_prompt_id"],
+                "status": {"status_str": "success", "completed": True},
+                "outputs": {str(expected["node_id"]): {"images": [{
+                    "filename": filename, "subfolder": "video",
+                    "type": "output", "animated": True,
+                }]}},
+            }
+        materialize_fake_video(self.output_root, history)
         return ComfyUIClient(output_root=self.output_root).collect_output(
             history, job_id, workflow_id, metadata)
+
+    def close(self):
+        if self._output_tmp is not None:
+            self._output_tmp.cleanup()
+            self._output_tmp = None
 
 
 class TestContractCompatibility(unittest.TestCase):
@@ -160,14 +195,18 @@ class TestContractCompatibility(unittest.TestCase):
 
 class TestMockRuntimeCompatibility(unittest.TestCase):
     def test_generate_completes_with_fake_client(self):
-        adapter = NativeRuntimeAdapter(client=FakeClient())
-        job = adapter.generate(make_request())
-        self.assertEqual(job["status"], "COMPLETED")
-        self.assertEqual(job["existing_job_status"], "COMPLETED")
-        self.assertTrue(job["has_output"])
-        out = adapter.get_output(job["job_id"])
-        self.assertEqual(out["job_id"], job["job_id"])
-        self.assertTrue(out["video_path"].endswith(".mp4"))
+        client = FakeClient()
+        try:
+            adapter = NativeRuntimeAdapter(client=client)
+            job = adapter.generate(make_request())
+            self.assertEqual(job["status"], "COMPLETED")
+            self.assertEqual(job["existing_job_status"], "COMPLETED")
+            self.assertTrue(job["has_output"])
+            out = adapter.get_output(job["job_id"])
+            self.assertEqual(out["job_id"], job["job_id"])
+            self.assertTrue(out["video_path"].endswith(".mp4"))
+        finally:
+            client.close()
 
     def test_interface_methods_present(self):
         adapter = NativeRuntimeAdapter(client=FakeClient())
@@ -189,11 +228,16 @@ class TestComfyUIClientIsolation(unittest.TestCase):
             )
 
     def test_collect_output_contract(self):
-        client = ComfyUIClient(output_root=r"C:\mock\output")
-        out = client.collect_output(fake_history(), "job-x", "01_Exterior_Hero",
-                                    metadata={"seed": 1})
+        with tempfile.TemporaryDirectory() as output_root:
+            history = fake_history()
+            materialize_fake_video(output_root, history)
+            client = ComfyUIClient(output_root=output_root)
+            out = client.collect_output(history, "job-x", "01_Exterior_Hero",
+                                        metadata={"seed": 1})
         self.assertEqual(out["job_id"], "job-x")
-        self.assertIn("video/01_Exterior_Hero_C2A", out["video_path"])
+        self.assertEqual(Path(out["video_path"]).parent.name, "video")
+        self.assertTrue(Path(out["video_path"]).name.startswith(
+            "01_Exterior_Hero_C2A"))
         self.assertTrue(out["video_path"].endswith(".mp4"))
         self.assertIn("preview_path", out)
         self.assertTrue(out["runtime_info"]["comfyui_invoked"])
@@ -261,9 +305,12 @@ class TestErrorMapping(unittest.TestCase):
 
 class TestOutputCollection(unittest.TestCase):
     def test_video_generation_output_fields(self):
-        client = ComfyUIClient(output_root=r"C:\mock\output")
-        out = client.collect_output(fake_history(), "job-1", "01_Exterior_Hero",
-                                    metadata={"prompt_hash": "B" * 64})
+        with tempfile.TemporaryDirectory() as output_root:
+            history = fake_history()
+            materialize_fake_video(output_root, history)
+            client = ComfyUIClient(output_root=output_root)
+            out = client.collect_output(history, "job-1", "01_Exterior_Hero",
+                                        metadata={"prompt_hash": "B" * 64})
         for field in ("job_id", "video_path", "preview_path", "metadata", "runtime_info"):
             self.assertIn(field, out)
         self.assertEqual(out["metadata"]["prompt_hash"], "B" * 64)

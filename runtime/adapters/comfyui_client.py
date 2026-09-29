@@ -27,6 +27,10 @@ import urllib.request
 from urllib.parse import urlencode, urlsplit
 from typing import Any, Callable, Dict, Optional
 from pathlib import Path
+from runtime.result_pipeline import (
+    ResultIdentityError, sanitize_result_error, select_history_video,
+    summarize_history_outputs,
+)
 
 
 def _is_timeout_error(exc: BaseException) -> bool:
@@ -292,6 +296,14 @@ class ComfyUIClient:
         # One identity per managed Comfy service lets /prompt and /ws share
         # the same telemetry stream across jobs and reconnects.
         self.client_id = str(client_id or uuid.uuid4())
+
+    @property
+    def output_root_fingerprint(self) -> str:
+        """Opaque identity for the configured output root; never expose its path."""
+        if not self.output_root:
+            return ""
+        canonical = os.path.normcase(str(Path(self.output_root).expanduser().resolve()))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
 
     # ------------------------------------------------------------------ #
     def _request(self, method: str, path: str,
@@ -663,42 +675,100 @@ class ComfyUIClient:
                        job_id: str, workflow_id: str,
                        metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """history result -> VideoGenerationOutput contract dict."""
-        outputs = history_result.get("outputs") or {}
-        video_info = None
-        for node_out in outputs.values():
-            entries = (node_out.get("videos") or []) + (node_out.get("images") or [])
-            for v in entries:
-                name = str(v.get("filename", "")).lower()
-                is_animated = bool(v.get("animated"))
-                if (name.endswith(".mp4") or v.get("format") in ("mp4", "video")
-                        or is_animated) and v.get("type") == "output":
-                    video_info = v
+        metadata = metadata or {}
+        expected = metadata.get("expected_output_identity")
+        if expected:
+            try:
+                video_info = select_history_video(
+                    history_result,
+                    prompt_id=str(metadata.get("expected_prompt_id") or
+                                  history_result.get("prompt_id") or ""),
+                    expected=expected,
+                )
+            except ResultIdentityError as exc:
+                raise ComfyUIExecutionError(f"{exc.code}: {exc}") from exc
+        else:
+            outputs = history_result.get("outputs") or {}
+            video_info = None
+            for node_out in outputs.values() if isinstance(outputs, dict) else ():
+                if not isinstance(node_out, dict):
+                    continue
+                entries = ((node_out.get("videos") or [])
+                           + (node_out.get("images") or [])
+                           + (node_out.get("gifs") or []))
+                for item in entries:
+                    name = str(item.get("filename", "")).lower()
+                    if ((name.endswith((".mp4", ".webm", ".mkv", ".mov"))
+                         or "video" in str(item.get("format") or "").lower()
+                         or bool(item.get("animated")))
+                            and str(item.get("type") or "").lower() == "output"):
+                        video_info = item
+                        break
+                if video_info:
                     break
-            if video_info:
-                break
-        if video_info is None:
-            raise ComfyUIExecutionError(
-                f"no video output found in history outputs: {json.dumps(outputs, ensure_ascii=False)[:500]}")
+            if video_info is None:
+                raise ComfyUIExecutionError("SAVE_VIDEO_OUTPUT_MISSING: no video output in history")
 
-        subfolder = video_info.get("subfolder", "")
-        filename = video_info.get("filename", "output.mp4")
-        rel = f"{subfolder}/{filename}".lstrip("/")
-        video_path = f"{self.output_root.rstrip('/')}/{rel}".replace("\\", "/")
+        subfolder = str(video_info.get("subfolder") or "")
+        filename = str(video_info.get("filename") or "")
+        if not filename or Path(filename).name != filename or "/" in filename or "\\" in filename:
+            raise ComfyUIExecutionError("OUTPUT_PATH_INVALID: unsafe Comfy output filename")
+        if subfolder:
+            parts = subfolder.replace("\\", "/").split("/")
+            if any(part in ("", ".", "..") for part in parts) or ":" in subfolder:
+                raise ComfyUIExecutionError("OUTPUT_PATH_INVALID: unsafe Comfy output subfolder")
+        if not self.output_root:
+            raise ComfyUIExecutionError("RUNTIME_OUTPUT_ROOT_MISSING: runtime output root is not configured")
+        output_root = Path(self.output_root).expanduser().resolve()
+        video_path = (output_root / subfolder / filename).resolve()
+        try:
+            video_path.relative_to(output_root)
+        except ValueError as exc:
+            raise ComfyUIExecutionError(
+                "OUTPUT_PATH_OUTSIDE_RUNTIME_ROOT: output escaped its explicit runtime root") from exc
+        if not video_path.is_file():
+            if str(metadata.get("runtime_target") or "") == "experimental":
+                raise ComfyUIExecutionError(
+                    "RUNTIME_OUTPUT_LAYOUT_MISMATCH: history output is absent from the "
+                    "selected experimental runtime root")
+            raise ComfyUIExecutionError(
+                "OUTPUT_FILE_CREATED_BUT_NOT_DISCOVERED: history points to a file "
+                "that is absent from the selected runtime output root")
+        if video_path.stat().st_size <= 0:
+            raise ComfyUIExecutionError(
+                "MEDIA_PROBE_FAILURE: history output file is empty")
         if self.strict_output:
-            self._validate_real_video(video_path)
+            try:
+                self._validate_real_video(str(video_path))
+            except Exception as exc:
+                raise ComfyUIExecutionError(
+                    f"MEDIA_PROBE_FAILURE: {type(exc).__name__}: "
+                    f"{sanitize_result_error(exc)}") from exc
         runtime_info = {
             "adapter": "native",
             "gpu_invoked": True,
             "comfyui_invoked": True,
             "native_runtime_invoked": True,
-            "prompt_id": history_result.get("prompt_id", ""),
+            "prompt_id": history_result.get("prompt_id", metadata.get("expected_prompt_id", "")),
+            "studio_job_id": str(metadata.get("studio_job_id") or ""),
+            "workflow_sha256": str(metadata.get("execution_workflow_sha256") or ""),
             "output_validation": "PASS" if self.strict_output else "NOT_REQUESTED",
+            "output_root_fingerprint": self.output_root_fingerprint,
+            "observed_output": {
+                "node_id": str(expected.get("node_id") or "") if expected else "",
+                "filename_prefix": (str(expected.get("filename_prefix") or "")
+                                    if expected else ""),
+                "filename": Path(filename).name,
+                "subfolder": subfolder.replace("\\", "/"),
+                "size": video_info.get("size"),
+                "format": str(video_info.get("format") or ""),
+            },
         }
         return {
             "job_id": job_id,
-            "video_path": video_path,
+            "video_path": str(video_path),
             "preview_path": f"{video_path}.preview_frame0.png",
-            "metadata": metadata or {},
+            "metadata": metadata,
             "runtime_info": runtime_info,
             "workflow_id": workflow_id,
         }
@@ -707,9 +777,9 @@ class ComfyUIClient:
         """Verify the actual output file before a job can become complete."""
         path = Path(video_path)
         if not path.is_file():
-            raise ComfyUIExecutionError(f"output video was not written: {path}")
+            raise ComfyUIExecutionError("OUTPUT_FILE_MISSING: runtime video file is absent")
         if path.stat().st_size <= 0:
-            raise ComfyUIExecutionError(f"output video is empty: {path}")
+            raise ComfyUIExecutionError("OUTPUT_FILE_EMPTY: runtime video file is zero bytes")
         ffmpeg = self.ffmpeg_path or shutil.which("ffmpeg")
         if not ffmpeg:
             try:
@@ -728,11 +798,11 @@ class ComfyUIClient:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise ComfyUIExecutionError(
-                f"video validation could not run for {path}: {exc}") from exc
+                "MEDIA_PROBE_EXECUTION_FAILED: video validation could not run") from exc
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "ffmpeg rejected the file").strip()
             raise ComfyUIExecutionError(
-                f"generated video is not decodable: {path}: {detail[:500]}")
+                "MEDIA_PROBE_FAILED: generated video is not decodable")
 
     def wait_completion(self, prompt_id: str, timeout_seconds: float = 1500.0,
                         poll_interval: float = 5.0, on_event=None,
