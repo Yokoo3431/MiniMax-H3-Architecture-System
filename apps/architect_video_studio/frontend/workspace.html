@@ -83,6 +83,25 @@
               </section>
             </div>
           </section>
+          <section class="control-section reference-section timeline-guide-section" aria-labelledby="timeline-guides-title">
+            <div class="section-title"><span id="timeline-guides-title">分镜引导帧</span><span id="guide-count" class="badge state">0</span></div>
+            <p class="muted small">首帧/末帧继续使用现有边界参考；这里只添加中间时间点的单张已审批图片。帧号按实际 H3 帧数预检，不按“秒 × FPS”估算。</p>
+            <div id="guide-runtime-status" class="guide-runtime-status muted small" role="status" aria-live="polite">正在检查原生引导能力…</div>
+            <div class="guide-add-row">
+              <label for="guide-asset-select">已审批引导图</label>
+              <select id="guide-asset-select" class="avs-select"><option value="">先上传一张引导图</option></select>
+              <label for="guide-time-input">时间（秒）</label>
+              <input id="guide-time-input" type="number" min="0" step="0.01" value="1.50">
+              <button class="spectrum-Button btn" id="add-guide-btn" type="button">加入时间线</button>
+            </div>
+            <div class="guide-upload-row">
+              <input type="file" id="guide-file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
+              <button class="spectrum-Button btn ghost" id="choose-guide-file-btn" type="button">上传并审批引导图</button>
+              <span id="guide-upload-name" class="muted small">单张图片；不会上传到外部服务</span>
+            </div>
+            <div id="guide-list" class="guide-list" aria-live="polite"></div>
+            <div id="guide-validation" class="guide-validation muted small">尚未添加引导帧。</div>
+          </section>
       </aside>
       <section class="viewport ux2-viewport-frame ux2-viewport" aria-label="预览">
         <div class="v-head">
@@ -170,6 +189,11 @@
         </section>
 
         <section class="control-section generate-section">
+          <label for="runtime-target">执行运行时</label>
+          <select id="runtime-target" class="avs-select">
+            <option value="production">生产 8189（默认）</option>
+            <option value="experimental" disabled>隔离实验 8190（未启用）</option>
+          </select>
           <div id="gate-note" class="gate-note">请先上传并审批参考图</div>
           <div id="estimate-note" class="estimate-note">预计生成时间：历史数据不足，时间仅供参考</div>
           <button class="spectrum-Button btn primary generate-button" id="generate-btn" type="button" disabled>开始生成</button>

@@ -22,6 +22,7 @@ import inspect
 import math
 from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from ..state_machine.machine import (
     JobStateMachine,
@@ -49,6 +50,12 @@ from runtime.a4_profiles import (
     resolve_product_parameters,
 )
 from runtime.reference_contract import reference_bindings, resolve_selected_references
+from runtime.multiframe_guides import (
+    GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, resolve_guide_bindings,
+)
+from runtime.adapters.multiframe_guide_capability import (
+    MultiFrameGuideCapabilityAdapter,
+)
 from runtime.generation_capabilities import (
     estimate_generation_range,
     lifecycle_state,
@@ -80,16 +87,20 @@ class JobAPI:
     def __init__(self, store: StudioStore, output_api=None,
                  clock: Callable[[], float] | None = None,
                  runtime_adapter=None,
+                 experimental_runtime_adapter=None,
                  allow_mock_jobs: bool = True,
                  comfy_input_dir: Optional[str] = None,
+                 experimental_comfy_input_dir: Optional[str] = None,
                  runtime_paths: Optional[RuntimePathContract] = None) -> None:
         self.store = store
         from .output_api import OutputAPI
         self.output_api = output_api or OutputAPI(store)
         self.clock = clock or time.time
         self.runtime_adapter = runtime_adapter  # Optional[RuntimeAdapter]
+        self.experimental_runtime_adapter = experimental_runtime_adapter
         self.allow_mock_jobs = bool(allow_mock_jobs)
         self.comfy_input_dir = comfy_input_dir
+        self.experimental_comfy_input_dir = experimental_comfy_input_dir
         self.runtime_paths = runtime_paths
         self._threads: Dict[str, threading.Thread] = {}
         self._idle_memory_since: Optional[float] = None
@@ -98,17 +109,53 @@ class JobAPI:
         self.auto_release_idle_memory = os.environ.get(
             "AVS_AUTO_RELEASE_IDLE_MEMORY", "1").strip().lower() not in ("0", "false", "off")
 
+    def _adapter_for_target(self, runtime_target: str):
+        if runtime_target == "production":
+            return self.runtime_adapter
+        if runtime_target == "experimental":
+            return self.experimental_runtime_adapter
+        return None
+
+    def _adapter_for_job(self, job: dict):
+        return self._adapter_for_target(str(job.get("runtime_target") or "production"))
+
+    @staticmethod
+    def _validate_experimental_target(runtime_target: str, runtime_adapter) -> None:
+        if runtime_target != "experimental":
+            return
+        if runtime_adapter is None:
+            raise ValueError(
+                "EXPERIMENTAL_RUNTIME_UNAVAILABLE: A5 requires the isolated native runtime")
+        client = getattr(runtime_adapter, "client", None)
+        parts = urlsplit(str(getattr(client, "base_url", "")))
+        try:
+            port = parts.port
+        except ValueError:
+            port = None
+        if (parts.scheme != "http" or parts.hostname not in {"127.0.0.1", "localhost"}
+                or port != 8190 or parts.username or parts.password):
+            raise ValueError(
+                "EXPERIMENTAL_RUNTIME_IDENTITY_MISMATCH: A5 may use only loopback port 8190")
+
     # ------------------------------------------------------------------ #
     def submit_job(self, project_id: str, seed: int = 42,
                    risk_reviewed: bool = False,
                    generation_parameters: Optional[Dict[str, Any]] = None,
-                   camera_motion: Optional[str] = None) -> Dict[str, Any]:
-        if self.runtime_adapter is None and not self.allow_mock_jobs:
+                   camera_motion: Optional[str] = None,
+                   runtime_target: str = "production") -> Dict[str, Any]:
+        if runtime_target not in {"production", "experimental"}:
+            raise ValueError("RUNTIME_TARGET_INVALID: choose production or experimental")
+        runtime_adapter = self._adapter_for_target(runtime_target)
+        self._validate_experimental_target(runtime_target, runtime_adapter)
+        if runtime_adapter is None and not self.allow_mock_jobs:
             raise ValueError(
                 "REAL_RUNTIME_REQUIRED: 真实 ComfyUI 尚未就绪，当前不能开始生成；"
                 "请等待服务启动或前往环境设置/修复。"
             )
         project = self.store.load_project(project_id)
+        if project.get("guide_frames") and runtime_target != "experimental":
+            raise ValueError(
+                "GUIDE_RUNTIME_ISOLATION_REQUIRED: timeline guides require isolated port 8190")
         previous_project_state = project["state"]
         if project["state"] == "GPU_FAILED":
             study = build_study_state(self.store, project_id)
@@ -146,7 +193,8 @@ class JobAPI:
             )
         if not risk_reviewed:
             raise ValueError("Risk Review Gate: risk must be reviewed before generate")
-        if self.runtime_adapter is not None and self.runtime_paths is not None:
+        if runtime_target == "production" and runtime_adapter is not None \
+                and self.runtime_paths is not None:
             self.runtime_paths.validate_for_job()
 
         prompt = self.store.load_prompt(project_id)
@@ -178,9 +226,10 @@ class JobAPI:
         # The live ComfyUI registry is checked before a Job record is created.
         # This prevents missing model-path/workflow bindings from becoming a
         # misleading GPU_FAILED job and never submits /prompt.
-        if self.runtime_adapter is not None and hasattr(self.runtime_adapter, "preflight"):
+        preflight_result = None
+        if runtime_adapter is not None and hasattr(runtime_adapter, "preflight"):
             try:
-                self.runtime_adapter.preflight()
+                preflight_result = runtime_adapter.preflight()
             except Exception as exc:  # noqa: BLE001
                 raise ValueError(f"MODEL_PATH_ERROR: 模型路径或工作流绑定未通过预检。{exc}") from exc
 
@@ -220,6 +269,33 @@ class JobAPI:
         # provide it only inside generation_parameters.
         seed = int(params["seed"])
 
+        guide_bindings = []
+        guide_capability = None
+        if project.get("guide_frames"):
+            try:
+                guide_bindings = resolve_guide_bindings(
+                    project_id, project.get("guide_frames"), refs_by_id,
+                    target_frame_count=int(params["frame_count"]),
+                    fps=NATIVE_H3_FPS, workflow_id=prompt["workflow"],
+                    reference_root=self.store.input_dir(project_id))
+            except GuideFrameError as exc:
+                raise ValueError(str(exc)) from exc
+            if runtime_adapter is None:
+                raise ValueError(
+                    "GUIDE_RUNTIME_UNAVAILABLE: mock execution cannot consume native guides")
+            try:
+                guide_capability = MultiFrameGuideCapabilityAdapter(
+                    runtime_adapter.client,
+                    runtime_name=runtime_target,
+                    version=str((preflight_result or {}).get("health", {}).get(
+                        "comfyui_version") or (((preflight_result or {}).get(
+                            "health") or {}).get("system") or {}).get(
+                                "comfyui_version") or "unknown"),
+                    port=8190 if runtime_target == "experimental" else 8189,
+                ).require()
+            except Exception as exc:  # noqa: BLE001 - do not create a misleading Job
+                raise ValueError(str(exc)) from exc
+
         now = self.clock()
         job_id = self.store.new_id("job")
         job = {
@@ -246,15 +322,30 @@ class JobAPI:
                 "delivery": {**dict(profile_context["delivery"]),
                              "status": "NOT_PRODUCED"},
                 "reference_bindings": selected_bindings,
+                "guide_count": len(guide_bindings),
+                "guide_bindings": [{key: guide[key] for key in (
+                    "asset_id", "role", "requested_time_seconds",
+                    "resolved_frame_idx", "ordinal", "content_sha256",
+                    "source_identity", "approval_evidence")}
+                    for guide in guide_bindings],
+                "native_generation_fps": NATIVE_H3_FPS,
+                "target_frame_count": int(params["frame_count"]),
+                "guide_backend": "MiniMaxH3AddGuide" if guide_bindings else "NONE",
+                "runtime_capability": guide_capability,
+                "runtime_identity": {
+                    "target": runtime_target,
+                    "port": 8190 if runtime_target == "experimental" else 8189,
+                },
                 "architecture_profile": profile_context["architecture_profile"],
                 "profile_parameter_overrides": profile_context["profile_parameter_overrides"],
                 "final_execution_parameters": dict(
                     profile_context["final_execution_parameters"]),
                 "workflow_sha256": None,
-                "status": "WAITING_FOR_RUNTIME_BINDER" if self.runtime_adapter
+                "status": "WAITING_FOR_RUNTIME_BINDER" if runtime_adapter
                           else "MOCK_NOT_BOUND",
             },
-            "runtime": "native" if self.runtime_adapter else "mock",
+            "runtime": "native" if runtime_adapter else "mock",
+            "runtime_target": runtime_target,
             "created_at": self.store.timestamp(),
             "started_at": now,
             "elapsed": 0.0,
@@ -272,6 +363,11 @@ class JobAPI:
                             "reference_bindings", "provenance")
             },
             "reference_bindings": selected_bindings,
+            "guide_bindings_snapshot": [{key: guide[key] for key in (
+                "asset_id", "role", "requested_time_seconds",
+                "resolved_frame_idx", "ordinal", "content_sha256",
+                "source_identity", "approval_evidence")}
+                for guide in guide_bindings],
             "reference_assets_snapshot": [
                 {**binding, "filename": str(ref.get("filename") or "")}
                 for binding, ref in zip(selected_bindings, approved)
@@ -280,7 +376,7 @@ class JobAPI:
             # Native execution has no authoritative percentage until Comfy
             # emits a sampler event. ``None`` prevents a false 0% impression;
             # mock jobs retain the historical numeric contract.
-            "progress": None if self.runtime_adapter is not None else 0.0,
+            "progress": None if runtime_adapter is not None else 0.0,
             "current_stage": "准备参考图",
             "step": None,
             "total_steps": None,
@@ -316,16 +412,16 @@ class JobAPI:
                        "runtime": job["runtime"]},
         })
 
-        if self.runtime_adapter:
+        if runtime_adapter:
             request = self._build_request(project_id, project, prompt, approved,
-                                          params, normalized_motion)
-            self.runtime_adapter.progress_callback = lambda event: self._record_progress(
+                                          params, normalized_motion, guide_bindings)
+            runtime_adapter.progress_callback = lambda event: self._record_progress(
                 project_id, job_id, event)
-            self.runtime_adapter.submission_callback = lambda info: self._record_submission(
+            runtime_adapter.submission_callback = lambda info: self._record_submission(
                 project_id, job_id, info)
             thread = threading.Thread(
                 target=self._run_real_job,
-                args=(project_id, job_id, request),
+                args=(project_id, job_id, request, None, None, runtime_target),
                 daemon=True,
             )
             self._threads[job_id] = thread
@@ -341,8 +437,14 @@ class JobAPI:
         workflow = json.loads(json.dumps(execution_payload, ensure_ascii=False))
         workflow_hash = canonical_workflow_sha256(workflow)
         selected_ref_bindings = reference_bindings(approved_refs)
+        guide_bindings = [{key: item.get(key) for key in (
+            "asset_id", "role", "requested_time_seconds", "resolved_frame_idx",
+            "ordinal", "content_sha256", "source_identity", "approval_evidence")}
+            for item in (getattr(request, "guide_frames", None) or [])]
+        asset_identity = (selected_ref_bindings if not guide_bindings else {
+            "references": selected_ref_bindings, "guide_bindings": guide_bindings})
         asset_hash = hashlib.sha256(json.dumps(
-            selected_ref_bindings, sort_keys=True, separators=(",", ":")
+            asset_identity, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")).hexdigest()
         prompt_hash = str((request.prompt_payload or {}).get("prompt_hash") or "")
         snapshot_id = hashlib.sha256(
@@ -358,6 +460,8 @@ class JobAPI:
             "workflow_hash": workflow_hash,
             "asset_hash": asset_hash,
             "reference_bindings": selected_ref_bindings,
+            "guide_count": len(guide_bindings),
+            "guide_bindings": guide_bindings,
             "prompt_hash": prompt_hash,
             "reference_filenames": [
                 str(item.get("path_or_ref") or item.get("filename") or "")
@@ -619,7 +723,8 @@ class JobAPI:
     def reconcile_job(self, job_id: str, *, start_observer: bool = False) -> Dict[str, Any]:
         """Reconcile local state with queue/history without submitting again."""
         project_id, job = self.store.find_job(job_id)
-        client = getattr(self.runtime_adapter, "client", None)
+        runtime_adapter = self._adapter_for_job(job)
+        client = getattr(runtime_adapter, "client", None)
         reconcile = getattr(client, "reconcile_prompt", None)
         if client is None or reconcile is None:
             return job
@@ -726,14 +831,18 @@ class JobAPI:
 
     def _reattach_job(self, project_id: str, job_id: str, prompt_id: str, client_id: Optional[str] = None) -> None:
         try:
-            state = self.runtime_adapter.poll(
+            _, job = self.store.find_job(job_id)
+            runtime_adapter = self._adapter_for_job(job)
+            if runtime_adapter is None:
+                raise RuntimeError("persisted runtime target is no longer configured")
+            state = runtime_adapter.poll(
                 prompt_id, timeout_seconds=1800.0, poll_interval=5.0,
                 on_event=lambda event: self._record_progress(project_id, job_id, event),
                 client_id=client_id)
             if state.get("status") != "COMPLETED":
                 raise RuntimeError(f"ComfyUI execution failed: {state.get('messages')}")
             self._finish_reconciled_job(project_id, job_id,
-                                        self.runtime_adapter.client.get_history(prompt_id))
+                                        runtime_adapter.client.get_history(prompt_id))
         except (GenerationTimeoutError, ComfyUICommunicationTimeout,
                 ComfyUIOfflineError, ComfyProtocolError) as exc:
             project_id_found, job = self.store.find_job(job_id)
@@ -785,10 +894,15 @@ class JobAPI:
             current = refs.get(project.get("current_reference_asset_id"))
             current_refs = [current] if current else []
         prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id) or {}
+        guide_bindings = self._restore_guide_bindings(project_id, job)
         request = self._build_request(
             project_id, project, prompt, current_refs,
-            dict(job.get("generation_parameters") or {}), job.get("camera_motion"))
-        output = self.runtime_adapter.client.collect_output(
+            dict(job.get("generation_parameters") or {}), job.get("camera_motion"),
+            guide_bindings)
+        runtime_adapter = self._adapter_for_job(job)
+        if runtime_adapter is None:
+            raise RuntimeError("persisted runtime target is no longer configured")
+        output = runtime_adapter.client.collect_output(
             history, job_id, job.get("workflow", ""), {})
         self._update_delivery_probe(
             project_id, job, str(output.get("video_path", "")))
@@ -822,6 +936,30 @@ class JobAPI:
         self._save_job(project_id, job)
         self._sync_project_complete(project_id, job)
 
+    def _restore_guide_bindings(self, project_id: str, job: dict) -> list[dict]:
+        trace = job.get("execution_trace") or {}
+        saved = list(trace.get("guide_bindings") or
+                     job.get("guide_bindings_snapshot") or [])
+        if not saved:
+            return []
+        rows = [{
+            "guide_id": f"guide-{item.get('ordinal', index)}",
+            "asset_id": item.get("asset_id"),
+            "role": item.get("role"),
+            "requested_time_seconds": item.get("requested_time_seconds"),
+            "ordinal": item.get("ordinal", index),
+            "content_sha256": item.get("content_sha256"),
+            "source_identity": item.get("source_identity"),
+            "approval_state": (item.get("approval_evidence") or {}).get(
+                "state", "APPROVED"),
+        } for index, item in enumerate(saved, start=1)]
+        return resolve_guide_bindings(
+            project_id, rows, self.store.load_references(project_id),
+            target_frame_count=int((job.get("generation_parameters") or {}).get(
+                "frame_count", 0)),
+            fps=NATIVE_H3_FPS, workflow_id=str(job.get("workflow") or ""),
+            reference_root=self.store.input_dir(project_id))
+
     def _recover_completed_output(self, project_id: str,
                                   job: Dict[str, Any]) -> bool:
         """Recover a successful Comfy result whose delivery copy was lost.
@@ -834,7 +972,7 @@ class JobAPI:
         if job.get("final_output_path") and Path(
                 str(job["final_output_path"])).is_file():
             return True
-        client = getattr(self.runtime_adapter, "client", None)
+        client = getattr(self._adapter_for_job(job), "client", None)
         if client is None or not hasattr(client, "get_history"):
             return False
         try:
@@ -920,7 +1058,8 @@ class JobAPI:
     # ------------------------------------------------------------------ #
     def _build_request(self, project_id: str, project: dict, prompt: dict,
                        approved_refs: List[dict], params: dict,
-                       camera_motion: Optional[str]) -> Any:
+                       camera_motion: Optional[str],
+                       guide_bindings: Optional[List[dict]] = None) -> Any:
         from runtime.adapters.runtime_adapter import VideoGenerationRequest
         intent = self.store.load_intent(project_id) or {}
         refs = [{
@@ -935,6 +1074,7 @@ class JobAPI:
         return VideoGenerationRequest(
             study_id=project_id,
             reference_assets=refs,
+            guide_frames=list(guide_bindings or []),
             workflow_id=prompt["workflow"],
             camera_motion=camera_motion or normalize_camera_motion(prompt["workflow"]),
             generation_parameters=params,
@@ -974,17 +1114,22 @@ class JobAPI:
 
     def _run_real_job(self, project_id: str, job_id: str, request: Any,
                       prepared: Optional[Dict[str, Any]] = None,
-                      before_submit: Optional[Callable[[], Optional[bool]]] = None) -> None:
+                      before_submit: Optional[Callable[[], Optional[bool]]] = None,
+                      runtime_target: str = "production") -> None:
         job = self.store.load_jobs(project_id).get(job_id)
         if job is None:
             return
+        runtime_adapter = self._adapter_for_target(runtime_target)
+        if runtime_adapter is None:
+            return
         try:
-            self._stage_refs_to_comfy_input(project_id, request)
+            self._stage_refs_to_comfy_input(
+                project_id, request, runtime_target, runtime_adapter)
             prepared = (prepared if prepared is not None else
-                        self.runtime_adapter.prepare(request)
-                        if hasattr(self.runtime_adapter, "prepare") else None)
-            if prepared is not None and hasattr(self.runtime_adapter, "attach_job_identity"):
-                prepared = self.runtime_adapter.attach_job_identity(prepared, job_id)
+                        runtime_adapter.prepare(request)
+                        if hasattr(runtime_adapter, "prepare") else None)
+            if prepared is not None and hasattr(runtime_adapter, "attach_job_identity"):
+                prepared = runtime_adapter.attach_job_identity(prepared, job_id)
             job = self.store.load_jobs(project_id).get(job_id) or job
             approved = list(request.reference_assets)
             job["workflow_snapshot"] = self._build_workflow_snapshot(
@@ -997,6 +1142,8 @@ class JobAPI:
             job["asset_hash"] = job["workflow_snapshot"]["asset_hash"]
             trace = dict(job.get("execution_trace") or {})
             trace["workflow_sha256"] = job["execution_workflow_sha256"]
+            if prepared and prepared.get("guide_capability"):
+                trace["runtime_capability"] = prepared["guide_capability"]
             if prepared and prepared.get("translated_payload"):
                 try:
                     trace["final_execution_parameters"] = actual_execution_parameters(
@@ -1022,7 +1169,7 @@ class JobAPI:
                 job = self.store.load_jobs(project_id).get(job_id) or job
                 if job.get("cancelled") or job.get("state") == "CANCELLED":
                     return
-            generate = self.runtime_adapter.generate
+            generate = runtime_adapter.generate
             if prepared is not None and "prepared" in inspect.signature(generate).parameters:
                 snapshot = generate(request, prepared=prepared)
             else:
@@ -1038,7 +1185,7 @@ class JobAPI:
             job = self.store.load_jobs(project_id).get(job_id) or job
             if job.get("cancelled") or job["state"] == "CANCELLED":
                 return
-            output = self.runtime_adapter.get_output(snapshot["job_id"])
+            output = runtime_adapter.get_output(snapshot["job_id"])
             latest = self.store.load_jobs(project_id).get(job_id) or job
             if is_job_terminal(latest):
                 # Do not publish a late successful callback over an owner
@@ -1256,7 +1403,9 @@ class JobAPI:
         job["execution_trace"] = trace
         self._save_job(project_id, job)
 
-    def _stage_refs_to_comfy_input(self, project_id: str, request: Any) -> Dict[str, str]:
+    def _stage_refs_to_comfy_input(self, project_id: str, request: Any,
+                                   runtime_target: str = "production",
+                                   runtime_adapter=None) -> Dict[str, str]:
         """Stage only the request's approved references into active ComfyUI input.
 
         Studio keeps the original upload in its project store for preview and
@@ -1266,9 +1415,12 @@ class JobAPI:
         request reaches ``/prompt``.  This avoids Unicode/path mismatches and
         prevents a misleading GPU/Comfy execution failure.
         """
-        if not self.comfy_input_dir:
+        target_input_dir = (self.experimental_comfy_input_dir
+                            if runtime_target == "experimental"
+                            else self.comfy_input_dir)
+        if not target_input_dir:
             raise InputStagingError("ComfyUI input root is not configured")
-        dest_dir = Path(self.comfy_input_dir)
+        dest_dir = Path(target_input_dir)
         if "<NATIVE_ROOT>" in str(dest_dir):
             raise RuntimePathError(f"未解析的 ComfyUI input 路径: {dest_dir}")
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -1298,13 +1450,51 @@ class JobAPI:
                 raise InputStagingError(
                     f"reference staging produced no readable file: {destination}")
 
-            checker = getattr(getattr(self.runtime_adapter, "client", None),
+            checker = getattr(getattr(runtime_adapter or self.runtime_adapter, "client", None),
                               "input_file_available", None)
             if checker is not None and not checker(staged_name):
                 raise InputStagingError(
                     f"ComfyUI cannot see staged reference {staged_name} in {dest_dir}")
 
             request_ref["path_or_ref"] = staged_name
+            staged[asset_id] = staged_name
+
+        # A5 guides reuse the same Study reference store, but are staged only
+        # after the selected runtime explicitly advertises native AddGuide.
+        guide_frames = (request.guide_frames if hasattr(request, "guide_frames")
+                        else request.get("guide_frames") or [])
+        if not guide_frames:
+            return staged
+        refs_root = self.store.input_dir(project_id).resolve()
+        for guide in guide_frames:
+            asset_id = str(guide.get("asset_id") or "")
+            ref = stored_refs.get(asset_id)
+            if not ref or ref.get("state") != "APPROVED" \
+                    or ref.get("role") != GUIDE_ROLE:
+                raise InputStagingError("approved timeline guide is unavailable")
+            src = Path(str(ref.get("stored_path") or "")).resolve()
+            if not src.is_file() or not src.is_relative_to(refs_root):
+                raise InputStagingError("timeline guide is outside the Study reference store")
+            digest = hashlib.sha256()
+            with src.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            expected = str(guide.get("content_sha256") or "").upper()
+            if not expected or digest.hexdigest().upper() != expected:
+                raise InputStagingError("timeline guide changed after approval")
+            staged_name = str(guide.get("comfy_filename") or "")
+            if not staged_name or Path(staged_name).name != staged_name:
+                raise InputStagingError("timeline guide Comfy filename is unsafe")
+            destination = dest_dir / staged_name
+            shutil.copy2(src, destination)
+            if not destination.is_file() or destination.stat().st_size <= 0:
+                raise InputStagingError("timeline guide staging produced no readable image")
+            checker = getattr(getattr(runtime_adapter or self.runtime_adapter, "client", None),
+                              "input_file_available", None)
+            if checker is not None and not checker(staged_name):
+                raise InputStagingError(
+                    f"ComfyUI cannot see staged timeline guide in {dest_dir}")
+            guide["path_or_ref"] = staged_name
             staged[asset_id] = staged_name
         return staged
 

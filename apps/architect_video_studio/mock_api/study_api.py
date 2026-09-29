@@ -35,6 +35,7 @@ class StudyAPI:
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".webp": "image/webp",
+            ".bmp": "image/bmp",
         }.get(path.suffix.lower())
         if content_type is None:
             raise ValueError("unsupported reference image type")

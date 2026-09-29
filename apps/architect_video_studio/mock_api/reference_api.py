@@ -18,7 +18,7 @@ from runtime.reference_contract import (
 )
 from ..state_machine.machine import IllegalTransitionError, ProjectStateMachine
 
-_REFERENCE_ROLES = ACTIVE_REFERENCE_ROLES
+_REFERENCE_ROLES = (*ACTIVE_REFERENCE_ROLES, "timeline_guide")
 
 
 class ReferenceAPI:
@@ -61,7 +61,8 @@ class ReferenceAPI:
             opposite_role = "last_frame" if role == "first_frame" else "first_frame"
             opposite = self.store.load_references(project_id).get(
                 selected.get(opposite_role))
-            if opposite and opposite.get("sha256") == sha256:
+            if (role in ACTIVE_REFERENCE_ROLES and opposite
+                    and opposite.get("sha256") == sha256):
                 raise ValueError(
                     "REFERENCE_DUPLICATE_CONTENT: 首帧和末帧必须是不同的已批准图像")
 
@@ -91,27 +92,26 @@ class ReferenceAPI:
         refs = self.store.load_references(project_id)
         refs[ref_id] = ref
         self.store.save_references(project_id, refs)
-        # A new reference materially changes Prompt provenance.  The old
-        # optimized Prompt is stale immediately.
-        self.store.clear_prompt(project_id)
-
-        machine = ProjectStateMachine(project["state"])
-        try:
-            if project["state"] == "CREATED":
-                machine.transition("upload_reference", actor="architect",
-                                   reason=f"upload {filename}")
-            elif project["state"] == "REFERENCE_REJECTED":
-                machine.transition("upload_new", actor="architect",
-                                   reason=f"upload {filename}")
-            elif project["state"] not in ("REFERENCE_PENDING",):
-                # Editing the reference reopens only the reference gate; Job
-                # history remains untouched.
-                machine.state = "REFERENCE_PENDING"
-        except IllegalTransitionError:
-            pass  # already REFERENCE_PENDING: adding another reference is fine
-        project["state"] = machine.state
-        self.store.save_project(project)
-        self._audit(project_id, "upload_reference", machine.state,
+        if role != "timeline_guide":
+            # Endpoint images participate in Prompt provenance and the existing
+            # reference gate. A storyboard guide is independently approved and
+            # must not reopen or replace either endpoint slot.
+            self.store.clear_prompt(project_id)
+            machine = ProjectStateMachine(project["state"])
+            try:
+                if project["state"] == "CREATED":
+                    machine.transition("upload_reference", actor="architect",
+                                       reason=f"upload {filename}")
+                elif project["state"] == "REFERENCE_REJECTED":
+                    machine.transition("upload_new", actor="architect",
+                                       reason=f"upload {filename}")
+                elif project["state"] not in ("REFERENCE_PENDING",):
+                    machine.state = "REFERENCE_PENDING"
+            except IllegalTransitionError:
+                pass
+            project["state"] = machine.state
+            self.store.save_project(project)
+        self._audit(project_id, "upload_reference", project["state"],
                     {"filename": filename, "role": role, "reference_id": ref_id})
         return self._public_ref(ref)
 
@@ -122,7 +122,7 @@ class ReferenceAPI:
         ref = self.upload_reference(project_id, filename, role, data_base64)
         if ref["state"] == "PENDING":
             ref = self.approve_reference(project_id, ref["id"])
-        else:
+        elif role != "timeline_guide":
             # A deduplicated approved asset is still an explicit selection for
             # this Study; do not infer it from historical approved records.
             project = self.store.load_project(project_id)
@@ -162,13 +162,17 @@ class ReferenceAPI:
         selected = project.get("selected_reference_asset_ids") or {}
         opposite_role = "last_frame" if ref.get("role") == "first_frame" else "first_frame"
         opposite = refs.get(selected.get(opposite_role))
-        if (opposite and ref.get("sha256")
+        if (ref.get("role") in ACTIVE_REFERENCE_ROLES and opposite and ref.get("sha256")
                 and opposite.get("sha256") == ref.get("sha256")):
             raise ValueError(
                 "REFERENCE_DUPLICATE_CONTENT: 首帧和末帧必须是不同的已批准图像")
         ref["state"] = "APPROVED"
         ref["approved_at"] = self.store.timestamp()
         self.store.save_references(project_id, refs)
+        if ref.get("role") == "timeline_guide":
+            self._audit(project_id, "approve_timeline_guide_asset", project["state"],
+                        {"reference_id": reference_id})
+            return self._public_ref(ref)
         # The current reference is an explicit Study selection, not an
         # inference over every historical APPROVED record.
         selected = dict(project.get("selected_reference_asset_ids") or {})

@@ -59,16 +59,16 @@ class _BindingClient:
             "CLIPLoader": "clip_name", "VAELoader": "vae_name",
         }
         result = {name: {} for name in names}
+        choices = {
+            "LoadImage": ["example.png"],
+            "UNETLoader": ["minimax_h3_fl2va_pruned_int8_convrot.safetensors"],
+            "CLIPLoader": ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"],
+            "VAELoader": ["minimax_h3_video_vae_fp16.safetensors",
+                          "minimax_h3_audio_vae_fp32.safetensors"],
+        }
         for node, input_name in inputs.items():
-            result[node] = {"input": {"required": {input_name: [[
-                "example.png" if node == "LoadImage" else (
-                    "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
-                    if node == "UNETLoader" else (
-                        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
-                        if node == "CLIPLoader" else "minimax_h3_video_vae_fp16.safetensors"
-                    )
-                )
-            ]]}}}
+            result[node] = {"input": {"required": {
+                input_name: [choices[node], {}]}}}
         return result
 
 

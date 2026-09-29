@@ -11,6 +11,11 @@ let intent = null;
 let prompt = null;
 let study = null;
 let refs = [];
+let guideFrames = [];
+let guideCapabilities = null;
+let guideResolution = null;
+let pendingGuideFile = null;
+let guideResolveSerial = 0;
 let selectedRef = null;
 let pendingFile = null;
 const pendingRoleFiles = {first_frame: null, last_frame: null};
@@ -98,19 +103,23 @@ async function refreshStudy() {
 }
 
 async function loadAll() {
-  const [detail, c, system] = await Promise.all([
+  const [detail, c, system, guides] = await Promise.all([
     get(`/api/projects/${projectId}`), get('/api/catalog'),
     get('/api/capabilities').catch(() => null),
+    get(`/api/projects/${projectId}/guide-frames`).catch(() => ({guide_frames: [], capabilities: null})),
   ]);
   capabilities = system?.a4_profiles || null;
   project = detail.project || detail; catalog = c;
   study = detail.study || await refreshStudy();
   refs = detail.references || [];
+  guideFrames = guides?.guide_frames || [];
+  guideCapabilities = guides?.capabilities || null;
   intent = detail.intent || null;
   prompt = detail.prompt || null;
   if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
   await loadProviderCatalog();
-  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderPrompt(); renderOutputDirectory(); updateGate(); refreshEstimate();
+  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderGuideFrames(); renderPrompt(); renderOutputDirectory(); updateGate(); refreshEstimate();
+  refreshGuideResolution();
   if (study?.reference_approved
       && document.getElementById('intent-text').value.trim()
       && !(study && study.prompt_current)) schedulePromptRefresh(80);
@@ -255,7 +264,7 @@ function renderRefs() {
   const dayNight = currentWorkflow() === '02_Day_Night_Transition';
   document.getElementById('single-reference-controls').hidden = dayNight;
   document.getElementById('day-night-reference-slots').hidden = !dayNight;
-  if (dayNight) { renderDayNightRefs(); return; }
+  if (dayNight) { renderDayNightRefs(); renderGuideFrames(); return; }
   const currentId = (study && study.current_reference_asset_id) || (project && project.current_reference_asset_id);
   selectedRef = refs.find((r) => r.id === currentId)
     || refs.find((r) => r.state === 'PENDING')
@@ -269,6 +278,7 @@ function renderRefs() {
     document.getElementById('choose-ref-btn').textContent = '添加参考图';
     document.getElementById('replace-ref-btn').style.display = 'none';
     document.getElementById('upload-btn').disabled = !pendingFile;
+    renderGuideFrames();
     return;
   }
   const img = refUrl(selectedRef);
@@ -283,6 +293,7 @@ function renderRefs() {
   state.className = `badge ${approved ? 'done' : 'warn'}`;
   document.getElementById('upload-btn').disabled = true;
   showViewportRef(selectedRef);
+  renderGuideFrames();
 }
 
 function renderDayNightRefs() {
@@ -345,6 +356,176 @@ function previewPending(file) {
   document.getElementById('upload-btn').disabled = false;
   document.getElementById('reference-state').textContent = '待上传';
   document.getElementById('reference-state').className = 'badge warn';
+}
+
+function renderGuideFrames() {
+  const runtime = document.getElementById('guide-runtime-status');
+  const production = guideCapabilities?.production;
+  const experimental = guideCapabilities?.experimental;
+  const experimentRoute = guideCapabilities?.experimental_job_route_enabled === true;
+  const canUseExperiment = !!(experimental?.available && experimentRoute);
+  const selector = document.getElementById('runtime-target');
+  const experimentOption = selector?.querySelector('option[value="experimental"]');
+  if (experimentOption) {
+    experimentOption.disabled = !canUseExperiment;
+    experimentOption.textContent = canUseExperiment
+      ? '隔离实验 8190（显式选择）' : '隔离实验 8190（未配置/不可用）';
+  }
+  if (runtime) {
+    const prodText = production?.available
+      ? `生产 8189：${production.version} · 原生多帧可用`
+      : `生产 8189：${production?.version || '未知'} · 不支持原生多帧`;
+    const expText = canUseExperiment
+      ? `隔离实验 8190：${experimental.version} · 可显式选择`
+      : `隔离实验 8190：${experimental?.available ? '节点存在，但 Studio 未配置此 Job 路由' : '未运行或不可用'}`;
+    runtime.textContent = `${prodText}；${expText}。有分镜引导时不会自动切换运行时。`;
+    runtime.dataset.state = canUseExperiment ? 'ready' : 'unavailable';
+  }
+
+  const select = document.getElementById('guide-asset-select');
+  if (select) {
+    const approved = refs.filter((item) => item.role === 'timeline_guide'
+      && item.state === 'APPROVED');
+    const selected = select.value;
+    select.innerHTML = approved.length
+      ? '<option value="">选择已审批引导图</option>' + approved.map((item) =>
+        `<option value="${esc(item.id)}">${esc(item.filename || item.id)}</option>`).join('')
+      : '<option value="">先上传一张引导图</option>';
+    if (approved.some((item) => item.id === selected)) select.value = selected;
+  }
+  const count = document.getElementById('guide-count');
+  if (count) count.textContent = String(guideFrames.length);
+  const resolutionById = new Map((guideResolution?.guides || [])
+    .map((item) => [item.guide_id, item]));
+  const list = document.getElementById('guide-list');
+  if (list) {
+    list.innerHTML = guideFrames.map((item, index) => {
+      const resolved = resolutionById.get(item.guide_id);
+      const preview = item.preview_url
+        ? `<img src="${esc(item.preview_url)}" alt="分镜引导图 ${index + 1}">`
+        : '<span class="guide-thumb-placeholder" aria-hidden="true">图</span>';
+      return `<article class="guide-card" data-guide-id="${esc(item.guide_id)}">
+        ${preview}
+        <div class="guide-card-meta">
+          <strong title="${esc(item.filename || item.asset_id)}">${index + 1}. ${esc(item.filename || item.asset_id)}</strong>
+          <label>时间 <input class="guide-time-edit" type="number" min="0" step="0.01" value="${esc(String(item.requested_time_seconds ?? ''))}" aria-label="引导帧时间秒"></label>
+          <span class="muted small">${resolved ? `解析帧 ${resolved.resolved_frame_idx} / ${guideResolution.target_frame_count}` : '帧号等待按当前时长预检'}</span>
+        </div>
+        <div class="guide-card-actions">
+          <button class="spectrum-Button btn ghost guide-move-up" type="button" aria-label="上移引导帧" title="上移" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button class="spectrum-Button btn ghost guide-move-down" type="button" aria-label="下移引导帧" title="下移" ${index === guideFrames.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="spectrum-Button btn ghost guide-remove" type="button" aria-label="移除引导帧">移除</button>
+        </div>
+      </article>`;
+    }).join('');
+  }
+  const validation = document.getElementById('guide-validation');
+  if (!guideFrames.length) {
+    validation.textContent = '尚未添加引导帧。生产生成仍按现有首/末帧流程。';
+    validation.dataset.state = '';
+  } else if (!guideResolution) {
+    validation.textContent = '正在按当前时长解析目标 H3 帧数…';
+    validation.dataset.state = '';
+  } else if (!guideResolution.valid) {
+    validation.textContent = `时间线未通过：${guideResolution.reason}`;
+    validation.dataset.state = 'invalid';
+  } else {
+    validation.textContent = `${guideFrames.length} 个引导帧通过静态时间线校验 · 目标 ${guideResolution.target_frame_count} 帧 · 原生 24 FPS · ${guideResolution.rounding_policy}`;
+    validation.dataset.state = 'ready';
+  }
+}
+
+async function refreshGuideResolution() {
+  const serial = ++guideResolveSerial;
+  if (!guideFrames.length) {
+    guideResolution = null; renderGuideFrames(); updateGate(); return;
+  }
+  guideResolution = null;
+  renderGuideFrames(); updateGate();
+  try {
+    const resolved = await post(`/api/projects/${projectId}/guide-frames/resolve`, {
+      generation_parameters: currentParams(), workflow_id: currentWorkflow(),
+    });
+    if (serial !== guideResolveSerial) return;
+    guideResolution = resolved;
+  } catch (error) {
+    if (serial !== guideResolveSerial) return;
+    guideResolution = {valid: false, reason: error.message, guides: []};
+  }
+  renderGuideFrames(); updateGate();
+}
+
+async function uploadGuideAsset() {
+  const file = pendingGuideFile;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const result = await post(`/api/projects/${projectId}/references/upload-approve`, {
+        filename: file.name, role: 'timeline_guide',
+        data_base64: String(reader.result).split(',')[1],
+      });
+      pendingGuideFile = null;
+      document.getElementById('guide-upload-name').textContent = '引导图已通过现有参考图流程审批';
+      refs = (await get(`/api/projects/${projectId}`)).references || [];
+      guideFrames = (await get(`/api/projects/${projectId}/guide-frames`)).guide_frames || guideFrames;
+      const select = document.getElementById('guide-asset-select');
+      select.value = result.reference?.id || '';
+      clearErr(); renderGuideFrames(); updateGate();
+    } catch (error) { showErr(error.message); }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function addGuideFrame() {
+  const assetId = value('guide-asset-select');
+  const time = Number(value('guide-time-input'));
+  if (!assetId) { showErr('请选择一张已审批的分镜引导图'); return; }
+  try {
+    const result = await post(`/api/projects/${projectId}/guide-frames`, {
+      asset_id: assetId, time_seconds: time,
+    });
+    guideFrames = result.guide_frames || [];
+    guideCapabilities = result.capabilities || guideCapabilities;
+    guideResolution = null;
+    clearErr(); renderGuideFrames(); await refreshGuideResolution();
+  } catch (error) { showErr(error.message); }
+}
+
+async function updateGuideFrame(guideId, timeSeconds) {
+  try {
+    const result = await patch(`/api/projects/${projectId}/guide-frames/${encodeURIComponent(guideId)}`, {
+      time_seconds: Number(timeSeconds),
+    });
+    guideFrames = result.guide_frames || [];
+    guideCapabilities = result.capabilities || guideCapabilities;
+    guideResolution = null; renderGuideFrames(); await refreshGuideResolution();
+  } catch (error) { showErr(error.message); renderGuideFrames(); }
+}
+
+async function removeGuideFrame(guideId) {
+  try {
+    const result = await api('DELETE', `/api/projects/${projectId}/guide-frames/${encodeURIComponent(guideId)}`);
+    guideFrames = result.guide_frames || [];
+    guideCapabilities = result.capabilities || guideCapabilities;
+    guideResolution = null; renderGuideFrames(); await refreshGuideResolution();
+  } catch (error) { showErr(error.message); }
+}
+
+async function moveGuideFrame(guideId, direction) {
+  const orderedIds = guideFrames.map((item) => item.guide_id);
+  const index = orderedIds.indexOf(guideId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= orderedIds.length) return;
+  [orderedIds[index], orderedIds[target]] = [orderedIds[target], orderedIds[index]];
+  try {
+    const result = await post(`/api/projects/${projectId}/guide-frames/reorder`, {
+      guide_ids: orderedIds,
+    });
+    guideFrames = result.guide_frames || [];
+    guideCapabilities = result.capabilities || guideCapabilities;
+    guideResolution = null; renderGuideFrames(); await refreshGuideResolution();
+  } catch (error) { showErr(error.message); }
 }
 
 function previewRolePending(role, file) {
@@ -480,6 +661,14 @@ function updateGate() {
   const promptReady = !!(study && study.prompt_current && study.prompt_ready
       && prompt && prompt.workflow === currentWorkflow());
   const risk = document.getElementById('risk-check').checked;
+  const runtimeTarget = value('runtime-target');
+  const runtimeCapability = runtimeTarget === 'experimental'
+    ? guideCapabilities?.experimental
+    : guideCapabilities?.production;
+  const runtimeReady = runtimeTarget === 'production'
+    ? runtimeCapability?.available === true
+    : runtimeCapability?.available === true
+      && guideCapabilities?.experimental_job_route_enabled === true;
   const button = document.getElementById('generate-btn');
   button.disabled = !(approved && promptReady && risk && study.generate_allowed);
   button.setAttribute('aria-describedby', 'gate-note');
@@ -488,6 +677,29 @@ function updateGate() {
   if (!study?.reference_uploaded) note.textContent = '请先添加参考图';
   else if (!approved) note.textContent = (study.gate_reasons || [])[0] || '参考图尚未满足当前视频类型的角色与审批要求';
   else {
+    if (runtimeTarget === 'experimental' && !runtimeReady) {
+      note.textContent = '隔离实验运行时未显式配置或不可用；不会回退到生产运行时';
+      button.disabled = true;
+      return;
+    }
+    if (guideFrames.length) {
+      if (runtimeTarget !== 'experimental') {
+        note.textContent = '当前生产 8189 不支持原生分镜引导；请显式选择已启用的隔离 8190，系统不会静默丢弃引导帧';
+        button.disabled = true;
+        return;
+      }
+      if (!runtimeReady) {
+        note.textContent = '隔离 8190 尚未就绪；引导帧不会被移交给生产 8189';
+        button.disabled = true;
+        return;
+      }
+    }
+    if (guideFrames.length && (!guideResolution || guideResolution.valid !== true)) {
+      note.textContent = guideResolution?.reason
+        ? `分镜时间线校验失败：${guideResolution.reason}` : '正在校验分镜引导的目标帧号…';
+      button.disabled = true;
+      return;
+    }
     const quality = capabilities?.quality?.profiles?.find(
       (item) => item.id === value('param-quality'));
     if (quality && quality.available !== true && quality.availability !== 'READY') {
@@ -526,6 +738,7 @@ async function generate() {
     const params = currentParams(); params.seed = seed;
     const created = await post(`/api/projects/${projectId}/jobs`, {
       seed, risk_reviewed: true, generation_parameters: params,
+      runtime_target: value('runtime-target'),
     });
     const job = created && (created.job || created);
     const jobQuery = job?.id ? `&job=${encodeURIComponent(job.id)}` : '';
@@ -612,6 +825,31 @@ document.getElementById('prompt-engine').addEventListener('change', () => {
   prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
 });
 document.getElementById('generate-btn').addEventListener('click', generate);
+document.getElementById('runtime-target').addEventListener('change', updateGate);
+document.getElementById('choose-guide-file-btn').addEventListener('click', () =>
+  document.getElementById('guide-file').click());
+document.getElementById('guide-file').addEventListener('change', (event) => {
+  pendingGuideFile = event.target.files[0] || null;
+  document.getElementById('guide-upload-name').textContent = pendingGuideFile
+    ? `${pendingGuideFile.name} · 上传后需明确加入时间线` : '单张图片；不会上传到外部服务';
+  if (pendingGuideFile) uploadGuideAsset();
+});
+document.getElementById('add-guide-btn').addEventListener('click', addGuideFrame);
+document.getElementById('guide-list').addEventListener('change', (event) => {
+  if (!event.target.matches('.guide-time-edit')) return;
+  const guideId = event.target.closest('[data-guide-id]')?.dataset.guideId;
+  if (guideId) updateGuideFrame(guideId, event.target.value);
+});
+document.getElementById('guide-list').addEventListener('click', (event) => {
+  const button = event.target.closest('.guide-remove');
+  const card = event.target.closest('[data-guide-id]');
+  const guideId = card?.dataset.guideId;
+  if (!button && !event.target.closest('.guide-move-up, .guide-move-down')) return;
+  if (!guideId) return;
+  if (button) removeGuideFrame(guideId);
+  else if (event.target.closest('.guide-move-up')) moveGuideFrame(guideId, -1);
+  else if (event.target.closest('.guide-move-down')) moveGuideFrame(guideId, 1);
+});
 document.getElementById('risk-check').addEventListener('change', updateGate);
 document.getElementById('rename-study-btn').addEventListener('click', async () => {
   const name = window.prompt('Study 名称', project?.name || '');
@@ -628,7 +866,7 @@ document.getElementById('choose-output-folder').addEventListener('click', async 
   } catch (e) { showErr(e.message); }
 });
 ['param-duration','param-seed'].forEach((id) => {
-  document.getElementById(id).addEventListener('change', () => { prompt = null; renderPrompt(); syncViewportParams(); updateGate(); refreshEstimate(); schedulePromptRefresh(); });
+  document.getElementById(id).addEventListener('change', () => { prompt = null; renderPrompt(); syncViewportParams(); updateGate(); refreshEstimate(); schedulePromptRefresh(); refreshGuideResolution(); });
 });
 document.getElementById('param-quality').addEventListener('change', selectQuality);
 document.getElementById('param-delivery-fps').addEventListener('change', () => {

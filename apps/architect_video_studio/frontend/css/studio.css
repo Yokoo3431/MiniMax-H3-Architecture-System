@@ -682,6 +682,23 @@ pre.prompt {
 .reference-slot { border:1px solid var(--border, #3b4440); border-radius:6px; padding:8px; min-width:0; }
 .reference-slot .section-title { margin-bottom:7px; }
 .reference-slot .btn { margin:6px 4px 0 0; }
+.timeline-guide-section { display:grid; gap:10px; }
+.timeline-guide-section > p { margin:0; line-height:1.45; }
+.guide-runtime-status, .guide-validation { padding:8px 10px; border:1px solid var(--line, #39434c); border-radius:6px; line-height:1.45; }
+.guide-runtime-status[data-state="ready"] { color:#9bd9b1; border-color:#37674a; }
+.guide-runtime-status[data-state="unavailable"], .guide-validation[data-state="invalid"] { color:#f2bd82; border-color:#76532f; }
+.guide-add-row { display:grid; gap:6px; }
+.guide-add-row input, .guide-add-row select { min-width:0; }
+.guide-upload-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.guide-list { display:grid; gap:8px; }
+.guide-card { display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:9px; align-items:center; padding:8px; border:1px solid var(--line, #39434c); border-radius:7px; background:rgba(255,255,255,.025); }
+.guide-card img { width:52px; height:42px; object-fit:cover; border-radius:4px; }
+.guide-card .guide-card-meta { min-width:0; display:grid; gap:4px; }
+.guide-card .guide-card-meta strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.guide-card input { width:88px; }
+.guide-card-actions { display:flex; gap:4px; }
+.guide-card-actions .btn { min-width:32px; padding:4px 7px; }
+.timeline-guide-section [hidden] { display:none !important; }
 .slot-preview { min-height:104px; max-height:164px; background:rgba(0,0,0,.13); }
 .slot-preview .reference-image { max-height:154px; object-fit:contain; }
 .reference-slot [hidden], #day-night-reference-slots[hidden], #single-reference-controls[hidden] { display:none !important; }

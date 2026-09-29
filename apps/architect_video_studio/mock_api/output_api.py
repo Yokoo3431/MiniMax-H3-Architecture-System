@@ -165,23 +165,75 @@ class OutputAPI:
         (package / "input" / "references.json").write_text(json.dumps(
             self._reference_manifest(refs), indent=2, ensure_ascii=False), encoding="utf-8")
 
-        # workflow/ — frozen asset copy (from workflow mapping YAML, read-only)
+        trace = dict(job.get("execution_trace") or {})
+        guide_bindings = list(trace.get("guide_bindings") or
+                              job.get("guide_bindings_snapshot") or [])
+        guide_manifest = []
+        if guide_bindings:
+            from runtime.multiframe_guides import GUIDE_ROLE, guide_comfy_filename
+            guide_dir = package / "input" / "guides"
+            guide_dir.mkdir(parents=True, exist_ok=True)
+            reference_root = self.store.input_dir(project_id).resolve()
+            records = self.store.load_references(project_id)
+            for guide in guide_bindings:
+                asset_id = str(guide.get("asset_id") or "")
+                record = records.get(asset_id) or {}
+                source = Path(str(record.get("stored_path") or "")).resolve()
+                if (record.get("project_id") != project_id
+                        or record.get("role") != GUIDE_ROLE
+                        or str(record.get("state") or "").upper() != "APPROVED"
+                        or not source.is_file()
+                        or not source.is_relative_to(reference_root)):
+                    raise ValueError("OUTPUT_ERROR: approved timeline guide is unavailable")
+                hasher = hashlib.sha256()
+                with source.open("rb") as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        hasher.update(block)
+                digest = hasher.hexdigest().upper()
+                expected_digest = str(guide.get("content_sha256") or "").upper()
+                if digest != expected_digest or digest != str(record.get("sha256") or "").upper():
+                    raise ValueError("OUTPUT_ERROR: timeline guide provenance changed")
+                packaged_name = guide_comfy_filename({
+                    "asset_id": asset_id, "role": GUIDE_ROLE,
+                    "content_sha256": digest,
+                    "filename": record.get("filename") or source.name,
+                })
+                shutil.copy2(source, guide_dir / packaged_name)
+                guide_manifest.append({
+                    "asset_id": asset_id,
+                    "role": GUIDE_ROLE,
+                    "requested_time_seconds": guide.get("requested_time_seconds"),
+                    "resolved_frame_idx": guide.get("resolved_frame_idx"),
+                    "ordinal": guide.get("ordinal"),
+                    "sha256": digest,
+                    "packaged_file": f"guides/{packaged_name}",
+                })
+        (package / "input" / "guides.json").write_text(json.dumps(
+            guide_manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # Guided jobs preserve the exact compiled API graph. The immutable
+        # Golden asset remains untouched and is still the non-guide base.
         from runtime.yaml_compat import safe_load
-        mapping = safe_load(
-            (REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml")
-            .read_text(encoding="utf-8"))
         workflow_id = job.get("workflow")
         workflow_asset = None
-        if workflow_id in mapping.get("workflow_registry", {}):
-            workflow_asset = REPO_ROOT / mapping["workflow_registry"][workflow_id]["native_asset"]
-            if workflow_asset.is_file():
-                shutil.copy2(workflow_asset, package / "workflow" / workflow_asset.name)
+        snapshot = job.get("workflow_snapshot") or {}
+        snapshot_workflow = snapshot.get("workflow")
+        if guide_bindings:
+            if not isinstance(snapshot_workflow, dict):
+                raise ValueError("OUTPUT_ERROR: guided Job lacks its exact execution graph")
+            workflow_asset = package / "workflow" / f"{workflow_id}_A5_EXECUTION.json"
+            workflow_asset.write_text(
+                json.dumps(snapshot_workflow, indent=2, ensure_ascii=False),
+                encoding="utf-8")
         else:
-            # Experimental acceptance Jobs carry an immutable API snapshot;
-            # never consult or mutate the production mapping for them.
-            snapshot = job.get("workflow_snapshot") or {}
-            snapshot_workflow = snapshot.get("workflow")
-            if isinstance(snapshot_workflow, dict):
+            mapping = safe_load(
+                (REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml")
+                .read_text(encoding="utf-8"))
+            if workflow_id in mapping.get("workflow_registry", {}):
+                workflow_asset = REPO_ROOT / mapping["workflow_registry"][workflow_id]["native_asset"]
+                if workflow_asset.is_file():
+                    shutil.copy2(workflow_asset, package / "workflow" / workflow_asset.name)
+            elif isinstance(snapshot_workflow, dict):
                 workflow_asset = package / "workflow" / f"{workflow_id}_EXECUTION.json"
                 workflow_asset.write_text(
                     json.dumps(snapshot_workflow, indent=2, ensure_ascii=False),
@@ -210,11 +262,19 @@ class OutputAPI:
 
         # report/
         runtime_info = dict(output.get("runtime_info") or {})
+        runtime_capability = trace.get("runtime_capability") or {}
+        runtime_identity = trace.get("runtime_identity") or {}
         runtime_info.update({
-            "comfyui_version": "0.33.1",
-            "safe_load": "H3_WINDOWS_SAFE_LOAD=pread",
+            "comfyui_version": (runtime_info.get("comfyui_version")
+                                or runtime_capability.get("version")
+                                or "unknown"),
+            "runtime_target": runtime_identity.get("target") or
+                              job.get("runtime_target") or "production",
+            "runtime_port": runtime_identity.get("port"),
             "workflow_asset": workflow_asset.name if workflow_asset else None,
         })
+        if runtime_info["runtime_target"] == "production":
+            runtime_info["safe_load"] = "H3_WINDOWS_SAFE_LOAD=pread"
         (package / "report" / "runtime_info.json").write_text(
             json.dumps(runtime_info, indent=2, ensure_ascii=False), encoding="utf-8")
         provenance = {
@@ -226,7 +286,7 @@ class OutputAPI:
             "seed": job.get("seed"),
             "official_skill_revision": "2026-07-29-main-reviewed",
             "runtime": "native",
-            "execution_trace": dict(job.get("execution_trace") or {}),
+            "execution_trace": trace,
         }
         (package / "report" / "provenance.json").write_text(
             json.dumps(provenance, indent=2, ensure_ascii=False), encoding="utf-8")

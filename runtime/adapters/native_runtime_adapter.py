@@ -24,6 +24,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+from urllib.parse import urlsplit
 
 from runtime.yaml_compat import safe_load
 
@@ -57,6 +58,10 @@ from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
 from runtime.h3_model_root import validate_h3_model_contract
 from runtime.product_hardening import map_comfy_event
 from runtime.reference_contract import required_reference_roles
+from runtime.adapters.multiframe_guide_capability import (
+    MultiFrameGuideCapabilityAdapter,
+)
+from runtime.multiframe_guides import compile_native_guides
 
 WORKFLOW_MAPPING = REPO_ROOT / "runtime" / "contracts" / "workflow_mapping.yaml"
 GOLDEN_05_PATH = REPO_ROOT / "production_workflows" / "golden" / "05_Slow_Walkthrough.json"
@@ -180,7 +185,7 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                     "prompt_payload": {"prompt": "preflight"},
                 }, workflow_id)
                 golden_results[workflow_id] = validate_production_payload(
-                    payload, object_info)
+                    payload, object_info, allow_dynamic_asset_inputs=True)
             except Exception as exc:  # noqa: BLE001 - normalized below
                 golden_results[workflow_id] = {"ready": False, "errors": [str(exc)]}
         binding = {"ready": all(item.get("ready") for item in golden_results.values()),
@@ -227,6 +232,39 @@ class NativeRuntimeAdapter(RuntimeAdapter):
         payload = bind_golden_workflow(
             data, workflow_id,
             allow_a4_2_candidate=self.allow_a4_2_candidate)
+        guide_capability = None
+        guides = list(data.get("guide_frames") or [])
+        if guides:
+            runtime_url = urlsplit(str(getattr(self.client, "base_url", "")))
+            try:
+                runtime_port = runtime_url.port
+            except ValueError:
+                runtime_port = None
+            if (runtime_url.scheme != "http"
+                    or runtime_url.hostname not in {"127.0.0.1", "localhost"}
+                    or runtime_port != 8190
+                    or runtime_url.username or runtime_url.password):
+                raise ValueError(
+                    "GUIDE_RUNTIME_ISOLATION_REQUIRED: native guides require isolated loopback port 8190")
+            health = self.client.health_check()
+            version = str(health.get("comfyui_version") or "unknown")
+            guide_capability = MultiFrameGuideCapabilityAdapter(
+                self.client,
+                runtime_name="experimental",
+                version=version,
+                port=8190,
+            ).require()
+            object_info = self.client.object_info()
+            target_count = int((data.get("generation_parameters") or {}).get(
+                "frame_count", -1))
+            payload = compile_native_guides(
+                payload, guides, object_info=object_info,
+                target_frame_count=target_count)
+            compiled_check = validate_production_payload(payload, object_info)
+            if not compiled_check["ready"]:
+                raise ComfyUIExecutionError(
+                    "GUIDE_COMPILED_GRAPH_INVALID: "
+                    + ", ".join(compiled_check["unknown_node_types"]))
         source = str(golden["golden_path"])
         return {
             "job_id": f"native-{uuid.uuid4().hex[:12]}",
@@ -235,6 +273,7 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             "workflow_asset": source,
             "translated_payload": payload,
             "execution_workflow_sha256": canonical_workflow_sha256(payload),
+            "guide_capability": guide_capability,
             "binding": {
                 "source_of_truth": source,
                 "canonical_source": source,

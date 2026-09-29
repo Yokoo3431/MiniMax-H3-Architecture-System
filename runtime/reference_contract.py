@@ -130,8 +130,8 @@ def validate_guide_frames(value: Any) -> list[dict[str, Any]]:
         if approval not in {"PENDING", "APPROVED", "REJECTED"}:
             raise ValueError(f"guide_frames[{index}].approval_state is invalid")
         try:
-            raw_time = frame.get("time_seconds")
-            raw_index = frame.get("frame_index")
+            raw_time = frame.get("time_seconds", frame.get("requested_time_seconds"))
+            raw_index = frame.get("frame_index", frame.get("resolved_frame_idx"))
             if isinstance(raw_time, bool) or isinstance(raw_index, bool):
                 raise ValueError("boolean is not a guide time or frame index")
             at_seconds = float(raw_time)

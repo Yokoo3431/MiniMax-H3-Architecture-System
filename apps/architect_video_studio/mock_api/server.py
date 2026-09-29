@@ -30,6 +30,32 @@ class StudioServer(ThreadingHTTPServer):
         self.mode = mode
 
 
+def _paths_overlap(left: str | Path, right: str | Path) -> bool:
+    try:
+        first = Path(left).resolve()
+        second = Path(right).resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return True
+    return (first == second or first in second.parents or second in first.parents)
+
+
+def _experimental_io_isolated(experimental_input: str | Path,
+                              experimental_output: str | Path,
+                              production_input: str | Path | None,
+                              production_output: str | Path | None) -> bool:
+    """Fail closed unless experimental I/O is disjoint from production I/O."""
+    if not all((experimental_input, experimental_output,
+                production_input, production_output)):
+        return False
+    experimental_roots = (experimental_input, experimental_output)
+    production_roots = (production_input, production_output)
+    if _paths_overlap(*experimental_roots):
+        return False
+    return not any(_paths_overlap(experimental, production)
+                   for experimental in experimental_roots
+                   for production in production_roots)
+
+
 def _make_handler(store: StudioStore, apis: Dict[str, object]):
     class Handler(BaseHTTPRequestHandler):
         server_version = "ArchitectVideoStudio/0.1"
@@ -171,6 +197,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 ".png": "image/png",
                 ".jpg": "image/jpeg",
                 ".jpeg": "image/jpeg",
+                ".webp": "image/webp",
+                ".bmp": "image/bmp",
             }.get(target.suffix.lower(), "application/octet-stream")
             self._send_file(target, ctype)
 
@@ -223,6 +251,30 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/projects/([^/]+)/study", path)
             if m and method == "GET":
                 return self._ok(apis["study"].get_state(m.group(1)))
+            if method == "GET" and path == "/api/capabilities/multiframe-guides":
+                return self._ok(apis["guide"].capabilities())
+            m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames/resolve", path)
+            if m and method == "POST":
+                params = body.get("generation_parameters") or {}
+                return self._ok(apis["guide"].resolve(
+                    m.group(1), duration_seconds=params.get("duration", 4.0),
+                    workflow_id=body.get("workflow_id")))
+            m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames/reorder", path)
+            if m and method == "POST":
+                return self._ok(apis["guide"].reorder(
+                    m.group(1), body.get("guide_ids") or []))
+            m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames/([^/]+)", path)
+            if m and method == "PATCH":
+                return self._ok(apis["guide"].update(
+                    m.group(1), m.group(2), body.get("time_seconds")))
+            if m and method == "DELETE":
+                return self._ok(apis["guide"].remove(m.group(1), m.group(2)))
+            m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames", path)
+            if m and method == "GET":
+                return self._ok(apis["guide"].list(m.group(1)))
+            if m and method == "POST":
+                return self._ok(apis["guide"].add(
+                    m.group(1), body.get("asset_id", ""), body.get("time_seconds")))
             m = re.fullmatch(r"/api/assets/([A-Za-z0-9_-]+)/content", path)
             if m and method == "GET":
                 asset_path, content_type = apis["study"].asset_content(m.group(1))
@@ -301,6 +353,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     risk_reviewed=bool(body.get("risk_reviewed", False)),
                     generation_parameters=body.get("generation_parameters"),
                     camera_motion=body.get("camera_motion"),
+                    runtime_target=body.get("runtime_target", "production"),
                 ))
             m = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if m and method == "GET":
@@ -392,6 +445,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     import os
     store = StudioStore(data_root)
     from .intent_api import IntentAPI
+    from .guide_frame_api import GuideFrameAPI
     from .job_api import JobAPI
     from .output_api import OutputAPI
     from .project_api import ProjectAPI
@@ -402,6 +456,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     from runtime.adapters.runtime_paths import resolve_runtime_paths
 
     runtime_adapter = None
+    experimental_runtime_adapter = None
     runtime_paths = None
     if runtime == "real":
         runtime_paths = resolve_runtime_paths(data_root)
@@ -423,18 +478,59 @@ def make_server(addr: Tuple[str, int], data_root: Path,
             production_binding=True,
             runtime_paths=runtime_paths,
         )
+    experimental_url = os.environ.get(
+        "AVS_A5_EXPERIMENTAL_URL", "http://127.0.0.1:8190").strip().rstrip("/")
+    experimental_input = os.environ.get("AVS_A5_EXPERIMENTAL_INPUT", "").strip()
+    experimental_output = os.environ.get("AVS_A5_EXPERIMENTAL_OUTPUT", "").strip()
+    experimental_io_isolated = bool(
+        runtime_paths and _experimental_io_isolated(
+            experimental_input, experimental_output,
+            runtime_paths.input_root, runtime_paths.output_root))
+    if (os.environ.get("AVS_A5_EXPERIMENTAL_ENABLED", "0").strip() == "1"
+            and experimental_url in {"http://127.0.0.1:8190", "http://localhost:8190"}
+            and experimental_io_isolated
+            and experimental_input and experimental_output
+            and Path(experimental_input).is_dir()
+            and Path(experimental_output).is_dir()):
+        from runtime.adapters.comfyui_client import ComfyUIClient
+        from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter
+        experimental_runtime_adapter = NativeRuntimeAdapter(
+            client=ComfyUIClient(
+                base_url=experimental_url,
+                output_root=experimental_output,
+                strict_output=True,
+                ffmpeg_path=str(runtime_paths.ffmpeg) if runtime_paths else None,
+                health_timeout=3.0,
+                submission_timeout=60.0,
+                metadata_timeout=5.0,
+                observation_timeout=15.0,
+                output_timeout=30.0,
+            ),
+            comfy_input_dir=experimental_input,
+            production_binding=True,
+        )
     output_api = OutputAPI(store, allow_mock_outputs=False,
                            runtime_paths=runtime_paths)
+    from runtime.adapters.comfyui_client import ComfyUIClient
+    production_guide_client = runtime_adapter.client if runtime_adapter else None
+    experimental_guide_client = ComfyUIClient(
+        base_url=experimental_url,
+        health_timeout=1.5, metadata_timeout=2.0)
     apis = {
         "project": ProjectAPI(store),
         "reference": ReferenceAPI(store),
+        "guide": GuideFrameAPI(store, production_guide_client,
+                                experimental_guide_client,
+                                experimental_enabled=experimental_runtime_adapter is not None),
         "study": StudyAPI(store),
         "intent": IntentAPI(store),
         "prompt": PromptAPI(store),
         "job": JobAPI(store, output_api=output_api,
                       runtime_adapter=runtime_adapter,
+                      experimental_runtime_adapter=experimental_runtime_adapter,
                       allow_mock_jobs=False,
                       comfy_input_dir=str(runtime_paths.input_root) if runtime_paths else None,
+                      experimental_comfy_input_dir=experimental_input or None,
                       runtime_paths=runtime_paths),
         "output": output_api,
         "system": SystemAPI(store),

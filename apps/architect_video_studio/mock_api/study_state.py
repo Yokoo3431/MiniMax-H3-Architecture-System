@@ -165,6 +165,27 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     active_job = _latest(j for j in jobs if is_job_active(j))
     last_job = _latest(jobs)
     intent_ready = bool(intent and not intent.get("requires_user_confirmation"))
+    timeline_guides = []
+    for item in project.get("guide_frames") or []:
+        if not isinstance(item, dict):
+            continue
+        asset = refs_by_id.get(str(item.get("asset_id") or "")) or {}
+        stored = asset.get("stored_path")
+        preview_ready = bool(stored and Path(str(stored)).is_file())
+        timeline_guides.append({
+            "guide_id": str(item.get("guide_id") or ""),
+            "asset_id": str(item.get("asset_id") or ""),
+            "role": str(item.get("role") or "timeline_guide"),
+            "requested_time_seconds": item.get("requested_time_seconds"),
+            "ordinal": item.get("ordinal"),
+            "filename": str(asset.get("filename") or ""),
+            "approval_state": str(asset.get("state") or "MISSING"),
+            "content_sha256": asset.get("sha256"),
+            "preview_ready": preview_ready,
+            "preview_url": (
+                f"/api/assets/{asset['id']}/content?v={asset.get('sha256') or asset.get('version', 1)}"
+                if asset and preview_ready else None),
+        })
 
     missing = list(dict.fromkeys(slot_problems))
     if not intent_ready:
@@ -210,6 +231,8 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         "reference_slots": reference_slots,
         "reference_bindings": reference_bindings(selected_records),
         "reference_error": reference_error,
+        "timeline_guides": timeline_guides,
+        "guide_count": len(timeline_guides),
         "reference_uploaded": reference_uploaded,
         "reference_preview_ready": reference_preview_ready,
         "reference_approved": reference_approved,

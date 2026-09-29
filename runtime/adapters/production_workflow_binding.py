@@ -223,14 +223,64 @@ def unknown_node_types(payload: Mapping[str, Any], object_info: Mapping[str, Any
                    if node.get("class_type") not in object_info})
 
 
-def validate_production_payload(payload: Mapping[str, Any], object_info: Mapping[str, Any]) -> dict:
+def live_input_enum_mismatches(payload: Mapping[str, Any],
+                               object_info: Mapping[str, Any], *,
+                               allow_dynamic_asset_inputs: bool = False
+                               ) -> list[dict[str, str]]:
+    """Fail closed when a bound widget value is absent from live Comfy choices."""
+    mismatches: list[dict[str, str]] = []
+    for node_id, node in payload.items():
+        node_type = str(node.get("class_type") or "")
+        node_info = object_info.get(node_type) or {}
+        input_schema = node_info.get("input") or {}
+        node_inputs = node.get("inputs") or {}
+        for section in ("required", "optional"):
+            for input_name, field_schema in (input_schema.get(section) or {}).items():
+                if input_name not in node_inputs:
+                    continue
+                if (allow_dynamic_asset_inputs
+                        and (node_type, input_name) == ("LoadImage", "image")):
+                    # Preflight graphs use synthetic image names. Real request
+                    # graphs validate these only after staging to Comfy input.
+                    continue
+                choices = (field_schema[0]
+                           if isinstance(field_schema, (list, tuple))
+                           and field_schema
+                           and isinstance(field_schema[0], (list, tuple))
+                           else None)
+                if choices is None:
+                    continue
+                value = node_inputs[input_name]
+                # API links are represented as [node_id, output_index], not
+                # widget values; they are validated by Comfy's graph contract.
+                if (isinstance(value, (list, tuple)) and len(value) == 2
+                        and isinstance(value[0], str)
+                        and isinstance(value[1], int)):
+                    continue
+                if value not in choices:
+                    mismatches.append({
+                        "node_id": str(node_id),
+                        "node_type": node_type,
+                        "input_name": str(input_name),
+                    })
+    return sorted(mismatches,
+                  key=lambda item: (item["node_id"], item["input_name"]))
+
+
+def validate_production_payload(payload: Mapping[str, Any],
+                                object_info: Mapping[str, Any], *,
+                                allow_dynamic_asset_inputs: bool = False) -> dict:
     unknown = unknown_node_types(payload, object_info)
+    enum_mismatches = live_input_enum_mismatches(
+        payload, object_info,
+        allow_dynamic_asset_inputs=allow_dynamic_asset_inputs)
     present = {node.get("class_type") for node in payload.values()}
     return {
         "unknown_node_types": unknown,
+        "live_input_enum_mismatches": enum_mismatches,
         "missing_required_nodes": [],
         "payload_node_types": sorted(present),
-        "ready": not unknown,
+        "ready": not unknown and not enum_mismatches,
     }
 
 
@@ -280,5 +330,6 @@ __all__ = [
     "build_production_payload", "deploy_production_collection", "load_registry", "unknown_node_types",
     "production_model_contract",
     "validate_ui_workflow_model_bindings", "validate_all_ui_workflow_model_bindings",
-    "validate_frozen_capability", "validate_production_payload",
+    "validate_frozen_capability", "live_input_enum_mismatches",
+    "validate_production_payload",
 ]
