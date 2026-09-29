@@ -20,6 +20,7 @@ import json
 import os
 import inspect
 import math
+import re
 from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -81,6 +82,78 @@ _JOB_STAGE_RANK = {
     "EXPORTING": 5,
     "COMPLETED": 6,
 }
+
+
+def build_runtime_identity(runtime_target: str, runtime_adapter,
+                           preflight_result: Optional[dict] = None) -> dict:
+    """Build path-free, durable identity metadata for a Job's Comfy runtime."""
+    role = str(runtime_target or "production")
+    if role not in {"production", "experimental"}:
+        role = "unknown"
+    client = getattr(runtime_adapter, "client", None)
+    backend = "native_comfyui" if client is not None else "mock"
+    default_port = 8190 if role == "experimental" else 8189
+    base_url = str(getattr(client, "base_url", "") or "")
+    try:
+        endpoint = urlsplit(base_url)
+        port = endpoint.port or default_port
+        scheme = endpoint.scheme.lower()
+        host = (endpoint.hostname or "").lower()
+    except ValueError:
+        port = default_port
+        scheme = ""
+        host = ""
+
+    endpoint_kind = (
+        "loopback" if host in {"127.0.0.1", "localhost", "::1"}
+        else "remote" if host else "unconfigured"
+    )
+    endpoint_payload = {"scheme": scheme, "host": host, "port": port}
+    endpoint_fingerprint = (
+        hashlib.sha256(json.dumps(
+            endpoint_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest() if host else None
+    )
+
+    result = preflight_result if isinstance(preflight_result, dict) else {}
+    health = result.get("health") if isinstance(result.get("health"), dict) else {}
+    system = health.get("system") if isinstance(health.get("system"), dict) else {}
+    version = (health.get("comfyui_version") or system.get("comfyui_version")
+               or getattr(client, "comfyui_version", None)
+               or getattr(runtime_adapter, "comfyui_version", None))
+    version = str(version).strip() if version else None
+    if version and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,79}", version):
+        version = None
+
+    git_sha = (getattr(client, "comfyui_git_sha", None)
+               or getattr(runtime_adapter, "comfyui_git_sha", None))
+    git_sha = str(git_sha).strip().lower() if git_sha else None
+    if (git_sha and (not 7 <= len(git_sha) <= 64
+                     or any(char not in "0123456789abcdef" for char in git_sha))):
+        git_sha = None
+
+    output_root_fingerprint = str(
+        getattr(client, "output_root_fingerprint", "") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", output_root_fingerprint):
+        output_root_fingerprint = None
+    runtime_id = f"{backend}:{role}:{endpoint_kind}:{port}"
+    identity = {
+        "identity_schema_version": 1,
+        "runtime_id": runtime_id,
+        "runtime_role": role,
+        "target": role,  # Backward-compatible field used by existing recovery code.
+        "execution_backend": backend,
+        "endpoint_kind": endpoint_kind,
+        "port": port,
+        "endpoint_fingerprint": endpoint_fingerprint,
+        "comfyui_version": version,
+        "comfyui_git_sha": git_sha,
+        "output_root_fingerprint": output_root_fingerprint,
+    }
+    identity["runtime_config_fingerprint"] = hashlib.sha256(json.dumps(
+        identity, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()
+    return identity
 
 
 class InputStagingError(FileNotFoundError):
@@ -449,12 +522,8 @@ class JobAPI:
                 "target_frame_count": int(params["frame_count"]),
                 "guide_backend": "MiniMaxH3AddGuide" if guide_bindings else "NONE",
                 "runtime_capability": guide_capability,
-                "runtime_identity": {
-                    "target": runtime_target,
-                    "port": 8190 if runtime_target == "experimental" else 8189,
-                    "output_root_fingerprint": (
-                        self._runtime_output_fingerprint(runtime_adapter) or None),
-                },
+                "runtime_identity": build_runtime_identity(
+                    runtime_target, runtime_adapter, preflight_result),
                 "architecture_profile": profile_context["architecture_profile"],
                 "profile_parameter_overrides": profile_context["profile_parameter_overrides"],
                 "final_execution_parameters": dict(
