@@ -23,6 +23,7 @@ from apps.architect_video_studio.mock_api.output_api import OutputAPI  # noqa: E
 from apps.architect_video_studio.mock_api.project_api import ProjectAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.prompt_api import PromptAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.reference_api import ReferenceAPI  # noqa: E402
+from apps.architect_video_studio.mock_api.server import make_server  # noqa: E402
 from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
 from runtime.adapters.experimental_runtime_registry import (  # noqa: E402
     EXPECTED_GIT_SHA, EXPECTED_PACKAGES, EXPECTED_RUNTIME_ID,
@@ -504,6 +505,83 @@ class ExperimentalPreflightTests(unittest.TestCase):
             adapter.generate({}, prepared=prepared)
         self.assertEqual(sequence, ["persisted", "poll"])
         self.assertEqual(adapter.client.prompt_calls, 0)
+
+
+class TestExperimentalMediaToolIsolation(unittest.TestCase):
+    def test_experimental_comfy_client_does_not_inherit_production_ffmpeg(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            production = root / "production"
+            experimental = root / "experimental"
+            production_input = production / "input"
+            production_output = production / "output"
+            experimental_input = experimental / "input"
+            experimental_output = experimental / "output"
+            for path in (production_input, production_output,
+                         experimental_input, experimental_output):
+                path.mkdir(parents=True)
+            production_ffmpeg = production / "ffmpeg.exe"
+            paths = SimpleNamespace(
+                input_root=production_input, output_root=production_output,
+                ffmpeg=production_ffmpeg,
+            )
+            public = {
+                "runtime_id": EXPECTED_RUNTIME_ID,
+                "runtime_role": "experimental",
+                "backend": "comfyui",
+                "endpoint_identity": "loopback:8190",
+                "comfyui_version": EXPECTED_VERSION,
+                "comfyui_git_sha": EXPECTED_GIT_SHA,
+                "config_fingerprint": "c" * 64,
+                "output_root_fingerprint": "d" * 24,
+                "capabilities": ["MiniMaxH3AddGuide"],
+                "route_enabled": True,
+            }
+            registry = {
+                "valid": True,
+                "config": {
+                    "endpoint": "http://127.0.0.1:8190",
+                    "input_root": str(experimental_input),
+                    "output_root": str(experimental_output),
+                    "temp_root": str(experimental / "temp"),
+                    "user_root": str(experimental / "user"),
+                    "models_root": str(experimental / "models"),
+                    "source_root": str(experimental / "source"),
+                    "python_executable": str(experimental / "python.exe"),
+                    "extra_model_paths_config": str(experimental / "models.yaml"),
+                },
+                "public": public,
+            }
+            clients = []
+
+            def fake_client(**kwargs):
+                client = SimpleNamespace(
+                    base_url=kwargs.get("base_url", "http://127.0.0.1:8189"),
+                    output_root=kwargs.get("output_root"),
+                    output_root_fingerprint="e" * 24,
+                )
+                clients.append((client, kwargs))
+                return client
+
+            with patch("runtime.adapters.runtime_paths.resolve_runtime_paths",
+                       return_value=paths), \
+                 patch("runtime.adapters.experimental_runtime_registry.inspect_experimental_runtime_registry",
+                       return_value=registry), \
+                 patch("runtime.adapters.comfyui_client.ComfyUIClient",
+                       side_effect=fake_client), \
+                 patch("runtime.adapters.native_runtime_adapter.NativeRuntimeAdapter",
+                       side_effect=lambda client, **_kwargs:
+                       SimpleNamespace(client=client)):
+                server = make_server(
+                    ("127.0.0.1", 0), root / "userdata" / "studio", runtime="real")
+                try:
+                    self.assertGreaterEqual(len(clients), 3)
+                    self.assertEqual(clients[0][1].get("ffmpeg_path"),
+                                     str(production_ffmpeg))
+                    self.assertNotIn("ffmpeg_path", clients[1][1])
+                    self.assertTrue(server.apis["job"].experimental_route_enabled)
+                finally:
+                    server.server_close()
 
 
 if __name__ == "__main__":

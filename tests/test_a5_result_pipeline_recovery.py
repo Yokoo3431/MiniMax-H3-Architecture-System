@@ -319,6 +319,49 @@ class TestResultPipelineContract(unittest.TestCase):
             self.assertEqual(output["runtime_info"]["output_root_fingerprint"],
                              harness.client.output_root_fingerprint)
 
+    def test_strict_video_probe_retries_managed_decoder_after_preferred_failure(self):
+        with tempfile.TemporaryDirectory() as raw:
+            media = Path(raw) / "synthetic.mp4"
+            preferred = Path(raw) / "preferred-ffmpeg.exe"
+            fallback = Path(raw) / "managed-ffmpeg.exe"
+            media.write_bytes(b"synthetic-media")
+            preferred.write_bytes(b"synthetic-executable")
+            fallback.write_bytes(b"synthetic-executable")
+            imageio = SimpleNamespace(
+                get_ffmpeg_exe=lambda: str(fallback))
+            rejected = SimpleNamespace(returncode=1, stdout="", stderr="")
+            accepted = SimpleNamespace(returncode=0, stdout="", stderr="")
+            client = ComfyUIClient(ffmpeg_path=str(preferred), strict_output=True)
+            with patch.dict(sys.modules, {"imageio_ffmpeg": imageio}), \
+                 patch("runtime.adapters.comfyui_client.subprocess.run",
+                       side_effect=[rejected, accepted]) as run:
+                client._validate_real_video(str(media))
+
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[0].args[0][0], str(preferred.resolve()))
+            self.assertEqual(run.call_args_list[1].args[0][0], str(fallback.resolve()))
+
+    def test_experimental_delivery_probe_does_not_use_production_runtime_tools(self):
+        with RecoveryHarness() as harness:
+            harness.jobs.runtime_paths = object()
+            project_id, job = harness.store.find_job(harness.job_id)
+            job["runtime_target"] = "experimental"
+            harness.jobs._save_job(project_id, job)
+            probe_result = {
+                "available": True, "width": 832, "height": 480,
+                "fps": 24.0, "duration_seconds": 4.46,
+                "probe_tool": "imageio_ffmpeg_compatibility",
+            }
+            with patch("runtime.media_probe.probe_media_file",
+                       return_value=probe_result) as probe:
+                harness.jobs._update_delivery_probe(
+                    project_id, job, str(harness.media))
+
+            probe.assert_called_once_with(harness.media, runtime_paths=None)
+            _, saved = harness.store.find_job(harness.job_id)
+            self.assertEqual(saved["execution_trace"]["delivery"]["status"],
+                             "PROBED")
+
     def test_missing_media_and_media_probe_failure_are_distinct(self):
         with RecoveryHarness() as harness:
             missing = dict(harness.history, outputs={

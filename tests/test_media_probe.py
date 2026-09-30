@@ -138,6 +138,31 @@ class TestOutputManifestProbeWiring(unittest.TestCase):
             self.assertTrue(all(not Path(value).is_absolute()
                                 for value in manifest["files"].values()))
 
+    def test_experimental_manifest_uses_runtime_neutral_probe(self):
+        with tempfile.TemporaryDirectory() as raw:
+            store = StudioStore(Path(raw))
+            project_id = ProjectAPI(store).create_project("Experimental Probe")["id"]
+            package = store.package_dir(project_id)
+            (package / "output").mkdir(parents=True)
+            media = package / "output" / "video.mp4"
+            media.write_bytes(b"fixture")
+            (package / "report").mkdir(parents=True, exist_ok=True)
+            (package / "report" / "generation_report.json").write_text(
+                json.dumps({"job_id": "job-exp", "status": "COMPLETED"}),
+                encoding="utf-8")
+            job = {
+                "id": "job-exp", "runtime": "native", "runtime_target": "experimental",
+                "state": "COMPLETED", "workflow": "04_Drone_Aerial",
+                "runtime_output_path": str(media), "final_output_path": str(media),
+            }
+            production_paths = object()
+            with patch("runtime.media_probe.probe_media_file",
+                       return_value={"available": False}) as probe:
+                OutputAPI(store, runtime_paths=production_paths).manifest(
+                    project_id, job)
+
+            probe.assert_called_once_with(media, runtime_paths=None)
+
 
 if __name__ == "__main__":
     unittest.main()

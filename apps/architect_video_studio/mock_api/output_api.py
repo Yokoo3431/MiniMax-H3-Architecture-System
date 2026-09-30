@@ -562,7 +562,9 @@ class OutputAPI:
         if media is not None and job.get("runtime") == "native":
             from runtime.media_probe import probe_media_file
 
-            ffprobe = probe_media_file(media, runtime_paths=self.runtime_paths)
+            probe_paths = (None if job.get("runtime_target") == "experimental"
+                           else self.runtime_paths)
+            ffprobe = probe_media_file(media, runtime_paths=probe_paths)
         final_path = str(job.get("final_output_path") or "")
         runtime_path = str(job.get("runtime_output_path") or "")
         package_root = package.resolve().relative_to(

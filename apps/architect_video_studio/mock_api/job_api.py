@@ -2174,7 +2174,9 @@ class JobAPI:
         delivery = dict(trace.get("delivery") or {})
         try:
             from runtime.media_probe import probe_media_file
-            probe = probe_media_file(path, runtime_paths=self.runtime_paths)
+            probe_paths = (None if job.get("runtime_target") == "experimental"
+                           else self.runtime_paths)
+            probe = probe_media_file(path, runtime_paths=probe_paths)
         except Exception:
             delivery["status"] = "PROBE_UNAVAILABLE"
         else:

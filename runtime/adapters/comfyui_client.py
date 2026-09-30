@@ -783,29 +783,46 @@ class ComfyUIClient:
             raise ComfyUIExecutionError("OUTPUT_FILE_MISSING: runtime video file is absent")
         if path.stat().st_size <= 0:
             raise ComfyUIExecutionError("OUTPUT_FILE_EMPTY: runtime video file is zero bytes")
-        ffmpeg = self.ffmpeg_path or shutil.which("ffmpeg")
-        if not ffmpeg:
+        candidates: list[str] = []
+        preferred = self.ffmpeg_path or shutil.which("ffmpeg")
+        if preferred:
+            candidates.append(str(preferred))
+        try:
+            import imageio_ffmpeg
+            bundled = imageio_ffmpeg.get_ffmpeg_exe()
+            if bundled:
+                candidates.append(str(bundled))
+        except Exception:  # optional fallback; the error below is clearer
+            pass
+
+        available: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
             try:
-                import imageio_ffmpeg
-                ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-            except Exception:  # optional fallback; the error below is clearer
-                ffmpeg = None
-        if not ffmpeg or not Path(ffmpeg).is_file():
+                resolved = Path(candidate).expanduser().resolve()
+                key = str(resolved).casefold()
+                if key not in seen and resolved.is_file():
+                    seen.add(key)
+                    available.append(str(resolved))
+            except (OSError, RuntimeError, ValueError):
+                continue
+        if not available:
             raise ComfyUIExecutionError(
                 "ffmpeg is unavailable; cannot validate the generated video")
-        try:
-            result = subprocess.run(
-                [ffmpeg, "-v", "error", "-i", str(path), "-f", "null", "-"],
-                capture_output=True, text=True, timeout=30,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise ComfyUIExecutionError(
-                "MEDIA_PROBE_EXECUTION_FAILED: video validation could not run") from exc
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "ffmpeg rejected the file").strip()
-            raise ComfyUIExecutionError(
-                "MEDIA_PROBE_FAILED: generated video is not decodable")
+
+        for ffmpeg in available:
+            try:
+                result = subprocess.run(
+                    [ffmpeg, "-v", "error", "-i", str(path), "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=30,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if result.returncode == 0:
+                return
+        raise ComfyUIExecutionError(
+            "MEDIA_PROBE_FAILED: generated video is not decodable")
 
     def wait_completion(self, prompt_id: str, timeout_seconds: float = 1500.0,
                         poll_interval: float = 5.0, on_event=None,
