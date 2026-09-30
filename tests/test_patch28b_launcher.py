@@ -18,7 +18,7 @@ SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
 
 from launcher.env_check import EnvChecker, EnvPaths  # noqa: E402
-from launcher.launcher import Launcher  # noqa: E402
+from launcher.launcher import Launcher, PortManager as LauncherPortManager  # noqa: E402
 from launcher.lock_manager import LockManager  # noqa: E402
 from launcher.process_manager import PortManager, ProcessManager, Service  # noqa: E402
 
@@ -157,6 +157,66 @@ class TestPortDetection(unittest.TestCase):
             r"python.exe unrelated_server.py --port 8788", "studio"))
         self.assertFalse(PortManager.is_managed_commandline(
             r"unknown.exe --port 8189", "comfyui"))
+        self.assertFalse(PortManager.is_managed_commandline(
+            r"D:\Experimental\python.exe ComfyUI\\main.py --port 8190",
+            "comfyui"))
+
+    def test_experimental_runtime_executable_is_never_killed_as_production(self):
+        with mock.patch.object(PortManager, "port_in_use", return_value=True), \
+             mock.patch.object(PortManager, "find_pid", return_value=5151), \
+             mock.patch.object(PortManager, "process_commandline",
+                               return_value=(r"D:\Experimental\python.exe "
+                                             r"ComfyUI\\main.py --port 8189")), \
+             mock.patch.object(PortManager, "process_executable",
+                               return_value=r"D:\Experimental\python.exe"), \
+             mock.patch.object(PortManager, "terminate_pid") as terminate:
+            result = PortManager.restart_managed_conflict(
+                8189, "comfyui", expected_executable=r"D:\Production\python.exe")
+        self.assertEqual(result["status"], "unknown")
+        terminate.assert_not_called()
+
+    def test_managed_port_cleanup_targets_exact_runtime_executable(self):
+        with mock.patch.object(PortManager, "port_in_use", return_value=True), \
+             mock.patch.object(PortManager, "find_pid", return_value=5151), \
+             mock.patch.object(PortManager, "process_commandline",
+                               return_value=(r"D:\Production\python.exe "
+                                             r"ComfyUI\\main.py --port 8189")), \
+             mock.patch.object(PortManager, "process_executable",
+                               return_value=r"D:\Production\python.exe"), \
+             mock.patch.object(PortManager, "terminate_pid", return_value=True) as terminate, \
+             mock.patch.object(PortManager, "wait_until_free", return_value=True):
+            result = PortManager.restart_managed_conflict(
+                8189, "comfyui", expected_executable=r"D:\Production\python.exe")
+        self.assertEqual(result["status"], "restarted")
+        terminate.assert_called_once_with(5151, timeout=10.0)
+
+    def test_relative_expected_executable_matches_absolute_windows_identity(self):
+        absolute_python = str(Path.cwd() / "synthetic_runtime" / "python.exe")
+        relative_python = os.path.relpath(absolute_python)
+        with mock.patch.object(PortManager, "port_in_use", return_value=True), \
+             mock.patch.object(PortManager, "find_pid", return_value=5151), \
+             mock.patch.object(PortManager, "process_commandline",
+                               return_value=(r"python.exe ComfyUI\\main.py "
+                                             r"--port 8189")), \
+             mock.patch.object(PortManager, "process_executable",
+                               return_value=absolute_python), \
+             mock.patch.object(PortManager, "terminate_pid", return_value=True) as terminate, \
+             mock.patch.object(PortManager, "wait_until_free", return_value=True):
+            result = PortManager.restart_managed_conflict(
+                8189, "comfyui", expected_executable=relative_python)
+        self.assertEqual(result["status"], "restarted")
+        terminate.assert_called_once_with(5151, timeout=10.0)
+
+    def test_managed_process_is_not_killed_without_expected_executable_identity(self):
+        with mock.patch.object(PortManager, "port_in_use", return_value=True), \
+             mock.patch.object(PortManager, "find_pid", return_value=5151), \
+             mock.patch.object(PortManager, "process_commandline",
+                               return_value=(r"D:\Production\python.exe "
+                                             r"ComfyUI\\main.py --port 8189")), \
+             mock.patch.object(PortManager, "terminate_pid") as terminate:
+            result = PortManager.restart_managed_conflict(8189, "comfyui")
+        self.assertEqual(result["status"], "unknown")
+        terminate.assert_not_called()
 
     def test_unknown_port_owner_is_not_terminated(self):
         with mock.patch.object(PortManager, "port_in_use", return_value=True), \
@@ -276,6 +336,18 @@ class TestProcessLifecycle(unittest.TestCase):
 
 
 class TestLauncherFailureHandling(unittest.TestCase):
+    def test_prepare_port_supplies_the_selected_runtime_python_identity(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            tmp = Path(tmpd)
+            paths = _make_paths(tmp)
+            launcher = Launcher(dry_run=True, lock_path=tmp / "runtime.lock",
+                                paths=paths)
+            with mock.patch.object(LauncherPortManager, "restart_managed_conflict",
+                                   return_value={"status": "free"}) as prepare:
+                self.assertTrue(launcher._prepare_port(8189, "comfyui"))
+            self.assertEqual(prepare.call_args.kwargs["expected_executable"],
+                             str(launcher.pm.python.resolve()))
+
     def test_env_block_stops_launcher(self):
         with tempfile.TemporaryDirectory() as tmpd:
             tmp = Path(tmpd)

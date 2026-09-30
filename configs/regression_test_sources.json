@@ -26,8 +26,8 @@
     {
       "path": "tests/test_a5_result_pipeline_recovery.py",
       "tracked_status": "tracked",
-      "sha256": "2D252A0BD1F4A68A0DFAA1239B04C731FA96F64BD49AC2E9D2AC03BFB69276BA",
-      "discovered_test_count": 18,
+      "sha256": "7AAE17E47033D0DAB07002C89DC9BCA8760D4A7C826BE60AA0C0EA3AA0A632E6",
+      "discovered_test_count": 22,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -432,8 +432,8 @@
     {
       "path": "tests/test_patch28b_launcher.py",
       "tracked_status": "tracked",
-      "sha256": "ED3CCC6D919625564D3A11DD467F47C1F056BB5FDB155BB92D2CFF59B8DBB1EC",
-      "discovered_test_count": 17,
+      "sha256": "B3F1E9DF4CB8B2A67C4DA30BCBC6CE027BDF7D5E4B9B4FFFA89CE965B3D4E5CC",
+      "discovered_test_count": 22,
       "classification": "CORE_REGRESSION"
     },
     {

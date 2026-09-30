@@ -298,13 +298,77 @@ class JobAPI:
         if record["stage"] == "COMFY_HISTORY":
             pipeline["history_outputs"] = clean_candidates
         if record["stage"] == "PACKAGING":
-            pipeline["packaging_status"] = record["status"]
+            pipeline["packaging_status"] = (
+                "RUNNING" if record["status"] == "STARTED" else record["status"])
         job["result_pipeline"] = pipeline
         try:
             self._save_job(project_id, job)
         except Exception:
             # Preserve the original failure in the independent JSONL sidecar.
             pass
+
+    def _reconcile_completed_packaging(self, project_id: str,
+                                       job: Dict[str, Any]) -> Dict[str, Any]:
+        """Repair packaging bookkeeping only when the Job-bound package proves success."""
+        package_media = self.output_api._package_video_path(project_id, job)
+        if package_media is None:
+            return job
+
+        job_id = str(job.get("id") or "")
+        pipeline = dict(job.get("result_pipeline") or {})
+        original_events = list(pipeline.get("events") or [])
+        snapshot_events = list(original_events)
+        sidecar_events = self.store.load_job_result_events(project_id, job_id)
+
+        def event_key(item: dict) -> tuple:
+            return (str(item.get("timestamp") or ""),
+                    str(item.get("stage") or ""),
+                    str(item.get("status") or ""),
+                    str(item.get("error_code") or ""))
+
+        known = {event_key(item) for item in snapshot_events if isinstance(item, dict)}
+        packaging_events = [item for item in sidecar_events
+                            if isinstance(item, dict)
+                            and item.get("stage") == "PACKAGING"]
+        for item in packaging_events:
+            key = event_key(item)
+            if key not in known:
+                snapshot_events.append(item)
+                known.add(key)
+
+        snapshot_packaging_pass = any(
+            isinstance(item, dict) and item.get("stage") == "PACKAGING"
+            and item.get("status") == "PASS" for item in snapshot_events)
+        sidecar_packaging_pass = any(item.get("status") == "PASS"
+                                     for item in packaging_events)
+        if not snapshot_packaging_pass and not sidecar_packaging_pass:
+            self._record_result_event(
+                project_id, job_id, "PACKAGING", "PASS",
+                detail={"package_built": True,
+                        "media_bytes": package_media.stat().st_size})
+            return self.store.load_jobs(project_id).get(job_id, job)
+
+        if snapshot_packaging_pass and not sidecar_packaging_pass:
+            # The Job snapshot is authoritative if a previous sidecar write
+            # failed; preserve its original event identity when backfilling.
+            pass_event = next(item for item in snapshot_events
+                              if isinstance(item, dict)
+                              and item.get("stage") == "PACKAGING"
+                              and item.get("status") == "PASS")
+            self.store.append_job_result_event(project_id, job_id, pass_event)
+
+        pipeline["events"] = snapshot_events[-40:]
+        pipeline["packaging_status"] = "PASS"
+        job_needs_save = (
+            pipeline.get("packaging_status") !=
+            (job.get("result_pipeline") or {}).get("packaging_status")
+            or pipeline["events"] != original_events
+        )
+        if not job_needs_save:
+            return job
+        job["result_pipeline"] = pipeline
+        self._save_job(project_id, job, preserve_result_pipeline=True)
+        return self.store.load_jobs(project_id).get(job_id, job)
 
     def _runtime_output_fingerprint(self, runtime_adapter) -> str:
         client = getattr(runtime_adapter, "client", None)
@@ -1468,7 +1532,7 @@ class JobAPI:
         self._normalize_terminal_job(job, "COMPLETED")
         self._record_result_event(project_id, job_id, "RESULT_PERSISTENCE", "STARTED")
         try:
-            self._save_job(project_id, job)
+            self._save_job(project_id, job, preserve_result_pipeline=True)
         except Exception as exc:
             self._record_result_event(
                 project_id, job_id, "RESULT_PERSISTENCE", "FAILED", error=exc,
@@ -1555,6 +1619,7 @@ class JobAPI:
             if job.get("state") == "COMPLETED":
                 media = self.output_api._job_media_path(project_id, job)
                 if media is not None:
+                    job = self._reconcile_completed_packaging(project_id, job)
                     return _recovery_job_payload(job)
 
             prompt_id = str(job.get("prompt_id") or "")
@@ -2420,7 +2485,8 @@ class JobAPI:
         job["active"] = False
         job["is_active"] = False
 
-    def _save_job(self, project_id: str, job: Dict[str, Any]) -> None:
+    def _save_job(self, project_id: str, job: Dict[str, Any], *,
+                  preserve_result_pipeline: bool = False) -> None:
         # Serialize the complete load/check/replace transaction. Atomic file
         # replacement prevents torn JSON, while this lock prevents a worker
         # that loaded an older snapshot from losing a concurrent cancellation.
@@ -2437,6 +2503,51 @@ class JobAPI:
                     and not is_job_terminal(job)):
                 # A late worker callback must not resurrect a terminal Job.
                 return
+            if preserve_result_pipeline:
+                existing_pipeline = dict((existing or {}).get("result_pipeline") or {})
+                incoming_pipeline = dict(job.get("result_pipeline") or {})
+                pipeline = dict(existing_pipeline or incoming_pipeline)
+                for key in ("expected_output_identity", "observed_output_identity",
+                            "runtime_output_fingerprint"):
+                    if key in incoming_pipeline:
+                        pipeline[key] = incoming_pipeline[key]
+
+                events = []
+                seen = set()
+
+                def merge_events(records) -> None:
+                    for record in records or []:
+                        if not isinstance(record, dict):
+                            continue
+                        key = (str(record.get("timestamp") or ""),
+                               str(record.get("stage") or ""),
+                               str(record.get("status") or ""),
+                               str(record.get("error_code") or ""))
+                        if key not in seen:
+                            events.append(record)
+                            seen.add(key)
+
+                merge_events(existing_pipeline.get("events"))
+                merge_events(incoming_pipeline.get("events"))
+                try:
+                    journal = self.store.load_job_result_events(project_id, job["id"])
+                except Exception:
+                    journal = []
+                merge_events(journal)
+                pipeline["events"] = events[-40:]
+                if journal:
+                    latest = journal[-1]
+                    pipeline["current_stage"] = str(latest.get("stage") or
+                                                    pipeline.get("current_stage") or "")
+                    pipeline["status"] = str(latest.get("status") or
+                                             pipeline.get("status") or "")
+                    latest_packaging = next((event for event in reversed(journal)
+                                             if event.get("stage") == "PACKAGING"), None)
+                    if latest_packaging:
+                        status = str(latest_packaging.get("status") or "")
+                        pipeline["packaging_status"] = (
+                            "RUNNING" if status == "STARTED" else status)
+                job["result_pipeline"] = pipeline
             jobs[job["id"]] = job
             self.store.save_jobs(project_id, jobs)
 

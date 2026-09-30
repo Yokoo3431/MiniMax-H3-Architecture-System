@@ -195,7 +195,15 @@ class Launcher:
 
     def _prepare_port(self, port: int, service_kind: str) -> bool:
         """Ensure a service port is free without hanging on stale dev state."""
-        result = PortManager.restart_managed_conflict(port, service_kind)
+        expected_executable = (
+            self.pm.python if service_kind == "comfyui"
+            else self.pm.bootstrap_python if service_kind == "studio"
+            else None
+        )
+        result = PortManager.restart_managed_conflict(
+            port, service_kind,
+            expected_executable=(str(Path(expected_executable).expanduser().resolve())
+                                 if expected_executable else None))
         status = result["status"]
         if status == "free":
             return True

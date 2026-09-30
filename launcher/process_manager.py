@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import json
+import ntpath
 import socket
 import subprocess
 import time
@@ -86,6 +87,31 @@ class PortManager:
             return ""
 
     @staticmethod
+    def process_executable(pid: Optional[int]) -> str:
+        """Return the executable path for a listener PID, or empty if unknown."""
+        if not pid or os.name != "nt":
+            return ""
+        powershell = os.path.join(
+            os.environ.get("WINDIR", r"C:\Windows"),
+            "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        if not os.path.isfile(powershell):
+            powershell = "powershell.exe"
+        command = (
+            f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId = {int(pid)}' "
+            "-ErrorAction SilentlyContinue; if ($p) { $p.ExecutablePath }"
+        )
+        try:
+            result = subprocess.run(
+                [powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-Command", command],
+                capture_output=True, text=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    @staticmethod
     def is_managed_commandline(commandline: str, service_kind: str) -> bool:
         """Recognize only the two service shapes the launcher owns."""
         text = (commandline or "").lower().replace("/", "\\")
@@ -97,14 +123,14 @@ class PortManager:
 
     @staticmethod
     def terminate_pid(pid: int, timeout: float = 10.0) -> bool:
-        """Terminate one already-identified service process tree."""
+        """Terminate only the already-identified listener process."""
         if not pid or pid == os.getpid():
             return False
         if os.name != "nt":
             return False
         try:
             result = subprocess.run(
-                ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
+                ["taskkill", "/PID", str(int(pid)), "/F"],
                 capture_output=True, text=True,
                 timeout=max(1.0, timeout),
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -124,7 +150,8 @@ class PortManager:
 
     @classmethod
     def restart_managed_conflict(cls, port: int, service_kind: str,
-                                 timeout: float = 12.0) -> dict:
+                                 timeout: float = 12.0,
+                                 expected_executable: Optional[str] = None) -> dict:
         """Restart a recognizable stale service, or report a safe block.
 
         The result is deliberately structured so the UI/launcher can explain
@@ -136,6 +163,14 @@ class PortManager:
         pid = cls.find_pid(port)
         commandline = cls.process_commandline(pid)
         if not cls.is_managed_commandline(commandline, service_kind):
+            return {"status": "unknown", "pid": pid, "commandline": commandline}
+        if not expected_executable:
+            return {"status": "unknown", "pid": pid, "commandline": commandline}
+        actual_executable = cls.process_executable(pid)
+        normalize = lambda value: ntpath.normcase(ntpath.abspath(ntpath.normpath(
+            str(value or "").replace("/", "\\"))))
+        if (not actual_executable
+                or normalize(actual_executable) != normalize(expected_executable)):
             return {"status": "unknown", "pid": pid, "commandline": commandline}
         if not cls.terminate_pid(pid, timeout=min(timeout, 10.0)):
             return {"status": "failed", "pid": pid, "commandline": commandline}

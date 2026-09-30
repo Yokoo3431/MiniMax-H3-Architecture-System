@@ -443,6 +443,7 @@ class TestResultRecovery(unittest.TestCase):
         try:
             recovered = harness.jobs.recover_result(harness.job_id)
             self.assertEqual(recovered["state"], "COMPLETED")
+            self.assertEqual(recovered["result_pipeline"]["packaging_status"], "PASS")
             self.assertEqual(harness.history_calls, 1)
             self.assertEqual(harness.submit_calls, 0)
             self.assertEqual(harness.adapter.generate_calls, 0)
@@ -460,6 +461,10 @@ class TestResultRecovery(unittest.TestCase):
             self.assertEqual(hashlib.sha256(package_video.read_bytes()).hexdigest(),
                              package_hash)
             self.assertEqual(len(harness.store.load_jobs(harness.project_id)), 1)
+            package_passes = [event for event in harness.store.load_job_result_events(
+                harness.project_id, harness.job_id)
+                if event["stage"] == "PACKAGING" and event["status"] == "PASS"]
+            self.assertEqual(len(package_passes), 1)
 
             server = StudioServer(
                 ("127.0.0.1", 0), harness.store,
@@ -480,6 +485,76 @@ class TestResultRecovery(unittest.TestCase):
                 thread.join(timeout=2)
         finally:
             harness.close()
+
+    def test_completed_package_repairs_stale_packaging_snapshot_idempotently(self):
+        with RecoveryHarness() as harness:
+            completed = harness.jobs.recover_result(harness.job_id)
+            project_id, job = harness.store.find_job(harness.job_id)
+            package_video = harness.output_api._package_video_path(project_id, job)
+            self.assertIsNotNone(package_video)
+            original_hash = hashlib.sha256(package_video.read_bytes()).hexdigest()
+
+            # Reproduce a stale terminal snapshot while retaining the durable
+            # PACKAGING events in the independent journal.
+            pipeline = dict(job["result_pipeline"])
+            pipeline["packaging_status"] = "NOT_STARTED"
+            pipeline["events"] = [event for event in pipeline.get("events", [])
+                                  if event.get("stage") != "PACKAGING"]
+            job["result_pipeline"] = pipeline
+            harness.store.save_jobs(project_id, {harness.job_id: job})
+
+            repaired = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(repaired["id"], completed["id"])
+            self.assertEqual(repaired["result_pipeline"]["packaging_status"], "PASS")
+            self.assertTrue(any(event["stage"] == "PACKAGING"
+                                and event["status"] == "PASS"
+                                for event in repaired["result_pipeline"]["events"]))
+            self.assertEqual(harness.history_calls, 1)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+
+            events_before = harness.store.load_job_result_events(project_id, harness.job_id)
+            with patch.object(harness.jobs, "_save_job",
+                              wraps=harness.jobs._save_job) as save_job:
+                again = harness.jobs.recover_result(harness.job_id)
+                self.assertEqual(save_job.call_count, 0)
+            events_after = harness.store.load_job_result_events(project_id, harness.job_id)
+            self.assertEqual(again["id"], completed["id"])
+            self.assertEqual(len(events_after), len(events_before))
+            self.assertEqual(sum(event["stage"] == "PACKAGING"
+                                 and event["status"] == "PASS"
+                                 for event in events_after), 1)
+            self.assertEqual(hashlib.sha256(package_video.read_bytes()).hexdigest(),
+                             original_hash)
+
+    def test_completed_package_without_stage_event_gets_one_reconciled_pass(self):
+        with RecoveryHarness() as harness:
+            harness.jobs.recover_result(harness.job_id)
+            project_id, job = harness.store.find_job(harness.job_id)
+            pipeline = dict(job["result_pipeline"])
+            pipeline["packaging_status"] = "NOT_STARTED"
+            pipeline["events"] = [event for event in pipeline.get("events", [])
+                                  if event.get("stage") != "PACKAGING"]
+            job["result_pipeline"] = pipeline
+            harness.store.save_jobs(project_id, {harness.job_id: job})
+            sidecar = harness.store.job_result_events_file(project_id, harness.job_id)
+            retained = [event for event in harness.store.load_job_result_events(
+                project_id, harness.job_id) if event.get("stage") != "PACKAGING"]
+            sidecar.write_text("".join(json.dumps(event) + "\n" for event in retained),
+                                encoding="utf-8")
+
+            recovered = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(recovered["result_pipeline"]["packaging_status"], "PASS")
+            events = harness.store.load_job_result_events(project_id, harness.job_id)
+            self.assertEqual(sum(event["stage"] == "PACKAGING"
+                                 and event["status"] == "PASS"
+                                 for event in events), 1)
+            harness.jobs.recover_result(harness.job_id)
+            events_after = harness.store.load_job_result_events(project_id, harness.job_id)
+            self.assertEqual(len(events_after), len(events))
+            self.assertEqual(harness.history_calls, 1)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
 
     def test_recovery_and_result_http_payloads_do_not_expose_absolute_paths(self):
         harness = RecoveryHarness()
@@ -593,6 +668,7 @@ class TestResultRecovery(unittest.TestCase):
             failed = harness.store.find_job(harness.job_id)[1]
             self.assertEqual(failed["state"], "FAILED")
             self.assertEqual(failed["result_pipeline"]["current_stage"], "RECOVERY")
+            self.assertEqual(failed["result_pipeline"]["packaging_status"], "FAILED")
             self.assertEqual([
                 item["resolved_frame_idx"]
                 for item in failed["execution_trace"]["guide_bindings"]], [36, 72])
@@ -604,8 +680,29 @@ class TestResultRecovery(unittest.TestCase):
             self.assertEqual(harness.adapter.generate_calls, 0)
             stages = [event["stage"] for event in recovered["result_pipeline"]["events"]]
             self.assertIn("PACKAGING", stages)
+            self.assertEqual(recovered["result_pipeline"]["packaging_status"], "PASS")
         finally:
             harness.close()
+
+    def test_packaging_state_is_running_during_build_then_persisted_pass(self):
+        with RecoveryHarness() as harness:
+            original = harness.output_api.build_real_output_package
+            observed = []
+
+            def inspect_running_state(*args, **kwargs):
+                current = harness.store.find_job(harness.job_id)[1]
+                observed.append(current["result_pipeline"]["packaging_status"])
+                return original(*args, **kwargs)
+
+            harness.output_api.build_real_output_package = inspect_running_state
+            recovered = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(observed, ["RUNNING"])
+            self.assertEqual(recovered["result_pipeline"]["packaging_status"], "PASS")
+            sidecar = harness.store.load_job_result_events(
+                harness.project_id, harness.job_id)
+            self.assertEqual([event["status"] for event in sidecar
+                              if event["stage"] == "PACKAGING"],
+                             ["STARTED", "PASS"])
 
     def test_result_persistence_failure_is_sidecar_recorded_then_retried_without_generation(self):
         harness = RecoveryHarness()
@@ -637,6 +734,36 @@ class TestResultRecovery(unittest.TestCase):
             self.assertEqual(harness.adapter.generate_calls, 0)
         finally:
             harness.close()
+
+    def test_terminal_save_preserves_local_pipeline_if_latest_snapshot_is_unavailable(self):
+        with RecoveryHarness() as harness:
+            original_record = harness.jobs._record_result_event
+            original_load = harness.store.load_jobs
+            hide_latest_snapshot = False
+
+            def record_then_hide(project_id, job_id, stage, status, **kwargs):
+                nonlocal hide_latest_snapshot
+                result = original_record(project_id, job_id, stage, status, **kwargs)
+                if stage == "RESULT_PERSISTENCE" and status == "STARTED":
+                    hide_latest_snapshot = True
+                return result
+
+            def hide_one_read(project_id):
+                nonlocal hide_latest_snapshot
+                if hide_latest_snapshot:
+                    hide_latest_snapshot = False
+                    return {}
+                return original_load(project_id)
+
+            harness.jobs._record_result_event = record_then_hide
+            harness.store.load_jobs = hide_one_read
+            recovered = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(recovered["state"], "COMPLETED")
+            self.assertEqual(recovered["result_pipeline"]["packaging_status"], "PASS")
+            self.assertEqual(recovered["result_pipeline"]["observed_output_identity"][
+                "prompt_id"], harness.prompt_id)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
 
     def test_probe_failure_does_not_repeat_generation_and_manifest_can_probe_again(self):
         harness = RecoveryHarness()
