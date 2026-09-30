@@ -762,10 +762,11 @@ class JobAPI:
             steps=params["steps"], cold_start=True)
         if dry_run:
             if runtime_target != "experimental" or runtime_adapter is None:
-                raise ValueError("A5_PREFLIGHT_REQUIRES_EXPERIMENTAL_RUNTIME")
+                raise ValueError("EXPERIMENTAL_PREFLIGHT_REQUIRES_EXPERIMENTAL_RUNTIME")
             return self._persist_experimental_preflight(
                 project_id, project, prompt, approved, params, normalized_motion,
-                guide_bindings, job, runtime_adapter, preflight_result)
+                guide_bindings, job, runtime_adapter, preflight_result,
+                execution_purpose=execution_purpose)
         jobs = self.store.load_jobs(project_id)
         jobs[job_id] = job
         self.store.save_jobs(project_id, jobs)
@@ -804,7 +805,8 @@ class JobAPI:
             self, project_id: str, project: dict, prompt: dict,
             approved_refs: List[dict], params: dict, camera_motion: str,
             guide_bindings: List[dict], job: dict, runtime_adapter,
-            preflight_result: Optional[dict]) -> Dict[str, Any]:
+            preflight_result: Optional[dict], *,
+            execution_purpose: Optional[str] = None) -> Dict[str, Any]:
         """Compile and persist a path-free preflight snapshot, never a Job."""
         from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
 
@@ -837,10 +839,14 @@ class JobAPI:
             safe_code = "".join(char for char in code.upper()
                                 if char.isalnum() or char in "_-")[:80]
             raise ValueError(
-                f"A5_PREFLIGHT_COMPILE_FAILED:{safe_code or 'RUNTIME_CONTRACT'}") from exc
+                f"EXPERIMENTAL_PREFLIGHT_COMPILE_FAILED:{safe_code or 'RUNTIME_CONTRACT'}") from exc
         payload = prepared.get("translated_payload") or {}
+        ref2va_mode = str(prompt.get("mode") or "") == "Ref2VA"
+        ref2va_plan = prepared.get("ref2va_plan") if ref2va_mode else None
+        if ref2va_mode and not isinstance(ref2va_plan, dict):
+            raise ValueError("REF2VA_PREFLIGHT_PLAN_MISSING")
         snapshot = self._build_workflow_snapshot(
-            request, approved_refs, payload)
+            request, approved_refs, payload, ref2va_plan=ref2va_plan)
         workflow_sha = canonical_workflow_sha256(payload)
         if workflow_sha != snapshot.get("execution_workflow_sha256"):
             raise ValueError("PREFLIGHT_WORKFLOW_SHA_MISMATCH")
@@ -864,30 +870,44 @@ class JobAPI:
             "asset_id", "role", "requested_time_seconds", "resolved_frame_idx",
             "ordinal", "content_sha256", "source_identity", "approval_evidence")}
             for guide in guide_bindings]
+        ref2va_bindings = list((ref2va_plan or {}).get("bindings") or [])
+        expected_purpose = (
+            "A6_REF2VA_VALIDATION" if ref2va_mode
+            else "A5_EXPERIMENTAL_VALIDATION")
+        if execution_purpose != expected_purpose:
+            raise ValueError("EXPERIMENTAL_PREFLIGHT_PURPOSE_MISMATCH")
+        runtime_capability = (
+            {"node": "MiniMaxH3ReferenceToVideo", "available": True,
+             "status": "AVAILABLE", "runtime_id": runtime_identity["runtime_id"]}
+            if ref2va_mode else prepared.get("guide_capability"))
         node_types: Dict[str, int] = {}
         for node in payload.values():
             node_type = str(node.get("class_type") or "unknown")
             node_types[node_type] = node_types.get(node_type, 0) + 1
         record = {
             "schema_version": 1,
-            "snapshot_type": "A5_EXPERIMENTAL_PREFLIGHT",
+            "snapshot_type": ("A6_REF2VA_EXPERIMENTAL_PREFLIGHT" if ref2va_mode
+                               else "A5_EXPERIMENTAL_PREFLIGHT"),
             "id": job["id"],
             "project_id": project_id,
             "state": "DRY_RUN",
             "created_at": self.store.timestamp(),
-            "execution_purpose": "A5_EXPERIMENTAL_VALIDATION",
+            "execution_purpose": expected_purpose,
             "runtime_target": "experimental",
             "runtime_identity": runtime_identity,
             "guide_count": len(guide_rows),
             "guide_bindings": guide_rows,
+            "ref2va_count": len(ref2va_bindings),
+            "reference_execution_plan": snapshot.get("reference_execution_plan"),
             "target_frame_count": int(params["frame_count"]),
             "native_generation_fps": NATIVE_H3_FPS,
             "prompt_sha256": str(prompt.get("prompt_hash") or ""),
-            "reference_bindings": reference_bindings(approved_refs),
+            "reference_bindings": reference_bindings(
+                approved_refs, ref2va=ref2va_mode),
             "execution_workflow_sha256": workflow_sha,
             "workflow_node_count": len(payload),
             "workflow_node_types": node_types,
-            "runtime_capability": prepared.get("guide_capability"),
+            "runtime_capability": runtime_capability,
             "expected_output_identity": expected_output,
             "prompt_id": None,
             "submission_attempted": False,
@@ -899,14 +919,17 @@ class JobAPI:
         return {
             "id": job["id"], "project_id": project_id,
             "state": "DRY_RUN", "execution_purpose": record["execution_purpose"],
+            "snapshot_type": record["snapshot_type"],
             "runtime_identity": runtime_identity,
             "guide_count": len(guide_rows),
             "guide_frame_indexes": [row["resolved_frame_idx"] for row in guide_rows],
+            "ref2va_count": len(ref2va_bindings),
+            "reference_execution_plan": snapshot.get("reference_execution_plan"),
             "target_frame_count": int(params["frame_count"]),
             "native_generation_fps": NATIVE_H3_FPS,
             "workflow_sha256": workflow_sha,
             "workflow_node_count": len(payload),
-            "runtime_capability": prepared.get("guide_capability"),
+            "runtime_capability": runtime_capability,
             "expected_output_prefix": expected_output.get("filename_prefix"),
             "output_root_fingerprint": runtime_identity.get("output_root_fingerprint"),
             "prompt_id": None, "submission_attempted": False,

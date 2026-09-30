@@ -26,6 +26,7 @@ from apps.architect_video_studio.mock_api.project_api import ProjectAPI  # noqa:
 from apps.architect_video_studio.mock_api.reference_api import ReferenceAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.server import StudioServer  # noqa: E402
 from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
+from apps.architect_video_studio.mock_api.study_state import build_study_state  # noqa: E402
 from runtime.adapters.ref2va_workflow_binding import (  # noqa: E402
     REF2VA_MODEL, Ref2VAWorkflowError, compile_ref2va_workflow,
 )
@@ -410,6 +411,129 @@ class PromptIntegrationTests(unittest.TestCase):
                              "ref_images.ref_image_1")
             self.assertEqual(prompt["integrated_multimodal_description"],
                              prompt["integrated_multimodal_description"].strip())
+            study = build_study_state(store, project_id)
+            self.assertTrue(study["prompt_ready"], study["gate_reasons"])
+            self.assertTrue(study["reference_approved"], study["reference_error"])
+            self.assertTrue(study["generate_allowed"], study["gate_reasons"])
+            self.assertEqual(
+                [item["role"] for item in study["reference_bindings"]],
+                ["first_frame", "site_reference"])
+
+    def test_a6_experimental_dry_run_persists_ref2va_plan_without_submission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StudioStore(Path(directory) / "data")
+            project = ProjectAPI(store).create_project("A6 dry-run contract")
+            project_id = project["id"]
+            refs = ReferenceAPI(store)
+            refs.upload_and_approve(
+                project_id, "first.png", "first_frame",
+                base64.b64encode(tiny_png((255, 0, 0))).decode("ascii"))
+            refs.upload_and_approve(
+                project_id, "site.png", "site_reference",
+                base64.b64encode(tiny_png((0, 255, 0))).decode("ascii"))
+            IntentAPI(store).analyze_intent(
+                project_id, "表现建筑与周边场地的空间关系")
+            PromptAPI(store).generate_prompt(
+                project_id, workflow="04_Drone_Aerial",
+                generation_parameters={"quality": "NATIVE_HIGH", "duration": 4.0,
+                                       "fps": 24, "seed": 42},
+                prompt_engine="OFFLINE_COMPILER")
+
+            class Runtime:
+                name = "native"
+
+                def __init__(self):
+                    self.runtime_identity_spec = {
+                        "runtime_id": "experimental-h3-8190",
+                        "runtime_role": "experimental", "backend": "comfyui",
+                        "endpoint_identity": "loopback:8190",
+                        "comfyui_version": "0.36.0",
+                        "comfyui_git_sha": "ee71d5c4993f29086b27fde1629a945ae48425bf",
+                        "config_fingerprint": "a" * 64,
+                        "output_root_fingerprint": "b" * 24,
+                    }
+                    self.client = SimpleNamespace(
+                        base_url="http://127.0.0.1:8190",
+                        output_root_fingerprint="b" * 24,
+                        get_queue=lambda: {"queue_running": [], "queue_pending": []})
+                    self.prompt_calls = 0
+
+                def preflight(self):
+                    return {"health": {"comfyui_version": "0.36.0"},
+                            "object_info": node_info()}
+
+                def prepare(self, request):
+                    roles = [item["role"] for item in request.reference_assets]
+                    bindings = [{
+                        "asset_id": str(item["asset_id"]), "role": item["role"],
+                        "native_input": f"ref_images.ref_image_{ordinal}",
+                        "prompt_tag": f"<Picture {ordinal + 1}>",
+                        "ordinal": ordinal + 1,
+                    } for ordinal, item in enumerate(request.reference_assets)]
+                    self.assert_roles = roles
+                    return {
+                        "translated_payload": {
+                            "5": {"class_type": "MiniMaxH3ReferenceToVideo",
+                                  "inputs": {"ref_images.ref_image_0": ["8", 0],
+                                             "ref_images.ref_image_1": ["9", 0]}},
+                            "15": {"class_type": "SaveVideo", "inputs": {
+                                "filename_prefix": "video/04_Drone_Aerial_C2B_42",
+                                "video": ["5", 0]}},
+                        },
+                        "ref2va_plan": {
+                            "schema_version": 1,
+                            "runtime_id": "experimental-h3-8190",
+                            "backend": "comfyui",
+                            "node": "MiniMaxH3ReferenceToVideo",
+                            "limits": {"image": 9, "video": 3, "audio": 3},
+                            "counts": {"image": len(bindings), "video": 0,
+                                       "audio": 0},
+                            "reference_image_size": "match",
+                            "required_vaes": {"video": True, "audio": False},
+                            "bindings": bindings,
+                        },
+                    }
+
+                def attach_job_identity(self, prepared, job_id):
+                    prepared["translated_payload"]["15"]["inputs"][
+                        "filename_prefix"] += f"_{job_id}"
+                    return prepared
+
+            runtime = Runtime()
+            jobs = JobAPI(store, experimental_runtime_adapter=runtime,
+                          experimental_route_enabled=True, allow_mock_jobs=False)
+            before = store.load_jobs(project_id)
+            result = jobs.submit_job(
+                project_id, seed=42, risk_reviewed=True,
+                generation_parameters={"quality": "NATIVE_HIGH", "duration": 4.0,
+                                       "fps": 24, "seed": 42},
+                runtime_target="experimental", runtime_id="experimental-h3-8190",
+                execution_purpose="A6_REF2VA_VALIDATION", dry_run=True)
+
+            self.assertEqual(result["state"], "DRY_RUN")
+            self.assertEqual(result["snapshot_type"],
+                             "A6_REF2VA_EXPERIMENTAL_PREFLIGHT")
+            self.assertEqual(result["execution_purpose"], "A6_REF2VA_VALIDATION")
+            self.assertEqual(result["ref2va_count"], 2)
+            self.assertEqual(result["runtime_capability"]["node"],
+                             "MiniMaxH3ReferenceToVideo")
+            self.assertEqual(result["runtime_capability"]["status"], "AVAILABLE")
+            self.assertEqual(
+                [item["native_input"] for item in
+                 result["reference_execution_plan"]["bindings"]],
+                ["ref_images.ref_image_0", "ref_images.ref_image_1"])
+            self.assertIn(result["id"], result["expected_output_prefix"])
+            self.assertFalse(result["submission_attempted"])
+            self.assertIsNone(result["prompt_id"])
+            self.assertEqual(runtime.prompt_calls, 0)
+            self.assertEqual(store.load_jobs(project_id), before)
+            record = json.loads((store.data_root / "preflights" /
+                                 f"{result['id']}.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["snapshot_type"],
+                             "A6_REF2VA_EXPERIMENTAL_PREFLIGHT")
+            self.assertEqual(record["reference_execution_plan"],
+                             result["reference_execution_plan"])
+            self.assertEqual(record["guide_count"], 0)
 
     def test_missing_ref2va_checkpoint_fails_before_job_or_prompt_submission(self):
         with tempfile.TemporaryDirectory() as directory:

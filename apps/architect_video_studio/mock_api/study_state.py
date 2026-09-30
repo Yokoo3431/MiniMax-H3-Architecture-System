@@ -18,7 +18,8 @@ from .job_state import (
     normalize_terminal_record,
 )
 from runtime.reference_contract import (
-    reference_bindings, required_reference_roles, resolve_selected_references,
+    REF2VA_ROLE_ORDER, reference_bindings, required_reference_roles,
+    resolve_selected_references,
 )
 
 
@@ -81,6 +82,11 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     refs_by_id = {str(item.get("id")): item for item in refs if item.get("id")}
     selected_ids = project.get("selected_reference_asset_ids")
     selected_ids = selected_ids if isinstance(selected_ids, dict) else {}
+    selected_ref2va_roles = [
+        role for role in REF2VA_ROLE_ORDER
+        if role not in required_roles and selected_ids.get(role)
+    ]
+    include_ref2va_roles = bool(selected_ref2va_roles)
     selected_records: list[Dict[str, Any]] = []
     reference_slots: list[Dict[str, Any]] = []
     slot_problems: list[str] = []
@@ -121,7 +127,8 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     try:
         current_refs = resolve_selected_references(
             project_id, project, refs_by_id, selected_workflow,
-            require_approved=True, reference_root=store.input_dir(project_id))
+            require_approved=True, reference_root=store.input_dir(project_id),
+            include_ref2va_roles=include_ref2va_roles)
         reference_error = None
     except ValueError as exc:
         current_refs = []
@@ -132,7 +139,9 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
     reference_preview_ready = bool(
         reference and reference.get("stored_path")
         and Path(reference["stored_path"]).is_file())
-    reference_approved = len(current_refs) == len(required_roles)
+    expected_reference_count = len(required_roles) + len(selected_ref2va_roles)
+    reference_approved = (
+        reference_error is None and len(current_refs) == expected_reference_count)
     if reference_error and "DUPLICATE" in reference_error:
         slot_problems.append("首帧和末帧必须是不同的图像")
     approved_hash = reference_asset_hash(current_refs)
@@ -229,7 +238,8 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         "reference_role": reference.get("role") if reference else None,
         "required_reference_roles": list(required_roles),
         "reference_slots": reference_slots,
-        "reference_bindings": reference_bindings(selected_records),
+        "reference_bindings": reference_bindings(
+            current_refs, ref2va=include_ref2va_roles),
         "reference_error": reference_error,
         "timeline_guides": timeline_guides,
         "guide_count": len(timeline_guides),
