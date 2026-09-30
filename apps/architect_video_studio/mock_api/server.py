@@ -550,8 +550,9 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                 base_url=experimental_url,
                 output_root=experimental_output,
                 strict_output=True,
-                # Experimental outputs must not inherit the production
-                # Runtime's decoder. ComfyUIClient uses its managed fallback.
+                # Experimental output validation stays inside the pinned
+                # isolated venv instead of borrowing production media tools.
+                video_probe_python=experimental_config.get("python_executable"),
                 health_timeout=3.0,
                 submission_timeout=60.0,
                 metadata_timeout=5.0,
@@ -573,7 +574,10 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                 "extra_model_paths_config"),
         }
     output_api = OutputAPI(store, allow_mock_outputs=False,
-                           runtime_paths=runtime_paths)
+                           runtime_paths=runtime_paths,
+                           experimental_video_probe_python=(
+                               experimental_config.get("python_executable")
+                               if experimental_registry.get("valid") else None))
     from runtime.adapters.comfyui_client import ComfyUIClient
     production_guide_client = runtime_adapter.client if runtime_adapter else None
     experimental_guide_client = ComfyUIClient(

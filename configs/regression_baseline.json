@@ -2,10 +2,10 @@
   "schema_version": 1,
   "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
   "test_inventory_file": "configs/regression_test_inventory.txt",
-  "inventory_sha256": "23A7C470F647AFB0406E80D33C02D6BA28661166E2D626C28FAE12E54BB9BF87",
+  "inventory_sha256": "CDF2315C6EFEF2B16C301C153B5F4A7B33DCF9B3E116CBEADCBD90E5638AB6E6",
   "test_source_manifest_file": "configs/regression_test_sources.json",
-  "test_source_manifest_sha256": "D675A717B4A0FDBD57C5725175EEB6E61702E493A67DEFC0D22B09CB1A5C72DE",
-  "discovered_count": 935,
+  "test_source_manifest_sha256": "F044DF6D1BC3BE6A1EC1AB673C4A843A55E1B9F1C3255664FBE654CE141AE0DC",
+  "discovered_count": 939,
   "expected_skip_count": 38,
   "expected_skip_ids": [
     {

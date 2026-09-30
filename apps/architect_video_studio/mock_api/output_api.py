@@ -28,10 +28,13 @@ WORKFLOW_FILE_MAP = {
 class OutputAPI:
     def __init__(self, store: StudioStore,
                  allow_mock_outputs: bool = True,
-                 runtime_paths=None) -> None:
+                 runtime_paths=None,
+                 experimental_video_probe_python: str | None = None) -> None:
         self.store = store
         self.allow_mock_outputs = bool(allow_mock_outputs)
         self.runtime_paths = runtime_paths
+        # Private deployment-only path; it is never copied into Job/API records.
+        self.experimental_video_probe_python = experimental_video_probe_python
 
     def _job_references(self, project_id: str, job: Dict[str, Any]) -> list[dict[str, Any]]:
         by_id = self.store.load_references(project_id)
@@ -560,11 +563,30 @@ class OutputAPI:
         media = self._job_media_path(project_id, job)
         ffprobe = None
         if media is not None and job.get("runtime") == "native":
-            from runtime.media_probe import probe_media_file
-
-            probe_paths = (None if job.get("runtime_target") == "experimental"
-                           else self.runtime_paths)
-            ffprobe = probe_media_file(media, runtime_paths=probe_paths)
+            if job.get("runtime_target") == "experimental":
+                delivery = dict((job.get("execution_trace") or {}).get(
+                    "delivery") or {})
+                if delivery.get("status") == "PROBED":
+                    ffprobe = {
+                        "available": True,
+                        "duration_seconds": delivery.get("duration_seconds"),
+                        "width": delivery.get("width"),
+                        "height": delivery.get("height"),
+                        "fps": delivery.get("fps"),
+                        "video_codec": delivery.get("video_codec"),
+                        "audio_stream": delivery.get("audio_stream", False),
+                        "frame_count": delivery.get("frame_count"),
+                        "container_format": delivery.get("container_format"),
+                        "probe_tool": delivery.get("probe_tool"),
+                    }
+                else:
+                    from runtime.media_probe import probe_media_file
+                    ffprobe = probe_media_file(
+                        media, runtime_paths=None,
+                        python_executable=self.experimental_video_probe_python)
+            else:
+                from runtime.media_probe import probe_media_file
+                ffprobe = probe_media_file(media, runtime_paths=self.runtime_paths)
         final_path = str(job.get("final_output_path") or "")
         runtime_path = str(job.get("runtime_output_path") or "")
         package_root = package.resolve().relative_to(

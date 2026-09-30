@@ -21,6 +21,38 @@ _DURATION_RE = re.compile(r"Duration:\s*([0-9:.]+)")
 _VIDEO_RE = re.compile(r"Video:\s*([^,\s]+).*?(\d{2,5})x(\d{2,5})")
 _FPS_RE = re.compile(r"(\d+(?:\.\d+)?)\s+fps")
 
+_PYAV_PROBE_SCRIPT = r"""
+import json
+import sys
+
+try:
+    import av
+    with av.open(sys.argv[1], mode="r") as container:
+        video = next((stream for stream in container.streams
+                      if stream.type == "video"), None)
+        if video is None:
+            raise ValueError("video stream missing")
+        rate = float(video.average_rate) if video.average_rate else None
+        duration = (float(container.duration / av.time_base)
+                    if container.duration else None)
+        if duration is None and video.duration and video.time_base:
+            duration = float(video.duration * video.time_base)
+        frame_count = sum(1 for _ in container.decode(video))
+        print(json.dumps({
+            "container_format": str(container.format.name or ""),
+            "video_codec": str(video.codec_context.name or ""),
+            "width": int(video.codec_context.width or 0),
+            "height": int(video.codec_context.height or 0),
+            "fps": rate,
+            "duration_seconds": duration,
+            "frame_count": frame_count,
+            "audio_stream": any(stream.type == "audio"
+                                 for stream in container.streams),
+        }, separators=(",", ":")))
+except Exception:
+    sys.exit(2)
+"""
+
 
 def _managed_executable(runtime_paths: Optional[RuntimePathContract]) -> Tuple[str, Path] | None:
     """Return a managed probe executable without consulting arbitrary PATH."""
@@ -117,7 +149,53 @@ def _from_ffmpeg_text(text: str) -> dict[str, Any]:
     }
 
 
+def _probe_with_runtime_python(media: Path, python_executable: Path,
+                               timeout_seconds: float) -> dict[str, Any]:
+    """Use the selected isolated runtime's PyAV, never ambient PATH tools."""
+    result = {"available": False, "error_code": "MEDIA_PROBE_UNAVAILABLE"}
+    try:
+        completed = subprocess.run(
+            [str(python_executable), "-I", "-c", _PYAV_PROBE_SCRIPT, str(media)],
+            capture_output=True, text=True, timeout=timeout_seconds, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired:
+        result["error_code"] = "MEDIA_PROBE_TIMEOUT"
+        return result
+    except OSError:
+        return result
+    if completed.returncode != 0:
+        result["error_code"] = "MEDIA_PROBE_FAILED"
+        return result
+    try:
+        payload = json.loads(completed.stdout)
+        width = int(payload.get("width") or 0)
+        height = int(payload.get("height") or 0)
+        fps = float(payload.get("fps") or 0)
+        duration = float(payload.get("duration_seconds") or 0)
+        frame_count = int(payload.get("frame_count") or 0)
+        if (width <= 0 or height <= 0 or fps <= 0 or duration <= 0
+                or frame_count <= 0):
+            raise ValueError("incomplete video metadata")
+        return {
+            "available": True,
+            "duration_seconds": round(duration, 3),
+            "width": width,
+            "height": height,
+            "fps": round(fps, 2),
+            "video_codec": str(payload.get("video_codec") or "")[:32],
+            "audio_stream": bool(payload.get("audio_stream")),
+            "frame_count": frame_count,
+            "container_format": str(payload.get("container_format") or "")[:64],
+            "probe_tool": "pinned_runtime_pyav",
+        }
+    except (json.JSONDecodeError, TypeError, ValueError):
+        result["error_code"] = "MEDIA_PROBE_INVALID"
+        return result
+
+
 def probe_media_file(path: Path, *, runtime_paths: Optional[RuntimePathContract] = None,
+                     python_executable: Optional[Path | str] = None,
                      timeout_seconds: float = 20.0) -> dict[str, Any]:
     """Return verified media metadata with a stable, path-free failure shape."""
     result = {"available": False, "error_code": "MEDIA_PROBE_UNAVAILABLE"}
@@ -128,6 +206,11 @@ def probe_media_file(path: Path, *, runtime_paths: Optional[RuntimePathContract]
             return result
         tool = _managed_executable(runtime_paths)
         if tool is None:
+            if python_executable is not None:
+                executable = Path(python_executable).expanduser()
+                if executable.is_file():
+                    return _probe_with_runtime_python(
+                        media, executable, timeout_seconds)
             return result
         name, executable = tool
         if name == "ffprobe":
@@ -138,21 +221,25 @@ def probe_media_file(path: Path, *, runtime_paths: Optional[RuntimePathContract]
             )
             if completed.returncode != 0:
                 result["error_code"] = "MEDIA_PROBE_FAILED"
-                return result
-            return _from_ffprobe(json.loads(completed.stdout))
-
-        completed = subprocess.run(
-            [str(executable), "-hide_banner", "-i", str(media), "-f", "null", "-"],
-            capture_output=True, text=True, timeout=timeout_seconds, check=False,
-        )
-        if completed.returncode != 0:
-            result["error_code"] = "MEDIA_PROBE_FAILED"
-            return result
-        return _from_ffmpeg_text(completed.stderr)
+            else:
+                return _from_ffprobe(json.loads(completed.stdout))
+        else:
+            completed = subprocess.run(
+                [str(executable), "-hide_banner", "-i", str(media), "-f", "null", "-"],
+                capture_output=True, text=True, timeout=timeout_seconds, check=False,
+            )
+            if completed.returncode != 0:
+                result["error_code"] = "MEDIA_PROBE_FAILED"
+            else:
+                return _from_ffmpeg_text(completed.stderr)
     except subprocess.TimeoutExpired:
         result["error_code"] = "MEDIA_PROBE_TIMEOUT"
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         result["error_code"] = "MEDIA_PROBE_INVALID"
+    if python_executable is not None:
+        executable = Path(python_executable).expanduser()
+        if executable.is_file():
+            return _probe_with_runtime_python(media, executable, timeout_seconds)
     return result
 
 

@@ -2241,7 +2241,14 @@ class JobAPI:
             from runtime.media_probe import probe_media_file
             probe_paths = (None if job.get("runtime_target") == "experimental"
                            else self.runtime_paths)
-            probe = probe_media_file(path, runtime_paths=probe_paths)
+            probe_options = {"runtime_paths": probe_paths}
+            if job.get("runtime_target") == "experimental":
+                adapter = self._adapter_for_job(job)
+                client = getattr(adapter, "client", None)
+                runtime_python = getattr(client, "video_probe_python", None)
+                if runtime_python:
+                    probe_options["python_executable"] = runtime_python
+            probe = probe_media_file(path, **probe_options)
         except Exception:
             delivery["status"] = "PROBE_UNAVAILABLE"
         else:
@@ -2251,6 +2258,10 @@ class JobAPI:
                     "height": int(probe["height"]),
                     "fps": float(probe["fps"]),
                     "duration_seconds": float(probe["duration_seconds"]),
+                    "video_codec": probe.get("video_codec"),
+                    "audio_stream": bool(probe.get("audio_stream")),
+                    "frame_count": probe.get("frame_count"),
+                    "container_format": probe.get("container_format"),
                     "status": "PROBED",
                     "probe_tool": probe.get("probe_tool"),
                     "postprocess_applied": False,

@@ -362,6 +362,33 @@ class TestResultPipelineContract(unittest.TestCase):
             self.assertEqual(saved["execution_trace"]["delivery"]["status"],
                              "PROBED")
 
+    def test_experimental_delivery_probe_uses_pinned_runtime_python(self):
+        with RecoveryHarness() as harness:
+            project_id, job = harness.store.find_job(harness.job_id)
+            job["runtime_target"] = "experimental"
+            harness.client.video_probe_python = "C:/isolated-runtime/python.exe"
+            harness.jobs._save_job(project_id, job)
+            probe_result = {
+                "available": True, "width": 832, "height": 480,
+                "fps": 24.0, "duration_seconds": 4.458,
+                "video_codec": "h264", "audio_stream": False,
+                "frame_count": 107, "container_format": "mov,mp4",
+                "probe_tool": "pinned_runtime_pyav",
+            }
+            with patch("runtime.media_probe.probe_media_file",
+                       return_value=probe_result) as probe:
+                harness.jobs._update_delivery_probe(
+                    project_id, job, str(harness.media))
+
+            probe.assert_called_once_with(
+                harness.media, runtime_paths=None,
+                python_executable="C:/isolated-runtime/python.exe")
+            _, saved = harness.store.find_job(harness.job_id)
+            delivery = saved["execution_trace"]["delivery"]
+            self.assertEqual(delivery["probe_tool"], "pinned_runtime_pyav")
+            self.assertEqual(delivery["frame_count"], 107)
+            self.assertNotIn("python.exe", json.dumps(delivery))
+
     def test_missing_media_and_media_probe_failure_are_distinct(self):
         with RecoveryHarness() as harness:
             missing = dict(harness.history, outputs={
@@ -769,7 +796,7 @@ class TestResultRecovery(unittest.TestCase):
         harness = RecoveryHarness()
         probe_calls = 0
 
-        def fake_probe(_path, runtime_paths=None):
+        def fake_probe(_path, runtime_paths=None, python_executable=None):
             nonlocal probe_calls
             probe_calls += 1
             if probe_calls == 1:
@@ -784,6 +811,8 @@ class TestResultRecovery(unittest.TestCase):
             }
 
         try:
+            harness.output_api.experimental_video_probe_python = (
+                "C:/isolated-runtime/python.exe")
             with patch("runtime.media_probe.probe_media_file", side_effect=fake_probe):
                 harness.jobs.recover_result(harness.job_id)
                 stored = harness.store.find_job(harness.job_id)[1]

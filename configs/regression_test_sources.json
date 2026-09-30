@@ -19,15 +19,15 @@
     {
       "path": "tests/test_a5_p36_experimental_preflight.py",
       "tracked_status": "tracked",
-      "sha256": "9C8B0A6EFB8F890CDAFAD5B3F192C390376D5DE6773547F53F381AF2503AA834",
+      "sha256": "7AE6FD3619ACB4D9413D396DDEF528BB385CA124A2271A037504B1CEDF840893",
       "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_a5_result_pipeline_recovery.py",
       "tracked_status": "tracked",
-      "sha256": "7AAE17E47033D0DAB07002C89DC9BCA8760D4A7C826BE60AA0C0EA3AA0A632E6",
-      "discovered_test_count": 22,
+      "sha256": "0E5CE3306BD9CC6BE956318C8A0ACA0C94B7E495352900BB5454E0EEFE682DC5",
+      "discovered_test_count": 23,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -292,8 +292,8 @@
     {
       "path": "tests/test_media_probe.py",
       "tracked_status": "tracked",
-      "sha256": "FC6976BB395A0CDA9310F5C32EC5DA5E4B237C44DB08BF82D8430B9DB8972D0C",
-      "discovered_test_count": 5,
+      "sha256": "372D340236CC647CF68B41943D81321AB9297F1CD85DDEEE97D8E5298F12BFC5",
+      "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
     {

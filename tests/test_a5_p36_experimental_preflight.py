@@ -634,6 +634,12 @@ class TestExperimentalMediaToolIsolation(unittest.TestCase):
                     self.assertEqual(clients[0][1].get("ffmpeg_path"),
                                      str(production_ffmpeg))
                     self.assertNotIn("ffmpeg_path", clients[1][1])
+                    self.assertEqual(
+                        clients[1][1].get("video_probe_python"),
+                        registry["config"]["python_executable"])
+                    self.assertEqual(
+                        server.apis["job"].output_api.experimental_video_probe_python,
+                        registry["config"]["python_executable"])
                     self.assertTrue(server.apis["job"].experimental_route_enabled)
                 finally:
                     server.server_close()

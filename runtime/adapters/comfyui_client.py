@@ -273,6 +273,7 @@ class ComfyUIClient:
                  output_root: Optional[str] = None,
                  *, strict_output: bool = False,
                  ffmpeg_path: Optional[str] = None,
+                 video_probe_python: Optional[str] = None,
                  health_timeout: float = 5.0,
                  submission_timeout: Optional[float] = None,
                  metadata_timeout: float = 10.0,
@@ -293,6 +294,8 @@ class ComfyUIClient:
         self.output_root = output_root or os.environ.get("H3_COMFY_OUTPUT", "")
         self.strict_output = bool(strict_output)
         self.ffmpeg_path = str(ffmpeg_path) if ffmpeg_path else None
+        self.video_probe_python = (str(video_probe_python)
+                                   if video_probe_python else None)
         # One identity per managed Comfy service lets /prompt and /ws share
         # the same telemetry stream across jobs and reconnects.
         self.client_id = str(client_id or uuid.uuid4())
@@ -807,6 +810,9 @@ class ComfyUIClient:
             except (OSError, RuntimeError, ValueError):
                 continue
         if not available:
+            if self.video_probe_python:
+                self._validate_with_runtime_python(path)
+                return
             raise ComfyUIExecutionError(
                 "ffmpeg is unavailable; cannot validate the generated video")
 
@@ -821,8 +827,22 @@ class ComfyUIClient:
                 continue
             if result.returncode == 0:
                 return
+        if self.video_probe_python:
+            self._validate_with_runtime_python(path)
+            return
         raise ComfyUIExecutionError(
             "MEDIA_PROBE_FAILED: generated video is not decodable")
+
+    def _validate_with_runtime_python(self, path: Path) -> None:
+        """Decode via PyAV bundled in the explicitly selected runtime venv."""
+        from runtime.media_probe import probe_media_file
+
+        probe = probe_media_file(
+            path, python_executable=self.video_probe_python,
+            timeout_seconds=30.0)
+        if not probe.get("available"):
+            raise ComfyUIExecutionError(
+                f"MEDIA_PROBE_FAILURE: {probe.get('error_code', 'MEDIA_PROBE_FAILED')}")
 
     def wait_completion(self, prompt_id: str, timeout_seconds: float = 1500.0,
                         poll_interval: float = 5.0, on_event=None,
