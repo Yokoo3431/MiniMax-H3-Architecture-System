@@ -27,7 +27,7 @@ from apps.architect_video_studio.mock_api.server import make_server  # noqa: E40
 from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
 from runtime.adapters.experimental_runtime_registry import (  # noqa: E402
     EXPECTED_GIT_SHA, EXPECTED_PACKAGES, EXPECTED_RUNTIME_ID,
-    EXPECTED_VERSION, inspect_experimental_runtime_registry,
+    EXPECTED_VERSION, _read_git_head, inspect_experimental_runtime_registry,
     live_runtime_executable_matches, live_runtime_process_matches,
 )
 from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter  # noqa: E402
@@ -232,6 +232,9 @@ class ExperimentalRegistryTests(unittest.TestCase):
                 '__version__ = "0.36.0"\n', encoding="utf-8")
             (source / "comfy_extras" / "nodes_minimax_h3.py").write_text(
                 "class MiniMaxH3AddGuide:\n    pass\n", encoding="utf-8")
+            (source / ".git").mkdir()
+            (source / ".git" / "HEAD").write_text(
+                EXPECTED_GIT_SHA + "\n", encoding="ascii")
             venv = root / ".venv"
             scripts = venv / "Scripts"
             site = venv / "Lib" / "site-packages"
@@ -261,8 +264,10 @@ class ExperimentalRegistryTests(unittest.TestCase):
             distributions = [SimpleNamespace(
                 metadata={"Name": package}, version=version)
                 for package, version in EXPECTED_PACKAGES.items()]
-            with patch("runtime.adapters.experimental_runtime_registry.subprocess.run",
-                       return_value=SimpleNamespace(returncode=0, stdout=EXPECTED_GIT_SHA)), \
+            with patch("runtime.adapters.experimental_runtime_registry.shutil.which",
+                       return_value=None), \
+                    patch("runtime.adapters.experimental_runtime_registry.subprocess.run",
+                          side_effect=AssertionError("registry inspection must not spawn git")), \
                     patch("runtime.adapters.experimental_runtime_registry.importlib.metadata.distributions",
                           return_value=distributions):
                 result = inspect_experimental_runtime_registry(
@@ -275,6 +280,56 @@ class ExperimentalRegistryTests(unittest.TestCase):
             public_json = json.dumps(result["public"])
             self.assertNotIn(str(root), public_json)
             self.assertEqual(len(result["public"]["config_fingerprint"]), 64)
+
+            (source / ".git" / "HEAD").write_text("0" * 40 + "\n", encoding="ascii")
+            mismatched = inspect_experimental_runtime_registry(
+                root, registry_path=registry_file,
+                production_input=root / "prod-input",
+                production_output=root / "prod-output")
+            self.assertFalse(mismatched["valid"])
+            self.assertEqual(mismatched["reason"],
+                             "EXPERIMENTAL_RUNTIME_GIT_SHA_MISMATCH")
+
+    def test_git_head_resolves_packed_ref_without_git_executable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "ComfyUI"
+            git_dir = source / ".git"
+            git_dir.mkdir(parents=True)
+            (git_dir / "HEAD").write_text(
+                "ref: refs/heads/pinned-runtime\n", encoding="ascii")
+            (git_dir / "packed-refs").write_text(
+                f"# pack-refs with: peeled fully-peeled\n{EXPECTED_GIT_SHA} refs/heads/pinned-runtime\n",
+                encoding="ascii")
+            self.assertEqual(_read_git_head(source), EXPECTED_GIT_SHA)
+
+    def test_git_head_resolves_linked_worktree_common_packed_ref(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "worktree" / "ComfyUI"
+            source.mkdir(parents=True)
+            common_git_dir = root / "worktree" / ".git"
+            worktree_git_dir = common_git_dir / "worktrees" / "runtime"
+            worktree_git_dir.mkdir(parents=True)
+            (source / ".git").write_text(
+                "gitdir: ../.git/worktrees/runtime\n",
+                encoding="ascii")
+            (worktree_git_dir / "commondir").write_text("../..\n", encoding="ascii")
+            (worktree_git_dir / "HEAD").write_text(
+                "ref: refs/heads/pinned-runtime\n", encoding="ascii")
+            (common_git_dir / "packed-refs").write_text(
+                f"{EXPECTED_GIT_SHA} refs/heads/pinned-runtime\n", encoding="ascii")
+            self.assertEqual(_read_git_head(source), EXPECTED_GIT_SHA)
+
+    def test_git_head_rejects_invalid_ref_and_returns_detached_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "ComfyUI"
+            git_dir = source / ".git"
+            git_dir.mkdir(parents=True)
+            head = git_dir / "HEAD"
+            head.write_text("ref: ../outside\n", encoding="ascii")
+            self.assertIsNone(_read_git_head(source))
+            head.write_text("0" * 40 + "\n", encoding="ascii")
+            self.assertEqual(_read_git_head(source), "0" * 40)
 
     def test_live_process_must_match_pinned_entry_and_isolated_roots(self):
         root = Path("C:/A5Runtime/ComfyUI")

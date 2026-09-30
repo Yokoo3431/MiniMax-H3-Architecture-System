@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
@@ -42,6 +42,81 @@ def _canonical_path(value: str | Path, *, relative_to: Path | None = None) -> st
     if not path.is_absolute() and relative_to is not None:
         path = relative_to / path
     return os.path.normcase(str(path.resolve()))
+
+
+def _read_git_head(source_root: Path) -> str | None:
+    """Read the checked-out commit from Git metadata without requiring git.exe.
+
+    The desktop shell may launch Studio with a deliberately small PATH.  The
+    pinned runtime identity can still be verified from the local Git metadata,
+    including detached HEADs, packed refs, and linked worktrees.
+    """
+    marker = source_root / ".git"
+    try:
+        if marker.is_dir():
+            git_dir = marker.resolve()
+        elif marker.is_file():
+            marker_text = marker.read_text(encoding="utf-8").strip()
+            if not marker_text.startswith("gitdir:"):
+                return None
+            raw_git_dir = marker_text[len("gitdir:"):].strip()
+            if not raw_git_dir:
+                return None
+            git_dir_path = Path(raw_git_dir)
+            if not git_dir_path.is_absolute():
+                git_dir_path = source_root / git_dir_path
+            git_dir = git_dir_path.resolve()
+        else:
+            return None
+
+        common_dir = git_dir
+        common_dir_file = git_dir / "commondir"
+        if common_dir_file.is_file():
+            raw_common_dir = common_dir_file.read_text(encoding="utf-8").strip()
+            if raw_common_dir:
+                common_dir_path = Path(raw_common_dir)
+                if not common_dir_path.is_absolute():
+                    common_dir_path = git_dir / common_dir_path
+                common_dir = common_dir_path.resolve()
+
+        head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
+        if re.fullmatch(r"[0-9a-fA-F]{40}", head):
+            return head.lower()
+        if not head.startswith("ref: "):
+            return None
+
+        ref = head[5:].strip()
+        ref_path = PurePosixPath(ref)
+        if (not ref or ref_path.is_absolute()
+                or any(part in {"", ".", ".."} for part in ref.split("/"))
+                or "\\" in ref):
+            return None
+
+        relative_ref = Path(*ref_path.parts)
+        for ref_root in (git_dir, common_dir):
+            try:
+                value = (ref_root / relative_ref).read_text(encoding="ascii").strip()
+            except OSError:
+                continue
+            if re.fullmatch(r"[0-9a-fA-F]{40}", value):
+                return value.lower()
+
+        for ref_root in dict.fromkeys((git_dir, common_dir)):
+            packed_refs = ref_root / "packed-refs"
+            try:
+                lines = packed_refs.read_text(encoding="ascii").splitlines()
+            except OSError:
+                continue
+            for line in lines:
+                if not line or line.startswith(("#", "^")):
+                    continue
+                fields = line.split()
+                if (len(fields) == 2 and fields[1] == ref
+                        and re.fullmatch(r"[0-9a-fA-F]{40}", fields[0])):
+                    return fields[0].lower()
+    except (OSError, RuntimeError, UnicodeError, ValueError):
+        return None
+    return None
 
 
 def live_runtime_process_matches(argv: Any, config: Mapping[str, Any]) -> bool:
@@ -215,16 +290,10 @@ def inspect_experimental_runtime_registry(
     if "class MiniMaxH3AddGuide" not in node_source:
         return _invalid("EXPERIMENTAL_ADDGUIDE_SOURCE_MISSING")
 
-    git_executable = shutil.which("git")
-    if not git_executable:
-        return _invalid("EXPERIMENTAL_RUNTIME_GIT_UNAVAILABLE")
-    try:
-        git_result = subprocess.run(
-            [git_executable, "-C", str(source_root), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5, check=False)
-    except (OSError, subprocess.TimeoutExpired):
+    git_head = _read_git_head(source_root)
+    if git_head is None:
         return _invalid("EXPERIMENTAL_RUNTIME_GIT_IDENTITY_UNAVAILABLE")
-    if git_result.returncode != 0 or git_result.stdout.strip().lower() != EXPECTED_GIT_SHA:
+    if git_head != EXPECTED_GIT_SHA:
         return _invalid("EXPERIMENTAL_RUNTIME_GIT_SHA_MISMATCH")
 
     venv_root = python_executable.parent.parent
