@@ -534,10 +534,11 @@ def apply_architecture_profile(prompt: str, workflow_id: str) -> str:
         profile["negative_constraints"])
     if clause in text:
         return text
-    marker = "integrated_multimodal_description:"
-    start = text.find(marker)
+    markers = ("integrated_multimodal_description:", "detailed_description:")
+    marker = next((value for value in markers if text.find(value) >= 0), None)
+    start = text.find(marker) if marker else -1
     if start < 0:
-        raise ValueError("H3 prompt is missing integrated_multimodal_description")
+        raise ValueError("H3 prompt is missing a recognized description section")
     boundary = text.find("\n\noverall_soundscape:", start)
     if boundary < 0:
         raise ValueError("H3 prompt is missing overall_soundscape boundary")

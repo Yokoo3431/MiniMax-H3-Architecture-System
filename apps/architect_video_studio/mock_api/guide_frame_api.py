@@ -8,6 +8,8 @@ from typing import Any
 
 from runtime.a4_profiles import h3_frame_count_for_duration
 from runtime.adapters.multiframe_guide_capability import capability_from_object_info
+from runtime.reference_contract import ref2va_schema_capabilities
+from runtime.adapters.ref2va_workflow_binding import REF2VA_MODEL
 from runtime.multiframe_guides import (
     GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, ROUNDING_POLICY,
     resolve_guide_bindings,
@@ -113,8 +115,38 @@ class GuideFrameAPI:
             health = client.health_check()
             version = str((health.get("system") or {}).get("comfyui_version")
                           or health.get("comfyui_version") or "unknown")
+            object_info = client.object_info()
             result = capability_from_object_info(
-                client.object_info(), runtime_name=name, version=version, port=port)
+                object_info, runtime_name=name, version=version, port=port)
+            schema = ref2va_schema_capabilities(object_info)
+            unet_spec = (((object_info.get("UNETLoader") or {}).get("input") or {})
+                         .get("required") or {}).get("unet_name")
+            def strings(value):
+                if isinstance(value, str):
+                    yield value
+                elif isinstance(value, (list, tuple)):
+                    for child in value:
+                        yield from strings(child)
+            model_choices = list(strings(unet_spec[0])) if isinstance(
+                unet_spec, (list, tuple)) and unet_spec else []
+            vae_spec = (((object_info.get("VAELoader") or {}).get("input") or {})
+                        .get("required") or {}).get("vae_name")
+            vae_choices = list(strings(vae_spec[0])) if isinstance(
+                vae_spec, (list, tuple)) and vae_spec else []
+            model_ready = REF2VA_MODEL in model_choices
+            video_vae_ready = any("video_vae" in item.lower()
+                                  for item in vae_choices)
+            schema.update({
+                "checkpoint": REF2VA_MODEL,
+                "checkpoint_available": model_ready,
+                "video_vae_available": video_vae_ready,
+                "supported_product_media": ["image"],
+                "status": "READY" if schema.get("available") and model_ready
+                          and video_vae_ready else "UNAVAILABLE",
+                "reason": ("" if schema.get("available") and model_ready and video_vae_ready
+                           else "REF2VA_CHECKPOINT_OR_VIDEO_VAE_NOT_DISCOVERED"),
+            })
+            result["ref2va"] = schema
             result["health"] = "PASS"
             return result
         except Exception as exc:  # noqa: BLE001 - capability is a read-only projection

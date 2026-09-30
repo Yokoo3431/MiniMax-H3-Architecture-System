@@ -19,10 +19,12 @@ from runtime.h3_prompt_engine import (
 
 class UniversalH3PromptEngineTests(unittest.TestCase):
     def request(self, mode: str, count: int) -> PromptReasoningRequest:
+        role_options = {"reference_roles": ("identity_reference",)} if mode == "Ref2VA" else {}
         return PromptReasoningRequest(
             mode=mode, duration=5, reference_count=count,
             workflow_id="fixture", camera_motion="walkthrough",
             user_intent="从室内缓慢走向水池边，在蓝调时刻停留",
+            **role_options,
         )
 
     def test_offline_compiles_all_five_modes(self):

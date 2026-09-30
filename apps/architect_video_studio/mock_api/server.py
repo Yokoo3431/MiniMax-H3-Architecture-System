@@ -309,6 +309,13 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             if m and method == "POST":
                 return self._ok(apis["reference"].reject_reference(
                     m.group(1), m.group(2), reason=body.get("reason", "")))
+            m = re.fullmatch(r"/api/projects/([^/]+)/reference-board/([^/]+)", path)
+            if m and method == "POST":
+                return self._ok(apis["reference"].select_role_asset(
+                    m.group(1), m.group(2), body.get("asset_id", "")))
+            if m and method == "DELETE":
+                return self._ok(apis["reference"].clear_role_binding(
+                    m.group(1), m.group(2)))
             m = re.fullmatch(r"/api/projects/([^/]+)/intent", path)
             if m:
                 if method == "GET":

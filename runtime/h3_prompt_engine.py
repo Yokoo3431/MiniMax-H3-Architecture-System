@@ -364,13 +364,52 @@ class OfflineH3Compiler:
             )
             prompt = f"{alignment}\n\n{self._base_fields(description, sound, music)}"
         else:
+            media_by_role = {
+                "motion_reference_video": "Video",
+                "camera_reference_video": "Video",
+                "audio_reference": "Audio",
+            }
+            role_counts = {"Picture": 0, "Video": 0, "Audio": 0}
+            role_lines = []
+            expected_tags = []
+            role_labels = {
+                "first_frame": "opening architectural image",
+                "last_frame": "ending architectural image",
+                "identity_reference": "building identity reference",
+                "style_reference": "style reference",
+                "material_reference": "material reference",
+                "site_reference": "site context reference",
+                "motion_reference_video": "motion reference video",
+                "camera_reference_video": "camera reference video",
+                "audio_reference": "audio reference",
+            }
+            roles = tuple(request.reference_roles or ())
+            if len(roles) != ref_count:
+                raise H3PromptValidationError(
+                    "Ref2VA role list must match the approved reference count")
+            for role in roles:
+                if role not in role_labels:
+                    raise H3PromptValidationError(
+                        f"Ref2VA has no prompt contract for role {role!r}")
+                tag_family = media_by_role.get(role, "Picture")
+                role_counts[tag_family] += 1
+                expected_tags.append(
+                    f"<{tag_family} {role_counts[tag_family]}>")
+                role_lines.append(
+                    f"<{tag_family} {role_counts[tag_family]}> is the {role_labels[role]} "
+                    f"({role}).")
+            role_contract = " ".join(role_lines)
             prompt = (
-                "subject_definitions: <Picture 1> is the approved architectural reference image.\n\n"
-                "summary: Create one continuous architectural video using the declared reference role and the selected mode.\n\n"
-                "retention_analysis: Preserve visible architecture, material identity, composition, and spatial relationships from the reference without inventing unseen details.\n\n"
+                f"subject_definitions: {role_contract}\n\n"
+                "summary: Create one continuous architectural video using each declared reference only for its assigned role.\n\n"
+                "retention_analysis: Preserve the building identity, massing, roof silhouette, facade openings, material character, and site relationships visible in the assigned references; do not redesign the architecture to satisfy style or material cues.\n\n"
                 f"detailed_description: {description}\n\n"
                 f"overall_soundscape: {sound}\n\nnon_diegetic_music: {music}"
             )
+            for tag in expected_tags:
+                if tag not in prompt:
+                    raise H3PromptValidationError(
+                        f"Ref2VA prompt is missing native reference tag {tag}")
         validation = self.validator.require(prompt, mode=mode, duration=duration, reference_count=ref_count)
         contradictions = validate_prompt_intent(prompt, request.user_intent)
         if contradictions:

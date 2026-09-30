@@ -31,6 +31,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_a6_ref2va_contract.py",
+      "tracked_status": "tracked",
+        "sha256": "D52D54C435DF9E52273CB2F67D72235FE9C29C9EFF28709B335C02AF1C89B6FA",
+      "discovered_test_count": 18,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_acceleration_profile.py",
       "tracked_status": "tracked",
       "sha256": "5425BAB940EDBAEAB0FE684DB6AD9C322B6BFDC088556B3007495FE5B3DF2715",

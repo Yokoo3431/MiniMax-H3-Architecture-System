@@ -114,8 +114,8 @@ def validate_request(request: Dict[str, Any],
         errors.append("prompt_payload must be an object")
         prompt = {}
     if prompt:
-        if prompt.get("mode") not in ("I2VA", "FL2VA"):
-            errors.append("prompt_payload.mode must be I2VA|FL2VA")
+        if prompt.get("mode") not in ("I2VA", "FL2VA", "Ref2VA"):
+            errors.append("prompt_payload.mode must be I2VA|FL2VA|Ref2VA")
         if not prompt.get("prompt"):
             errors.append("prompt_payload.prompt is required")
         if not prompt.get("prompt_hash"):
@@ -130,12 +130,17 @@ def validate_request(request: Dict[str, Any],
         from runtime.reference_contract import reference_bindings, required_reference_roles
         try:
             expected_roles = required_reference_roles(str(request.get("workflow_id") or ""))
-            if len(refs) != len(expected_roles):
+            is_ref2va = str(prompt.get("mode") or "") == "Ref2VA"
+            if is_ref2va and str(request.get("workflow_id") or "") == "02_Day_Night_Transition":
+                errors.append("REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED")
+            endpoint_refs = ([ref for ref in refs if ref.get("role") in expected_roles]
+                             if is_ref2va else refs)
+            if len(endpoint_refs) != len(expected_roles):
                 errors.append(f"A4.1 requires reference roles {list(expected_roles)}")
             else:
                 asset_ids = []
                 hashes = []
-                for ref, role in zip(refs, expected_roles):
+                for ref, role in zip(endpoint_refs, expected_roles):
                     if ref.get("role") != role:
                         errors.append(f"A4.1 reference role order must be {list(expected_roles)}")
                     if ref.get("project_id") != request.get("study_id"):
@@ -149,7 +154,8 @@ def validate_request(request: Dict[str, Any],
                 if len(hashes) > 1 and hashes[0] and hashes[1] and hashes[0] == hashes[1]:
                     errors.append("A4.1 first and last references must have distinct content")
                 prompt_refs = prompt.get("reference_bindings") or []
-                if prompt_refs != reference_bindings(refs):
+                expected_bindings = reference_bindings(refs, ref2va=is_ref2va)
+                if prompt_refs != expected_bindings:
                     errors.append("A4.1 Prompt reference bindings differ from Job references")
             resolved, resolved_profile = resolve_product_parameters(
                 str(request.get("workflow_id") or ""), params,

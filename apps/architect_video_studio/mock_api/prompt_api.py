@@ -29,9 +29,10 @@ from runtime.prompt_provenance import (
     stable_hash,
 )
 from runtime.reference_contract import reference_bindings, resolve_selected_references
+from runtime.reference_contract import REF2VA_ROLE_ORDER, required_reference_roles
 from runtime.workflow_motion import normalize_camera_motion
 from runtime.h3_prompt_engine import (
-    CLIReasoningProvider, OpenAICompatibleProvider, PromptReasoningRequest,
+    CLIReasoningProvider, OfflineH3Compiler, OpenAICompatibleProvider, PromptReasoningRequest,
     CLI_PROVIDER_IDS, UniversalPromptEngine, discover_providers, provider_summary,
     H3PromptValidator, test_provider_configuration,
 )
@@ -175,13 +176,23 @@ class PromptAPI:
             raise ValueError(f"workflow {workflow!r} not in frozen set {FROZEN_WORKFLOWS}")
 
         refs = self.store.load_references(project_id)
+        selected_roles = project.get("selected_reference_asset_ids") or {}
+        required_roles = required_reference_roles(workflow)
+        has_ref2va_roles = any(
+            role not in required_roles and selected_roles.get(role)
+            for role in REF2VA_ROLE_ORDER)
+        if has_ref2va_roles and workflow == "02_Day_Night_Transition":
+            raise ValueError(
+                "REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED: 日夜首末帧仍使用现有 FL2VA 语义")
         approved = resolve_selected_references(
             project_id, project, refs, workflow, require_approved=True,
-            reference_root=self.store.input_dir(project_id))
+            reference_root=self.store.input_dir(project_id),
+            include_ref2va_roles=has_ref2va_roles)
         current = next((item for item in approved
                         if item.get("role") == "first_frame"), approved[0])
         current_id = current.get("id")
-        selected_bindings = reference_bindings(approved)
+        ref2va_mode = has_ref2va_roles
+        selected_bindings = reference_bindings(approved, ref2va=ref2va_mode)
 
         reference_paths = [r["stored_path"] or r["filename"] for r in approved]
         reference_hash = reference_asset_hash(approved)
@@ -234,13 +245,15 @@ class PromptAPI:
                     "fallback": False,
                 })
             else:
-                mode = "FL2VA" if workflow == "02_Day_Night_Transition" else "I2VA"
-                prompt = self._configured_engine().generate(
-                    PromptReasoningRequest(
+                mode = ("Ref2VA" if ref2va_mode else
+                        "FL2VA" if workflow == "02_Day_Night_Transition" else "I2VA")
+                reasoning_request = PromptReasoningRequest(
                         mode=mode,
                         duration=resolved_duration,
                         user_intent=intent.get("natural_language", ""),
-                        reference_role="first_and_last_frame" if mode == "FL2VA" else "first_frame",
+                        reference_role=("multi_reference_roles" if mode == "Ref2VA"
+                                        else "first_and_last_frame" if mode == "FL2VA"
+                                        else "first_frame"),
                         reference_count=len(approved),
                         workflow_id=workflow,
                         camera_motion=camera_motion,
@@ -251,9 +264,15 @@ class PromptAPI:
                         image_consent=bool(image_consent),
                         metadata={"generation_parameters": params,
                                   "a4_profile": profile_context},
-                    ),
-                    provider=prompt_engine,
-                )
+                    )
+                if mode == "Ref2VA":
+                    # A6 requires exact tag-to-slot alignment.  Keep this
+                    # path deterministic/offline until a reviewed multi-role
+                    # prompt provider contract is explicitly added.
+                    prompt = OfflineH3Compiler().compile(reasoning_request)
+                else:
+                    prompt = self._configured_engine().generate(
+                        reasoning_request, provider=prompt_engine)
         except Exception as exc:  # noqa: BLE001 - product fallback boundary
             # A fallback is allowed for inspection, but it must never wear the
             # official-success badge or pass the generation gate.
@@ -293,9 +312,15 @@ class PromptAPI:
         profiled_prompt = apply_architecture_profile(prompt.get("prompt", ""), workflow)
         prompt["prompt"] = profiled_prompt
         prompt["optimized_prompt"] = profiled_prompt
-        desc_start = profiled_prompt.find("integrated_multimodal_description:")
-        desc_start += len("integrated_multimodal_description:")
+        description_label = ("detailed_description:" if prompt.get("mode") == "Ref2VA"
+                             else "integrated_multimodal_description:")
+        desc_start = profiled_prompt.find(description_label)
+        if desc_start < 0:
+            raise ValueError("PROMPT_DESCRIPTION_SECTION_MISSING")
+        desc_start += len(description_label)
         desc_end = profiled_prompt.find("\n\noverall_soundscape:", desc_start)
+        if desc_end < 0:
+            raise ValueError("PROMPT_DESCRIPTION_SECTION_UNTERMINATED")
         prompt["integrated_multimodal_description"] = (
             profiled_prompt[desc_start:desc_end].strip())
         validation = H3PromptValidator().validate(

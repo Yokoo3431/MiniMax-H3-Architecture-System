@@ -701,6 +701,19 @@ pre.prompt {
 .guide-replace-row { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:center; }
 .guide-replace-row select { min-width:0; }
 .guide-replace-hint { grid-column:1 / -1; }
+.a6-reference-board { display:grid; gap:10px; }
+.a6-reference-board > summary { cursor:pointer; list-style:none; }
+.a6-reference-board > summary::-webkit-details-marker { display:none; }
+.a6-reference-list { display:grid; gap:8px; }
+.a6-role-card { display:grid; gap:7px; padding:9px; border:1px solid var(--line, #39434c); border-radius:7px; background:rgba(255,255,255,.025); }
+.a6-role-card p { margin:0; }
+.a6-role-head { display:flex; align-items:center; gap:9px; min-width:0; }
+.a6-role-head > div { display:grid; gap:3px; min-width:0; }
+.a6-role-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.a6-role-thumb { width:52px; height:42px; object-fit:cover; border-radius:4px; }
+.a6-role-actions { display:flex; flex-wrap:wrap; align-items:center; gap:5px; }
+.a6-role-actions .btn { min-height:32px; }
+.a6-asset-select { min-width:0; }
 .timeline-guide-section [hidden] { display:none !important; }
 .slot-preview { min-height:104px; max-height:164px; background:rgba(0,0,0,.13); }
 .slot-preview .reference-image { max-height:154px; object-fit:contain; }
@@ -1069,6 +1082,8 @@ input[type=text], select, textarea { padding: 5px 8px; }
 .app-study .reference-preview { min-height: 168px; color: #9baba4; background: #121717; }
 .app-study .reference-image { max-height: 210px; }
 .app-study .reference-slot { border-color:#3d4a45; background:#171d1b; }
+.app-study .a6-role-card { border-color:#3d4a45; background:#171d1b; }
+.app-study .a6-reference-board > summary { color:#eef3f0; }
 .app-study .slot-preview { min-height:112px; max-height:164px; color:#9baba4; background:#121717; }
 .app-study .slot-preview .reference-image { max-height:154px; }
 .app-study .ux2-viewport {

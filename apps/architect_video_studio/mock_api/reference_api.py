@@ -14,11 +14,16 @@ from typing import Any, Dict, List, Optional
 
 from .store import StudioStore
 from runtime.reference_contract import (
-    ACTIVE_REFERENCE_ROLES, resolve_selected_references,
+    ACTIVE_REFERENCE_ROLES, REF2VA_ROLE_MEDIA, REF2VA_ROLE_ORDER,
+    resolve_selected_references,
 )
 from ..state_machine.machine import IllegalTransitionError, ProjectStateMachine
 
-_REFERENCE_ROLES = (*ACTIVE_REFERENCE_ROLES, "timeline_guide")
+_REFERENCE_ROLES = (*ACTIVE_REFERENCE_ROLES, *REF2VA_ROLE_ORDER,
+                    "timeline_guide")
+_IMAGE_ROLES = {role for role, family in REF2VA_ROLE_MEDIA.items()
+                if family == "image"}
+_UPLOAD_LIMIT_BYTES = 20 * 1024 * 1024
 
 
 class ReferenceAPI:
@@ -30,6 +35,7 @@ class ReferenceAPI:
                          role: str = "first_frame",
                          data_base64: Optional[str] = None) -> Dict[str, Any]:
         project = self.store.load_project(project_id)
+        refs = self.store.load_references(project_id)
         if project["state"] not in (
                 "CREATED", "REFERENCE_PENDING", "REFERENCE_REJECTED",
                 "REFERENCE_APPROVED", "PROMPT_REVIEW", "PROMPT_NEEDS_CONFIRMATION",
@@ -40,31 +46,47 @@ class ReferenceAPI:
             )
         if role not in _REFERENCE_ROLES:
             raise ValueError(f"role {role!r} not in {_REFERENCE_ROLES}")
+        if role in REF2VA_ROLE_MEDIA and REF2VA_ROLE_MEDIA[role] != "image":
+            raise ValueError(
+                f"REF2VA_MEDIA_INGEST_NOT_READY:{role}: video/audio upload is not enabled")
+        if (role in _IMAGE_ROLES and role not in ACTIVE_REFERENCE_ROLES
+                and not data_base64):
+            raise ValueError("REFERENCE_IMAGE_REQUIRED: A6 role uploads require image bytes")
         filename = Path(filename).name  # strip any path component
 
         stored_path: Optional[Path] = None
         sha256 = None
         if data_base64:
+            max_encoded_chars = 4 * ((_UPLOAD_LIMIT_BYTES + 2) // 3)
+            if role in _IMAGE_ROLES and len(data_base64) > max_encoded_chars:
+                raise ValueError("REFERENCE_IMAGE_TOO_LARGE: maximum upload is 20 MiB")
             raw = base64.b64decode(data_base64, validate=True)
+            if role in _IMAGE_ROLES:
+                if len(raw) > _UPLOAD_LIMIT_BYTES:
+                    raise ValueError("REFERENCE_IMAGE_TOO_LARGE: maximum upload is 20 MiB")
+                if not self._looks_like_image(raw, filename):
+                    raise ValueError("REFERENCE_IMAGE_INVALID: upload must be a supported image")
             sha256 = hashlib.sha256(raw).hexdigest().upper()
 
             # Reuse an already approved asset with the same content hash.  A
             # second pending upload is kept as a separate review record so
             # the approval workflow remains explicit and backwards compatible.
-            existing = next((item for item in self.store.load_references(project_id).values()
+            existing = next((item for item in refs.values()
                              if item.get("sha256") == sha256
                              and item.get("role") == role
                              and item.get("state") == "APPROVED"), None)
             if existing is not None:
                 return self._public_ref(existing)
-            selected = project.get("selected_reference_asset_ids") or {}
-            opposite_role = "last_frame" if role == "first_frame" else "first_frame"
-            opposite = self.store.load_references(project_id).get(
-                selected.get(opposite_role))
-            if (role in ACTIVE_REFERENCE_ROLES and opposite
-                    and opposite.get("sha256") == sha256):
-                raise ValueError(
-                    "REFERENCE_DUPLICATE_CONTENT: 首帧和末帧必须是不同的已批准图像")
+            if role != "timeline_guide":
+                selected = project.get("selected_reference_asset_ids") or {}
+                for selected_role, selected_id in selected.items():
+                    if selected_role == role:
+                        continue
+                    selected_ref = refs.get(str(selected_id))
+                    if (selected_ref and str(selected_ref.get("sha256") or "").lower()
+                            == sha256.lower()):
+                        raise ValueError(
+                            "REFERENCE_DUPLICATE_CONTENT: 不同参考角色不能绑定相同图像内容")
 
         ref_id = self.store.new_id("ref")
         if data_base64:
@@ -80,6 +102,8 @@ class ReferenceAPI:
             "filename": filename,
             "stored_path": str(stored_path) if stored_path else None,
             "role": role,
+            "media_type": "image",
+            "source_identity": (f"sha256:{sha256.lower()}" if sha256 else None),
             "state": "PENDING",
             "quality_card": quality_card,
             "sha256": sha256,
@@ -89,10 +113,9 @@ class ReferenceAPI:
             "rejected_at": None,
             "reject_reason": "",
         }
-        refs = self.store.load_references(project_id)
         refs[ref_id] = ref
         self.store.save_references(project_id, refs)
-        if role != "timeline_guide":
+        if role in ACTIVE_REFERENCE_ROLES:
             # Endpoint images participate in Prompt provenance and the existing
             # reference gate. A storyboard guide is independently approved and
             # must not reopen or replace either endpoint slot.
@@ -122,7 +145,9 @@ class ReferenceAPI:
         ref = self.upload_reference(project_id, filename, role, data_base64)
         if ref["state"] == "PENDING":
             ref = self.approve_reference(project_id, ref["id"])
-        elif role != "timeline_guide":
+        elif role in REF2VA_ROLE_ORDER and role not in ACTIVE_REFERENCE_ROLES:
+            self.select_role_asset(project_id, role, ref["id"])
+        elif role in ACTIVE_REFERENCE_ROLES:
             # A deduplicated approved asset is still an explicit selection for
             # this Study; do not infer it from historical approved records.
             project = self.store.load_project(project_id)
@@ -159,6 +184,10 @@ class ReferenceAPI:
             raise KeyError(f"reference not found: {reference_id}")
         if ref["state"] != "PENDING":
             raise ValueError(f"reference {reference_id} is {ref['state']}, not PENDING")
+        role = str(ref.get("role") or "")
+        if role in REF2VA_ROLE_ORDER and role not in ACTIVE_REFERENCE_ROLES:
+            self._validate_a6_image_asset(
+                project_id, ref, role, refs, project, require_approved=False)
         selected = project.get("selected_reference_asset_ids") or {}
         opposite_role = "last_frame" if ref.get("role") == "first_frame" else "first_frame"
         opposite = refs.get(selected.get(opposite_role))
@@ -172,6 +201,15 @@ class ReferenceAPI:
         if ref.get("role") == "timeline_guide":
             self._audit(project_id, "approve_timeline_guide_asset", project["state"],
                         {"reference_id": reference_id})
+            return self._public_ref(ref)
+        if role in REF2VA_ROLE_ORDER and role not in ACTIVE_REFERENCE_ROLES:
+            selected = dict(project.get("selected_reference_asset_ids") or {})
+            selected[role] = reference_id
+            project["selected_reference_asset_ids"] = selected
+            self.store.save_project(project)
+            self.store.clear_prompt(project_id)
+            self._audit(project_id, "approve_reference_role_asset", project["state"],
+                        {"reference_id": reference_id, "role": role})
             return self._public_ref(ref)
         # The current reference is an explicit Study selection, not an
         # inference over every historical APPROVED record.
@@ -236,6 +274,104 @@ class ReferenceAPI:
 
     def get_approved_references(self, project_id: str) -> List[Dict[str, Any]]:
         return [r for r in self.list_references(project_id) if r["state"] == "APPROVED"]
+
+    def select_role_asset(self, project_id: str, role: str,
+                          reference_id: str) -> Dict[str, Any]:
+        """Explicitly bind an existing approved image to one A6 role slot."""
+        if role not in REF2VA_ROLE_ORDER or role in ACTIVE_REFERENCE_ROLES:
+            raise ValueError("REFERENCE_BOARD_ROLE_INVALID")
+        project = self.store.load_project(project_id)
+        refs = self.store.load_references(project_id)
+        ref = refs.get(str(reference_id or ""))
+        if ref is None:
+            raise KeyError("REFERENCE_NOT_FOUND")
+        self._validate_a6_image_asset(
+            project_id, ref, role, refs, project, require_approved=True)
+        selected = dict(project.get("selected_reference_asset_ids") or {})
+        if selected.get(role) == reference_id:
+            return {"selected_reference_asset_ids": selected,
+                    "references": self.list_references(project_id),
+                    "selected": self._public_ref(ref)}
+        selected[role] = reference_id
+        project["selected_reference_asset_ids"] = selected
+        self.store.save_project(project)
+        self.store.clear_prompt(project_id)
+        self._audit(project_id, "select_reference_role_asset", project["state"],
+                    {"reference_id": reference_id, "role": role})
+        return {"selected_reference_asset_ids": selected,
+                "references": self.list_references(project_id),
+                "selected": self._public_ref(ref)}
+
+    def _validate_a6_image_asset(self, project_id: str, ref: Dict[str, Any],
+                                 role: str, refs: Dict[str, Dict[str, Any]],
+                                 project: Dict[str, Any], *,
+                                 require_approved: bool) -> None:
+        if role not in _IMAGE_ROLES:
+            raise ValueError("REF2VA_MEDIA_INGEST_NOT_READY")
+        if str(ref.get("project_id") or "") != str(project_id):
+            raise ValueError("REFERENCE_CROSS_PROJECT")
+        if ref.get("role") != role:
+            raise ValueError("REFERENCE_ROLE_MISMATCH")
+        if require_approved and ref.get("state") != "APPROVED":
+            raise ValueError("REFERENCE_NOT_APPROVED")
+        if str(ref.get("media_type") or "image").lower() != "image":
+            raise ValueError("REFERENCE_MEDIA_TYPE_MISMATCH")
+        digest = str(ref.get("sha256") or "").strip().lower()
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise ValueError("REFERENCE_HASH_MISSING")
+        stored_path = ref.get("stored_path")
+        root = self.store.input_dir(project_id).resolve()
+        if not stored_path:
+            raise ValueError("REFERENCE_ASSET_MISSING")
+        path = Path(str(stored_path)).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ValueError("REFERENCE_ASSET_MISSING_OR_OUTSIDE_STUDY")
+        digest_state = hashlib.sha256()
+        with path.open("rb") as image_file:
+            for chunk in iter(lambda: image_file.read(1024 * 1024), b""):
+                digest_state.update(chunk)
+        actual = digest_state.hexdigest()
+        if actual.lower() != digest:
+            raise ValueError("REFERENCE_STALE_CONTENT")
+        selected = project.get("selected_reference_asset_ids") or {}
+        for other_role, other_id in selected.items():
+            if other_role == role and str(other_id) == str(ref.get("id")):
+                continue
+            other = refs.get(str(other_id))
+            if other is None:
+                raise ValueError("REFERENCE_SELECTION_STALE")
+            if str(other.get("sha256") or "").strip().lower() == digest:
+                raise ValueError("REFERENCE_DUPLICATE_CONTENT")
+
+    def clear_role_binding(self, project_id: str, role: str) -> Dict[str, Any]:
+        """Remove the current A6 role selection, preserving immutable Job history."""
+        if role not in REF2VA_ROLE_ORDER or role in ACTIVE_REFERENCE_ROLES:
+            raise ValueError("REFERENCE_BOARD_ROLE_INVALID")
+        project = self.store.load_project(project_id)
+        selected = dict(project.get("selected_reference_asset_ids") or {})
+        removed = selected.pop(role, None)
+        if removed is None:
+            raise KeyError("reference role is not selected")
+        project["selected_reference_asset_ids"] = selected
+        self.store.save_project(project)
+        self.store.clear_prompt(project_id)
+        self._audit(project_id, "remove_reference_role_binding", project["state"],
+                    {"role": role, "reference_id": removed})
+        return {"selected_reference_asset_ids": selected,
+                "references": self.list_references(project_id)}
+
+    @staticmethod
+    def _looks_like_image(raw: bytes, filename: str) -> bool:
+        """Conservative signature gate for newly added A6 image roles."""
+        suffix = Path(filename).suffix.lower()
+        signatures = {
+            ".png": raw.startswith(b"\x89PNG\r\n\x1a\n"),
+            ".jpg": raw.startswith(b"\xff\xd8\xff"),
+            ".jpeg": raw.startswith(b"\xff\xd8\xff"),
+            ".webp": len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP",
+            ".bmp": raw.startswith(b"BM"),
+        }
+        return bool(signatures.get(suffix, False))
 
     def _public_ref(self, ref: Dict[str, Any]) -> Dict[str, Any]:
         """Return browser-safe metadata; never expose the stored filesystem path."""

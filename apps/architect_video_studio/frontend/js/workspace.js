@@ -15,6 +15,7 @@ let guideFrames = [];
 let guideCapabilities = null;
 let guideResolution = null;
 let pendingGuideFile = null;
+const pendingA6Files = Object.create(null);
 let guideResolveSerial = 0;
 let selectedRef = null;
 let pendingFile = null;
@@ -33,6 +34,12 @@ const VIDEO_TYPES = [
   ['03_Material_Detail', 'Material Detail'],
   ['04_Drone_Aerial', 'Drone Aerial'],
   ['05_Slow_Walkthrough', 'Slow Walkthrough'],
+];
+const A6_IMAGE_ROLES = [
+  ['identity_reference', '建筑身份', '保持建筑主体、体量与辨识特征'],
+  ['style_reference', '风格参考', '仅提供风格方向，不覆盖建筑身份'],
+  ['material_reference', '材质参考', '仅提供材料与表面质感线索'],
+  ['site_reference', '场地参考', '提供场地与环境关系线索'],
 ];
 const TYPE_HELP = {
   '01_Exterior_Hero': '建筑外观主镜头，适合入口、立面与整体空间展示。',
@@ -261,6 +268,7 @@ function renderOutputDirectory() {
 
 function refUrl(ref) { return ref && ref.preview_ready ? ref.preview_url : null; }
 function renderRefs() {
+  renderReferenceBoard();
   const dayNight = currentWorkflow() === '02_Day_Night_Transition';
   document.getElementById('single-reference-controls').hidden = dayNight;
   document.getElementById('day-night-reference-slots').hidden = !dayNight;
@@ -294,6 +302,83 @@ function renderRefs() {
   document.getElementById('upload-btn').disabled = true;
   showViewportRef(selectedRef);
   renderGuideFrames();
+}
+
+function selectedA6RoleIds() {
+  const selected = project?.selected_reference_asset_ids || {};
+  return A6_IMAGE_ROLES.map(([role]) => [role, selected[role]])
+    .filter(([, assetId]) => !!assetId);
+}
+
+function renderReferenceBoard() {
+  const root = document.getElementById('a6-reference-list');
+  if (!root) return;
+  const selected = project?.selected_reference_asset_ids || {};
+  const experimental = guideCapabilities?.experimental || {};
+  const ref2va = experimental.ref2va || {};
+  const routeEnabled = guideCapabilities?.experimental_job_route_enabled === true;
+  const experimentPurposeAvailable = guideFrames.length > 0
+    || selectedA6RoleIds().length > 0;
+  const dayNight = currentWorkflow() === '02_Day_Night_Transition';
+  const capability = document.getElementById('a6-runtime-capability');
+  if (capability) {
+    if (ref2va.status === 'READY' && routeEnabled) {
+      capability.textContent = '隔离实验运行时已报告 Ref2VA 与所需模型能力；A6 仍需显式选中实验运行时。当前 Study 参考图不会自动送入生成。';
+      capability.dataset.state = 'ready';
+    } else if (ref2va.available) {
+      capability.textContent = '检测到原生 Ref2VA 节点，但官方 Ref2VA 权重或 Video VAE 未就绪；生成保持关闭。';
+      capability.dataset.state = 'unavailable';
+    } else {
+      capability.textContent = 'Ref2VA 实验能力当前不可用；角色绑定可保存为 Study 元数据，但不会静默转成提示词或普通 I2VA。';
+      capability.dataset.state = 'unavailable';
+    }
+  }
+  root.innerHTML = A6_IMAGE_ROLES.map(([role, label, help]) => {
+    const currentId = String(selected[role] || '');
+    const current = refs.find((item) => String(item.id) === currentId);
+    const otherSelections = Object.entries(selected)
+      .filter(([otherRole, assetId]) => otherRole !== role && assetId)
+      .map(([, assetId]) => refs.find((item) => String(item.id) === String(assetId)))
+      .filter(Boolean);
+    const usedIdsElsewhere = new Set(otherSelections.map((item) => String(item.id)));
+    const hashesUsedElsewhere = new Set(otherSelections
+      .filter(Boolean).map((item) => String(item.sha256 || '').toLowerCase()));
+    const candidates = refs.filter((item) => item.role === role
+      && item.state === 'APPROVED'
+      && String(item.media_type || 'image').toLowerCase() === 'image'
+      && /^[0-9a-f]{64}$/i.test(String(item.sha256 || ''))
+      && (!usedIdsElsewhere.has(String(item.id)) || String(item.id) === currentId)
+      && (!hashesUsedElsewhere.has(String(item.sha256).toLowerCase())
+          || String(item.id) === currentId));
+    const options = ['<option value="">选择本 Study 已审批图片</option>']
+      .concat(candidates.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === currentId ? 'selected' : ''}>${esc(item.filename || item.id)}</option>`));
+    const preview = current && refUrl(current)
+      ? `<img class="a6-role-thumb" src="${esc(refUrl(current))}" alt="${esc(label)}当前图片">`
+      : '<span class="guide-thumb-placeholder" aria-hidden="true">图</span>';
+    const state = current ? '已绑定 · 已审批' : '未绑定';
+    const pendingName = pendingA6Files[role]?.name || '选择图片';
+    return `<article class="a6-role-card" data-a6-role="${esc(role)}">
+      <div class="a6-role-head">${preview}<div><strong>${esc(label)}</strong><span class="muted small">${esc(state)} · ${esc(role)}</span></div></div>
+      <p class="muted small">${esc(help)}</p>
+      <label for="a6-existing-${esc(role)}">已批准资产</label>
+      <select id="a6-existing-${esc(role)}" class="avs-select a6-asset-select" ${dayNight ? 'disabled' : ''}>${options.join('')}</select>
+      <div class="a6-role-actions">
+        <button class="spectrum-Button btn small a6-bind" type="button" ${dayNight || !candidates.some((item) => String(item.id) !== currentId) ? 'disabled' : ''}>绑定所选</button>
+        <input class="a6-file" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
+        <button class="spectrum-Button btn small ghost a6-choose-file" type="button" ${dayNight ? 'disabled' : ''}>${esc(pendingName)}</button>
+        <button class="spectrum-Button btn small a6-upload" type="button" ${dayNight || !pendingA6Files[role] ? 'disabled' : ''}>上传并审批绑定</button>
+        <button class="spectrum-Button btn small ghost a6-remove" type="button" ${!current ? 'disabled' : ''}>移除绑定</button>
+      </div>
+    </article>`;
+  }).join('');
+  const validation = document.getElementById('a6-reference-validation');
+  if (validation) {
+    validation.textContent = dayNight
+      ? '当前 Day / Night 工作流保留 first_frame + last_frame 的 FL2VA 契约；请先移除 A6 角色或切换工作流。'
+      : selectedA6RoleIds().length
+        ? '已选择 A6 参考角色。生成仅在 Ref2VA 权重、隔离运行时与路由均通过检查后开放。'
+        : '尚无额外 A6 参考角色；现有 first_frame / last_frame 流程不变。';
+  }
 }
 
 function renderDayNightRefs() {
@@ -349,6 +434,60 @@ function showViewportRef(ref) {
   document.getElementById('v-mode-chip').textContent = ref.state === 'APPROVED' ? '参考图已批准 ✓' : '等待参考图审批';
 }
 
+async function refreshReferenceBoardState() {
+  const detail = await get(`/api/projects/${projectId}`);
+  project = detail.project || detail;
+  study = detail.study || await refreshStudy();
+  refs = detail.references || [];
+  intent = detail.intent || intent;
+  prompt = detail.prompt || null;
+  renderRefs(); renderPrompt(); renderHeader(); updateGate();
+  if (study?.reference_approved && intent?.natural_language && !study?.prompt_current) {
+    schedulePromptRefresh(80);
+  }
+}
+
+async function bindA6Asset(role, assetId) {
+  if (!assetId) { showErr('请选择本 Study 内已审批的同角色图片'); return; }
+  try {
+    await post(`/api/projects/${projectId}/reference-board/${encodeURIComponent(role)}`,
+      {asset_id: assetId});
+    clearErr();
+    await refreshReferenceBoardState();
+  } catch (error) { showErr(friendlyError(error, '参考角色绑定失败。')); }
+}
+
+async function removeA6Asset(role) {
+  try {
+    await api('DELETE', `/api/projects/${projectId}/reference-board/${encodeURIComponent(role)}`);
+    clearErr();
+    await refreshReferenceBoardState();
+  } catch (error) { showErr(friendlyError(error, '参考角色移除失败。')); }
+}
+
+async function uploadA6Asset(role) {
+  const file = pendingA6Files[role];
+  if (!file) { showErr('请先选择一张图片'); return; }
+  if (file.size > 20 * 1024 * 1024) {
+    showErr('图片超过 20 MiB 上限，请缩小后再上传。'); return;
+  }
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+      reader.onerror = () => reject(new Error('无法读取所选图片'));
+      reader.readAsDataURL(file);
+    });
+    if (!dataUrl) throw new Error('无法读取所选图片');
+    await post(`/api/projects/${projectId}/references/upload-approve`, {
+      filename: file.name, role, data_base64: dataUrl,
+    });
+    pendingA6Files[role] = null;
+    clearErr();
+    await refreshReferenceBoardState();
+  } catch (error) { showErr(friendlyError(error, '图片上传、审批或绑定失败。')); }
+}
+
 function previewPending(file) {
   pendingFile = file;
   const url = URL.createObjectURL(file);
@@ -363,23 +502,26 @@ function renderGuideFrames() {
   const production = guideCapabilities?.production;
   const experimental = guideCapabilities?.experimental;
   const experimentRoute = guideCapabilities?.experimental_job_route_enabled === true;
-  const canUseExperiment = !!(experimental?.available && experimentRoute);
+  const canRouteExperiment = !!(experimental?.health === 'PASS'
+    && experimentRoute && experimentPurposeAvailable);
   const selector = document.getElementById('runtime-target');
   const experimentOption = selector?.querySelector('option[value="experimental"]');
   if (experimentOption) {
-    experimentOption.disabled = !canUseExperiment;
-    experimentOption.textContent = canUseExperiment
+    experimentOption.disabled = !canRouteExperiment;
+    experimentOption.textContent = canRouteExperiment
       ? '隔离实验 8190（显式选择）' : '隔离实验 8190（未配置/不可用）';
   }
   if (runtime) {
     const prodText = production?.available
       ? `生产 8189：${production.version} · 原生多帧可用`
       : `生产 8189：${production?.version || '未知'} · 不支持原生多帧`;
-    const expText = canUseExperiment
-      ? `隔离实验 8190：${experimental.version} · 可显式选择`
+    const expText = !experimentPurposeAvailable
+      ? '隔离实验 8190：仅限显式 A5 Guide / A6 Ref2VA Job'
+      : canRouteExperiment
+      ? `隔离实验 8190：${experimental.version} · 可显式选择；A5/A6 能力分别校验`
       : `隔离实验 8190：${experimental?.available ? '节点存在，但 Studio 未配置此 Job 路由' : '未运行或不可用'}`;
     runtime.textContent = `${prodText}；${expText}。有分镜引导时不会自动切换运行时。`;
-    runtime.dataset.state = canUseExperiment ? 'ready' : 'unavailable';
+    runtime.dataset.state = canRouteExperiment ? 'ready' : 'unavailable';
   }
 
   const select = document.getElementById('guide-asset-select');
@@ -690,17 +832,23 @@ function updateGate() {
       && prompt && prompt.workflow === currentWorkflow());
   const risk = document.getElementById('risk-check').checked;
   const runtimeTarget = value('runtime-target');
+  const selectedA6 = selectedA6RoleIds();
+  const requiresRef2VA = selectedA6.length > 0;
+  const experimental = guideCapabilities?.experimental;
+  const routeEnabled = guideCapabilities?.experimental_job_route_enabled === true;
   const runtimeCapability = runtimeTarget === 'experimental'
     ? guideCapabilities?.experimental
     : guideCapabilities?.production;
   const runtimeReady = runtimeTarget === 'production'
     ? runtimeCapability?.available === true
-    : runtimeCapability?.available === true
-      && guideCapabilities?.experimental_job_route_enabled === true;
+    : (requiresRef2VA ? experimental?.health === 'PASS'
+                      : experimental?.available === true)
+      && routeEnabled && (guideFrames.length > 0 || requiresRef2VA);
+  const ref2vaReady = experimental?.ref2va?.status === 'READY';
   const button = document.getElementById('generate-btn');
   const preflightButton = document.getElementById('a5-preflight-btn');
   if (preflightButton) {
-    preflightButton.hidden = runtimeTarget !== 'experimental';
+    preflightButton.hidden = runtimeTarget !== 'experimental' || requiresRef2VA;
     preflightButton.disabled = true;
   }
   button.disabled = !(approved && promptReady && risk && study.generate_allowed);
@@ -710,6 +858,31 @@ function updateGate() {
   if (!study?.reference_uploaded) note.textContent = '请先添加参考图';
   else if (!approved) note.textContent = (study.gate_reasons || [])[0] || '参考图尚未满足当前视频类型的角色与审批要求';
   else {
+    if (requiresRef2VA && currentWorkflow() === '02_Day_Night_Transition') {
+      note.textContent = 'Day / Night 保持既有 first_frame + last_frame FL2VA 语义；请先移除 A6 角色绑定。';
+      button.disabled = true;
+      return;
+    }
+    if (requiresRef2VA && guideFrames.length) {
+      note.textContent = '当前不支持将 Ref2VA 多参考与 A5 时间线引导组合；请先移除其中一类。';
+      button.disabled = true;
+      return;
+    }
+    if (requiresRef2VA && runtimeTarget !== 'experimental') {
+      note.textContent = '已绑定 A6 多参考角色；请显式选择隔离实验 8190。不会回退到生产 8189。';
+      button.disabled = true;
+      return;
+    }
+    if (requiresRef2VA && (!runtimeReady || !ref2vaReady)) {
+      note.textContent = 'A6 Ref2VA 尚未就绪：需要隔离运行时路由、原生节点、官方 Ref2VA 权重和 Video VAE；不会创建生成任务。';
+      button.disabled = true;
+      return;
+    }
+    if (runtimeTarget === 'experimental' && !guideFrames.length && !requiresRef2VA) {
+      note.textContent = '隔离运行时仅用于显式 A5 Guide 或 A6 Ref2VA 验收；普通视频继续使用生产 8189。';
+      button.disabled = true;
+      return;
+    }
     if (runtimeTarget === 'experimental' && !runtimeReady) {
       note.textContent = '隔离实验运行时未显式配置或不可用；不会回退到生产运行时';
       button.disabled = true;
@@ -786,7 +959,8 @@ async function generate() {
     };
     if (runtimeTarget === 'experimental') {
       request.runtime_id = 'experimental-h3-8190';
-      request.execution_purpose = 'A5_EXPERIMENTAL_VALIDATION';
+      request.execution_purpose = selectedA6RoleIds().length
+        ? 'A6_REF2VA_VALIDATION' : 'A5_EXPERIMENTAL_VALIDATION';
     }
     const created = await post(`/api/projects/${projectId}/jobs`, request);
     const job = created && (created.job || created);
@@ -928,6 +1102,30 @@ document.getElementById('guide-list').addEventListener('click', (event) => {
     guideId, card.querySelector('.guide-asset-replacement')?.value);
   else if (event.target.closest('.guide-move-up')) moveGuideFrame(guideId, -1);
   else if (event.target.closest('.guide-move-down')) moveGuideFrame(guideId, 1);
+});
+document.getElementById('a6-reference-list').addEventListener('change', (event) => {
+  const card = event.target.closest('[data-a6-role]');
+  if (!card) return;
+  const role = card.dataset.a6Role;
+  if (event.target.matches('.a6-file')) {
+    pendingA6Files[role] = event.target.files[0] || null;
+    renderReferenceBoard();
+  } else if (event.target.matches('.a6-asset-select')) {
+    const currentId = String((project?.selected_reference_asset_ids || {})[role] || '');
+    card.querySelector('.a6-bind').disabled = !event.target.value
+      || event.target.value === currentId
+      || currentWorkflow() === '02_Day_Night_Transition';
+  }
+});
+document.getElementById('a6-reference-list').addEventListener('click', (event) => {
+  const card = event.target.closest('[data-a6-role]');
+  if (!card) return;
+  const role = card.dataset.a6Role;
+  if (event.target.closest('.a6-choose-file')) card.querySelector('.a6-file').click();
+  else if (event.target.closest('.a6-bind')) {
+    bindA6Asset(role, card.querySelector('.a6-asset-select')?.value);
+  } else if (event.target.closest('.a6-upload')) uploadA6Asset(role);
+  else if (event.target.closest('.a6-remove')) removeA6Asset(role);
 });
 document.getElementById('risk-check').addEventListener('change', updateGate);
 document.getElementById('rename-study-btn').addEventListener('click', async () => {

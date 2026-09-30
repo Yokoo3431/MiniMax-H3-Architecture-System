@@ -62,6 +62,9 @@ from runtime.adapters.multiframe_guide_capability import (
     MultiFrameGuideCapabilityAdapter,
 )
 from runtime.multiframe_guides import compile_native_guides
+from runtime.adapters.ref2va_workflow_binding import (
+    REF2VA_MODEL, compile_ref2va_workflow,
+)
 from runtime.result_pipeline import (
     expected_save_video_identity, summarize_history_outputs,
 )
@@ -234,10 +237,12 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             raise WorkflowNotFoundError(f"unknown workflow_id: {workflow_id}")
         mode = registry[workflow_id]["input_mode"]
         refs = data.get("reference_assets") or []
-        if mode == "I2VA" and len(refs) != 1:
+        prompt_mode = str((data.get("prompt_payload") or {}).get("mode") or "")
+        is_ref2va = prompt_mode == "Ref2VA"
+        if mode == "I2VA" and len(refs) != 1 and not is_ref2va:
             raise ValueError(
                 f"{workflow_id} is {mode}: exactly 1 reference required; got {len(refs)}")
-        if mode == "FL2VA" and len(refs) != 2:
+        if mode == "FL2VA" and len(refs) != 2 and not is_ref2va:
             raise ValueError(
                 f"{workflow_id} is {mode}: exactly 2 references (first+last) required; got {len(refs)}")
         supported_cameras = set(registry[workflow_id].get("supported_camera") or [])
@@ -246,9 +251,59 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 f"camera_motion {data.get('camera_motion')!r} not supported by "
                 f"{workflow_id}: {sorted(supported_cameras)}")
         golden = golden_entry(workflow_id)
-        payload = bind_golden_workflow(
-            data, workflow_id,
-            allow_a4_2_candidate=self.allow_a4_2_candidate)
+        ref2va_plan = None
+        if is_ref2va:
+            if workflow_id == "02_Day_Night_Transition":
+                raise ValueError("REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED")
+            if data.get("guide_frames"):
+                raise ValueError(
+                    "REF2VA_WITH_ADDGUIDE_UNVALIDATED: do not combine A5 timeline guides with A6 Ref2VA yet")
+            runtime_url = urlsplit(str(getattr(self.client, "base_url", "")))
+            try:
+                runtime_port = runtime_url.port
+            except ValueError:
+                runtime_port = None
+            if (runtime_url.scheme != "http"
+                    or runtime_url.hostname not in {"127.0.0.1", "localhost"}
+                    or runtime_port != 8190
+                    or runtime_url.username or runtime_url.password):
+                raise ValueError("REF2VA_EXPERIMENTAL_RUNTIME_REQUIRED")
+            live_health = self.client.health_check()
+            live_version = str(live_health.get("comfyui_version")
+                               or (live_health.get("system") or {}).get(
+                                   "comfyui_version") or "unknown")
+            if live_version != "0.36.0":
+                raise ValueError("REF2VA_RUNTIME_VERSION_MISMATCH")
+            if (str(getattr(self, "runtime_identity_spec", {}).get("runtime_id") or "")
+                    != "experimental-h3-8190"):
+                raise ValueError("REF2VA_RUNTIME_IDENTITY_UNVERIFIED")
+            required_roles = required_reference_roles(workflow_id)
+            base_refs = [ref for ref in refs if ref.get("role") in required_roles]
+            if len(base_refs) != len(required_roles):
+                raise ValueError("REF2VA_REQUIRED_ENDPOINT_REFERENCE_MISSING")
+            base_request = {**data, "reference_assets": base_refs}
+            payload = bind_golden_workflow(
+                base_request, workflow_id,
+                allow_a4_2_candidate=self.allow_a4_2_candidate)
+            object_info = self.client.object_info()
+            payload, ref2va_plan = compile_ref2va_workflow(
+                payload, refs, object_info,
+                project_id=str(data.get("study_id") or ""),
+                runtime_id="experimental-h3-8190",
+                video_vae_available=True,
+                audio_vae_available=False,
+                checkpoint=REF2VA_MODEL,
+            )
+            compiled_check = validate_production_payload(
+                payload, object_info, allow_dynamic_asset_inputs=True)
+            if not compiled_check["ready"]:
+                raise ComfyUIExecutionError(
+                    "REF2VA_COMPILED_GRAPH_INVALID: "
+                    + ", ".join(compiled_check.get("errors") or []))
+        else:
+            payload = bind_golden_workflow(
+                data, workflow_id,
+                allow_a4_2_candidate=self.allow_a4_2_candidate)
         guide_capability = None
         guides = list(data.get("guide_frames") or [])
         if guides:
@@ -297,10 +352,12 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             "translated_payload": payload,
             "execution_workflow_sha256": canonical_workflow_sha256(payload),
             "guide_capability": guide_capability,
+            "ref2va_plan": ref2va_plan,
             "binding": {
-                "source_of_truth": source,
+                "source_of_truth": "A6_REF2VA_COMPILER" if is_ref2va else source,
                 "canonical_source": source,
-                "parameter_binder": golden["binder"],
+                "parameter_binder": ("compile_ref2va_workflow" if is_ref2va
+                                      else golden["binder"]),
                 "base_structure_hash": golden.get("base_structure_hash"),
                 "browser_state_ignored": True,
             },

@@ -50,7 +50,10 @@ from runtime.a4_profiles import (
     normalize_quality_id,
     resolve_product_parameters,
 )
-from runtime.reference_contract import reference_bindings, resolve_selected_references
+from runtime.reference_contract import (
+    REF2VA_ROLE_ORDER, reference_bindings, required_reference_roles,
+    resolve_selected_references,
+)
 from runtime.multiframe_guides import (
     GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, resolve_guide_bindings,
 )
@@ -404,21 +407,30 @@ class JobAPI:
     def _validate_experimental_target(self, runtime_target: str, runtime_adapter, *,
                                       runtime_id: Optional[str],
                                       execution_purpose: Optional[str],
-                                      requires_guides: bool) -> None:
+                                      requires_guides: bool,
+                                      requires_ref2va: bool = False) -> None:
         if runtime_target != "experimental":
             if runtime_id not in (None, "", "production-h3-8189"):
                 raise ValueError("RUNTIME_IDENTITY_MISMATCH: production runtime ID rejected")
-            if execution_purpose == "A5_EXPERIMENTAL_VALIDATION":
+            if execution_purpose in {"A5_EXPERIMENTAL_VALIDATION",
+                                     "A6_REF2VA_VALIDATION"}:
                 raise ValueError("EXPERIMENTAL_PURPOSE_TARGET_MISMATCH")
+            if requires_ref2va:
+                raise ValueError("REF2VA_EXPERIMENTAL_RUNTIME_REQUIRED")
             return
         if not self.experimental_route_enabled:
-            raise ValueError("EXPERIMENTAL_ROUTE_DISABLED: A5 route is not enabled")
+            raise ValueError("EXPERIMENTAL_ROUTE_DISABLED: experimental route is not enabled")
         self._validate_experimental_endpoint(runtime_adapter)
         if runtime_id != "experimental-h3-8190":
             raise ValueError("EXPERIMENTAL_RUNTIME_ID_REQUIRED: select experimental-h3-8190")
-        if execution_purpose != "A5_EXPERIMENTAL_VALIDATION":
+        if requires_ref2va:
+            if requires_guides:
+                raise ValueError("REF2VA_WITH_ADDGUIDE_UNVALIDATED")
+            if execution_purpose != "A6_REF2VA_VALIDATION":
+                raise ValueError("EXPERIMENTAL_JOB_NOT_AUTHORIZED: explicit A6 purpose required")
+        elif execution_purpose != "A5_EXPERIMENTAL_VALIDATION":
             raise ValueError("EXPERIMENTAL_JOB_NOT_AUTHORIZED: explicit A5 validation purpose required")
-        if not requires_guides:
+        elif not requires_guides:
             raise ValueError("EXPERIMENTAL_GUIDE_JOB_REQUIRED: route is restricted to A5 guide Jobs")
         spec = getattr(runtime_adapter, "runtime_identity_spec", {}) or {}
         if (spec.get("runtime_id") != "experimental-h3-8190"
@@ -448,10 +460,18 @@ class JobAPI:
             raise ValueError("RUNTIME_TARGET_INVALID: choose production or experimental")
         runtime_adapter = self._adapter_for_target(runtime_target)
         project = self.store.load_project(project_id)
+        intent_for_route = self.store.load_intent(project_id) or {}
+        route_workflow = str(intent_for_route.get("selected_workflow") or "")
+        selected_roles = project.get("selected_reference_asset_ids") or {}
+        required_roles = set(required_reference_roles(route_workflow))
+        requires_ref2va = any(
+            role not in required_roles and selected_roles.get(role)
+            for role in REF2VA_ROLE_ORDER)
         self._validate_experimental_target(
             runtime_target, runtime_adapter, runtime_id=runtime_id,
             execution_purpose=execution_purpose,
-            requires_guides=bool(project.get("guide_frames")))
+            requires_guides=bool(project.get("guide_frames")),
+            requires_ref2va=requires_ref2va)
         if project.get("guide_frames") and runtime_target != "experimental":
             raise ValueError(
                 "GUIDE_RUNTIME_ISOLATION_REQUIRED: timeline guides require isolated port 8190")
@@ -522,11 +542,15 @@ class JobAPI:
             raise ValueError(
                 "WORKFLOW_PROMPT_MISMATCH: 请重新生成当前视频类型的 Prompt。")
         refs_by_id = self.store.load_references(project_id)
+        ref2va_mode = str(prompt.get("mode") or "") == "Ref2VA"
+        if ref2va_mode and runtime_target != "experimental":
+            raise ValueError("REF2VA_EXPERIMENTAL_RUNTIME_REQUIRED")
         approved = resolve_selected_references(
             project_id, project, refs_by_id, prompt.get("workflow"),
             require_approved=True,
-            reference_root=self.store.input_dir(project_id))
-        selected_bindings = reference_bindings(approved)
+            reference_root=self.store.input_dir(project_id),
+            include_ref2va_roles=ref2va_mode)
+        selected_bindings = reference_bindings(approved, ref2va=ref2va_mode)
         prompt_bindings = prompt.get("reference_bindings")
         if prompt.get("a4_profile") and prompt_bindings != selected_bindings:
             raise ValueError(
@@ -555,6 +579,8 @@ class JobAPI:
                                    "comfyui_version") or "")
             if live_version != "0.36.0":
                 raise ValueError("EXPERIMENTAL_RUNTIME_VERSION_MISMATCH")
+            if requires_ref2va:
+                self._require_ref2va_runtime(preflight_result)
         elif runtime_target == "production" and runtime_adapter is not None:
             live_health = (preflight_result or {}).get("health") or {}
             live_version = str(live_health.get("comfyui_version")
@@ -891,13 +917,27 @@ class JobAPI:
 
     def _build_workflow_snapshot(self, request: Any,
                                  approved_refs: List[dict],
-                                 execution_payload: Dict[str, Any]) -> Dict[str, Any]:
+                                 execution_payload: Dict[str, Any], *,
+                                 ref2va_plan: Optional[dict] = None) -> Dict[str, Any]:
         """Persist the exact API graph used for the real Comfy submission."""
         from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
         workflow_id = str(request.workflow_id)
         workflow = json.loads(json.dumps(execution_payload, ensure_ascii=False))
         workflow_hash = canonical_workflow_sha256(workflow)
-        selected_ref_bindings = reference_bindings(approved_refs)
+        ref2va_mode = str((getattr(request, "prompt_payload", None) or {}).get(
+            "mode") or "") == "Ref2VA"
+        selected_ref_bindings = reference_bindings(
+            approved_refs, ref2va=ref2va_mode)
+        reference_execution_plan = None
+        if ref2va_mode:
+            source_plan = ref2va_plan or {}
+            reference_execution_plan = {
+                key: source_plan.get(key)
+                for key in ("schema_version", "runtime_id", "backend", "node",
+                            "limits", "counts", "reference_image_size",
+                            "required_vaes", "bindings")
+                if key in source_plan
+            }
         guide_bindings = [{key: item.get(key) for key in (
             "asset_id", "role", "requested_time_seconds", "resolved_frame_idx",
             "ordinal", "content_sha256", "source_identity", "approval_evidence")}
@@ -914,6 +954,8 @@ class JobAPI:
         return {
             "snapshot_id": snapshot_id,
             "workflow_id": workflow_id,
+            "reference_mode": "Ref2VA" if ref2va_mode else str(
+                (getattr(request, "prompt_payload", None) or {}).get("mode") or ""),
             "file_name": f"golden/{workflow_id}.json",
             "workflow": workflow,
             "execution_payload": workflow,
@@ -921,6 +963,7 @@ class JobAPI:
             "workflow_hash": workflow_hash,
             "asset_hash": asset_hash,
             "reference_bindings": selected_ref_bindings,
+            "reference_execution_plan": reference_execution_plan,
             "guide_count": len(guide_bindings),
             "guide_bindings": guide_bindings,
             "prompt_hash": prompt_hash,
@@ -929,6 +972,43 @@ class JobAPI:
                 for item in approved_refs
             ],
         }
+
+    @staticmethod
+    def _require_ref2va_runtime(preflight_result: Optional[dict]) -> None:
+        """Fail before Job creation unless the live experimental runtime can execute Ref2VA."""
+        from runtime.reference_contract import ref2va_schema_capabilities
+        from runtime.adapters.ref2va_workflow_binding import REF2VA_MODEL
+
+        object_info = (preflight_result or {}).get("object_info") or {}
+        schema = ref2va_schema_capabilities(object_info)
+        if not schema.get("available"):
+            raise ValueError("REF2VA_NODE_SCHEMA_UNAVAILABLE")
+
+        def choices(node_name: str, field: str) -> list[str]:
+            spec = (((object_info.get(node_name) or {}).get("input") or {})
+                    .get("required") or {}).get(field)
+            if not isinstance(spec, (list, tuple)) or not spec:
+                return []
+            value = spec[0]
+            while isinstance(value, (list, tuple)) and value:
+                value = value[0]
+            if isinstance(spec[0], (list, tuple)):
+                pending = list(spec[0])
+                result: list[str] = []
+                while pending:
+                    child = pending.pop(0)
+                    if isinstance(child, (list, tuple)):
+                        pending[0:0] = list(child)
+                    elif isinstance(child, str):
+                        result.append(child)
+                return result
+            return [str(value)] if isinstance(value, str) else []
+
+        if REF2VA_MODEL not in choices("UNETLoader", "unet_name"):
+            raise ValueError("REF2VA_CHECKPOINT_UNAVAILABLE")
+        if not any("video_vae" in item.lower()
+                   for item in choices("VAELoader", "vae_name")):
+            raise ValueError("REF2VA_VIDEO_VAE_UNAVAILABLE")
 
     # ------------------------------------------------------------------ #
     def get_job(self, job_id: str) -> Dict[str, Any]:
@@ -1830,10 +1910,13 @@ class JobAPI:
             "asset_id": r["id"],
             "project_id": project_id,
             "role": r.get("role", "first_frame"),
+            "media_type": r.get("media_type", "image"),
             "approval_state": r.get("state"),
             "path_or_ref": r.get("stored_path") or r.get("filename", "ref.png"),
             "filename": r.get("filename", "ref.png"),
             "sha256": r.get("sha256"),
+            "source_identity": r.get("source_identity"),
+            "requested_fidelity": r.get("requested_fidelity"),
         } for r in approved_refs]
         return VideoGenerationRequest(
             study_id=project_id,
@@ -1896,9 +1979,14 @@ class JobAPI:
                 prepared = runtime_adapter.attach_job_identity(prepared, job_id)
             job = self.store.load_jobs(project_id).get(job_id) or job
             approved = list(request.reference_assets)
+            snapshot_options = {}
+            ref2va_plan = (prepared or {}).get("ref2va_plan")
+            if ref2va_plan is not None:
+                snapshot_options["ref2va_plan"] = ref2va_plan
             job["workflow_snapshot"] = self._build_workflow_snapshot(
                 request, approved,
-                prepared["translated_payload"] if prepared else {}
+                prepared["translated_payload"] if prepared else {},
+                **snapshot_options,
             )
             job["workflow_snapshot_id"] = job["workflow_snapshot"]["snapshot_id"]
             job["workflow_hash"] = job["workflow_snapshot"]["workflow_hash"]
@@ -1906,6 +1994,12 @@ class JobAPI:
             job["asset_hash"] = job["workflow_snapshot"]["asset_hash"]
             trace = dict(job.get("execution_trace") or {})
             trace["workflow_sha256"] = job["execution_workflow_sha256"]
+            if job["workflow_snapshot"].get("reference_execution_plan"):
+                trace["reference_execution_plan"] = job["workflow_snapshot"][
+                    "reference_execution_plan"]
+                trace["ref2va_count"] = len(trace[
+                    "reference_execution_plan"].get("bindings") or [])
+                trace["ref2va_backend"] = "MiniMaxH3ReferenceToVideo"
             is_native_comfy = (getattr(runtime_adapter, "name", "") == "native"
                                and hasattr(getattr(runtime_adapter, "client", None),
                                            "collect_output"))
