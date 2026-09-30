@@ -670,6 +670,11 @@ function updateGate() {
     : runtimeCapability?.available === true
       && guideCapabilities?.experimental_job_route_enabled === true;
   const button = document.getElementById('generate-btn');
+  const preflightButton = document.getElementById('a5-preflight-btn');
+  if (preflightButton) {
+    preflightButton.hidden = runtimeTarget !== 'experimental';
+    preflightButton.disabled = true;
+  }
   button.disabled = !(approved && promptReady && risk && study.generate_allowed);
   button.setAttribute('aria-describedby', 'gate-note');
   button.setAttribute('aria-disabled', String(button.disabled));
@@ -679,6 +684,11 @@ function updateGate() {
   else {
     if (runtimeTarget === 'experimental' && !runtimeReady) {
       note.textContent = '隔离实验运行时未显式配置或不可用；不会回退到生产运行时';
+      button.disabled = true;
+      return;
+    }
+    if (runtimeTarget === 'experimental' && !guideFrames.length) {
+      note.textContent = '隔离实验运行时仅用于显式 A5 多帧引导验证；请先添加并批准分镜引导图';
       button.disabled = true;
       return;
     }
@@ -717,6 +727,11 @@ function updateGate() {
     else if (study.gate_reasons && study.gate_reasons.length) note.textContent = study.gate_reasons[0];
     else note.textContent = '准备完成，可以生成';
   }
+  if (preflightButton) {
+    preflightButton.disabled = !(runtimeTarget === 'experimental' && runtimeReady
+      && approved && promptReady && risk && study?.generate_allowed
+      && guideFrames.length > 0 && guideResolution?.valid === true);
+  }
 }
 
 async function selectVideoType() {
@@ -736,14 +751,46 @@ async function generate() {
     const seed = rawSeed ? parseInt(rawSeed, 10) : Math.floor(Math.random() * 900000000);
     if (!Number.isInteger(seed) || seed < 0) { showErr('Seed 需为非负整数或留空'); return; }
     const params = currentParams(); params.seed = seed;
-    const created = await post(`/api/projects/${projectId}/jobs`, {
+    const runtimeTarget = value('runtime-target');
+    const request = {
       seed, risk_reviewed: true, generation_parameters: params,
-      runtime_target: value('runtime-target'),
-    });
+      runtime_target: runtimeTarget,
+    };
+    if (runtimeTarget === 'experimental') {
+      request.runtime_id = 'experimental-h3-8190';
+      request.execution_purpose = 'A5_EXPERIMENTAL_VALIDATION';
+    }
+    const created = await post(`/api/projects/${projectId}/jobs`, request);
     const job = created && (created.job || created);
     const jobQuery = job?.id ? `&job=${encodeURIComponent(job.id)}` : '';
     location.href = `jobs.html?project=${encodeURIComponent(projectId)}${jobQuery}`;
   } catch (e) { showErr(friendlyError(e, '生成任务提交失败，请检查参考图、提示词和设置。')); }
+}
+
+async function runA5Preflight() {
+  const button = document.getElementById('a5-preflight-btn');
+  const note = document.getElementById('gate-note');
+  if (value('runtime-target') !== 'experimental') return;
+  button.disabled = true;
+  button.textContent = '正在进行 CPU 预检…';
+  try {
+    const rawSeed = value('param-seed').trim();
+    const seed = rawSeed ? parseInt(rawSeed, 10) : 42;
+    if (!Number.isInteger(seed) || seed < 0) throw new Error('Seed 需为非负整数');
+    const params = currentParams(); params.seed = seed;
+    const result = await post(`/api/projects/${projectId}/jobs/preflight`, {
+      seed, risk_reviewed: document.getElementById('risk-check').checked,
+      generation_parameters: params,
+      runtime_target: 'experimental', runtime_id: 'experimental-h3-8190',
+      execution_purpose: 'A5_EXPERIMENTAL_VALIDATION',
+    });
+    note.textContent = `CPU 预检通过 · ${result.guide_count} guides · 帧 ${result.guide_frame_indexes.join(', ')} · workflow ${result.workflow_sha256.slice(0, 12)}…；未提交 /prompt`;
+  } catch (e) {
+    showErr(friendlyError(e, 'A5 CPU 预检未通过；未提交 /prompt。'));
+  } finally {
+    button.textContent = '仅验证 A5 路由（不生成）';
+    updateGate();
+  }
 }
 
 async function pollJobs() {
@@ -825,6 +872,7 @@ document.getElementById('prompt-engine').addEventListener('change', () => {
   prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
 });
 document.getElementById('generate-btn').addEventListener('click', generate);
+document.getElementById('a5-preflight-btn').addEventListener('click', runA5Preflight);
 document.getElementById('runtime-target').addEventListener('change', updateGate);
 document.getElementById('choose-guide-file-btn').addEventListener('click', () =>
   document.getElementById('guide-file').click());

@@ -16,11 +16,15 @@ from runtime.multiframe_guides import (
 
 class GuideFrameAPI:
     def __init__(self, store, production_client=None, experimental_client=None,
-                 experimental_enabled: bool = False) -> None:
+                 experimental_enabled: bool = False,
+                 production_identity: dict | None = None,
+                 experimental_identity: dict | None = None) -> None:
         self.store = store
         self.production_client = production_client
         self.experimental_client = experimental_client
         self.experimental_enabled = bool(experimental_enabled)
+        self.production_identity = dict(production_identity or {})
+        self.experimental_identity = dict(experimental_identity or {})
 
     def list(self, project_id: str) -> dict[str, Any]:
         project = self.store.load_project(project_id)
@@ -29,15 +33,30 @@ class GuideFrameAPI:
         return {"guide_frames": rows, "capabilities": self.capabilities()}
 
     def capabilities(self) -> dict[str, Any]:
+        production = self._inspect_client(
+            self.production_client, "production", 8189)
+        experimental = self._inspect_client(
+            self.experimental_client, "experimental", 8190)
+        production.update(self.production_identity)
+        experimental.update(self.experimental_identity)
         result = {
-            "production": self._inspect_client(
-                self.production_client, "production", 8189),
-            "experimental": self._inspect_client(
-                self.experimental_client, "experimental", 8190),
+            "production": production,
+            "experimental": experimental,
             "routing": "EXPLICIT_ONLY",
             "experimental_job_route_enabled": self.experimental_enabled,
         }
         return result
+
+    def runtime_registry(self) -> dict[str, Any]:
+        """Path-free runtime inventory suitable for the Studio API/UI."""
+        capabilities = self.capabilities()
+        return {
+            "schema_version": 1,
+            "default_runtime_id": "production-h3-8189",
+            "experimental_job_route_enabled": self.experimental_enabled,
+            "runtimes": [capabilities["production"], capabilities["experimental"]],
+            "fallback_policy": "FORBIDDEN",
+        }
 
     @staticmethod
     def _inspect_client(client, name: str, port: int) -> dict[str, Any]:

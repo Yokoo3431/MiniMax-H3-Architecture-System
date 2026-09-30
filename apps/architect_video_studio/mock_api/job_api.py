@@ -91,6 +91,7 @@ def build_runtime_identity(runtime_target: str, runtime_adapter,
     if role not in {"production", "experimental"}:
         role = "unknown"
     client = getattr(runtime_adapter, "client", None)
+    runtime_spec = getattr(runtime_adapter, "runtime_identity_spec", {}) or {}
     backend = "native_comfyui" if client is not None else "mock"
     default_port = 8190 if role == "experimental" else 8189
     base_url = str(getattr(client, "base_url", "") or "")
@@ -120,7 +121,8 @@ def build_runtime_identity(runtime_target: str, runtime_adapter,
     system = health.get("system") if isinstance(health.get("system"), dict) else {}
     version = (health.get("comfyui_version") or system.get("comfyui_version")
                or getattr(client, "comfyui_version", None)
-               or getattr(runtime_adapter, "comfyui_version", None))
+               or getattr(runtime_adapter, "comfyui_version", None)
+               or runtime_spec.get("comfyui_version"))
     version = str(version).strip() if version else None
     if version and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,79}", version):
         version = None
@@ -134,25 +136,32 @@ def build_runtime_identity(runtime_target: str, runtime_adapter,
 
     output_root_fingerprint = str(
         getattr(client, "output_root_fingerprint", "") or "").strip().lower()
-    if not re.fullmatch(r"[0-9a-f]{64}", output_root_fingerprint):
+    if not re.fullmatch(r"(?:[0-9a-f]{24}|[0-9a-f]{64})", output_root_fingerprint):
         output_root_fingerprint = None
-    runtime_id = f"{backend}:{role}:{endpoint_kind}:{port}"
+    default_runtime_id = ("experimental-h3-8190" if role == "experimental"
+                          else "production-h3-8189" if role == "production"
+                          else f"{backend}:{role}:{endpoint_kind}:{port}")
+    runtime_id = str(runtime_spec.get("runtime_id") or default_runtime_id)
     identity = {
-        "identity_schema_version": 1,
+        "identity_schema_version": 2,
         "runtime_id": runtime_id,
         "runtime_role": role,
         "target": role,  # Backward-compatible field used by existing recovery code.
+        "backend": str(runtime_spec.get("backend") or
+                        ("comfyui" if client is not None else "mock")),
         "execution_backend": backend,
         "endpoint_kind": endpoint_kind,
         "port": port,
         "endpoint_fingerprint": endpoint_fingerprint,
         "comfyui_version": version,
-        "comfyui_git_sha": git_sha,
+        "comfyui_git_sha": (runtime_spec.get("comfyui_git_sha") or git_sha),
+        "capabilities": list(runtime_spec.get("capabilities") or []),
         "output_root_fingerprint": output_root_fingerprint,
     }
-    identity["runtime_config_fingerprint"] = hashlib.sha256(json.dumps(
-        identity, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")).hexdigest()
+    identity["runtime_config_fingerprint"] = str(
+        runtime_spec.get("config_fingerprint") or hashlib.sha256(json.dumps(
+            identity, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")).hexdigest())
     return identity
 
 
@@ -168,7 +177,8 @@ class JobAPI:
                  allow_mock_jobs: bool = True,
                  comfy_input_dir: Optional[str] = None,
                  experimental_comfy_input_dir: Optional[str] = None,
-                 runtime_paths: Optional[RuntimePathContract] = None) -> None:
+                 runtime_paths: Optional[RuntimePathContract] = None,
+                 experimental_route_enabled: bool = False) -> None:
         self.store = store
         from .output_api import OutputAPI
         self.output_api = output_api or OutputAPI(store)
@@ -179,6 +189,7 @@ class JobAPI:
         self.comfy_input_dir = comfy_input_dir
         self.experimental_comfy_input_dir = experimental_comfy_input_dir
         self.runtime_paths = runtime_paths
+        self.experimental_route_enabled = bool(experimental_route_enabled)
         self._threads: Dict[str, threading.Thread] = {}
         self._recovery_locks: Dict[str, threading.Lock] = {}
         self._idle_memory_since: Optional[float] = None
@@ -310,9 +321,8 @@ class JobAPI:
         return self._adapter_for_target(str(job.get("runtime_target") or "production"))
 
     @staticmethod
-    def _validate_experimental_target(runtime_target: str, runtime_adapter) -> None:
-        if runtime_target != "experimental":
-            return
+    def _validate_experimental_endpoint(runtime_adapter) -> None:
+        """Validate the isolated loopback endpoint independent of route policy."""
         if runtime_adapter is None:
             raise ValueError(
                 "EXPERIMENTAL_RUNTIME_UNAVAILABLE: A5 requires the isolated native runtime")
@@ -327,27 +337,77 @@ class JobAPI:
             raise ValueError(
                 "EXPERIMENTAL_RUNTIME_IDENTITY_MISMATCH: A5 may use only loopback port 8190")
 
+    def _validate_experimental_target(self, runtime_target: str, runtime_adapter, *,
+                                      runtime_id: Optional[str],
+                                      execution_purpose: Optional[str],
+                                      requires_guides: bool) -> None:
+        if runtime_target != "experimental":
+            if runtime_id not in (None, "", "production-h3-8189"):
+                raise ValueError("RUNTIME_IDENTITY_MISMATCH: production runtime ID rejected")
+            if execution_purpose == "A5_EXPERIMENTAL_VALIDATION":
+                raise ValueError("EXPERIMENTAL_PURPOSE_TARGET_MISMATCH")
+            return
+        if not self.experimental_route_enabled:
+            raise ValueError("EXPERIMENTAL_ROUTE_DISABLED: A5 route is not enabled")
+        self._validate_experimental_endpoint(runtime_adapter)
+        if runtime_id != "experimental-h3-8190":
+            raise ValueError("EXPERIMENTAL_RUNTIME_ID_REQUIRED: select experimental-h3-8190")
+        if execution_purpose != "A5_EXPERIMENTAL_VALIDATION":
+            raise ValueError("EXPERIMENTAL_JOB_NOT_AUTHORIZED: explicit A5 validation purpose required")
+        if not requires_guides:
+            raise ValueError("EXPERIMENTAL_GUIDE_JOB_REQUIRED: route is restricted to A5 guide Jobs")
+        spec = getattr(runtime_adapter, "runtime_identity_spec", {}) or {}
+        if (spec.get("runtime_id") != "experimental-h3-8190"
+                or spec.get("runtime_role") != "experimental"
+                or spec.get("comfyui_version") != "0.36.0"
+                or str(spec.get("comfyui_git_sha") or "").lower()
+                != "ee71d5c4993f29086b27fde1629a945ae48425bf"
+                or not re.fullmatch(r"[0-9a-f]{64}",
+                                    str(spec.get("config_fingerprint") or ""))):
+            raise ValueError("EXPERIMENTAL_RUNTIME_FINGERPRINT_MISMATCH")
+        client = getattr(runtime_adapter, "client", None)
+        configured_output = str(spec.get("output_root_fingerprint") or "")
+        actual_output = str(getattr(client, "output_root_fingerprint", "") or "")
+        if not configured_output or configured_output != actual_output:
+            raise ValueError("EXPERIMENTAL_RUNTIME_OUTPUT_FINGERPRINT_MISMATCH")
+
     # ------------------------------------------------------------------ #
     def submit_job(self, project_id: str, seed: int = 42,
                    risk_reviewed: bool = False,
                    generation_parameters: Optional[Dict[str, Any]] = None,
                    camera_motion: Optional[str] = None,
-                   runtime_target: str = "production") -> Dict[str, Any]:
+                   runtime_target: str = "production",
+                   runtime_id: Optional[str] = None,
+                   execution_purpose: Optional[str] = None,
+                   dry_run: bool = False) -> Dict[str, Any]:
         if runtime_target not in {"production", "experimental"}:
             raise ValueError("RUNTIME_TARGET_INVALID: choose production or experimental")
         runtime_adapter = self._adapter_for_target(runtime_target)
-        self._validate_experimental_target(runtime_target, runtime_adapter)
+        project = self.store.load_project(project_id)
+        self._validate_experimental_target(
+            runtime_target, runtime_adapter, runtime_id=runtime_id,
+            execution_purpose=execution_purpose,
+            requires_guides=bool(project.get("guide_frames")))
+        if project.get("guide_frames") and runtime_target != "experimental":
+            raise ValueError(
+                "GUIDE_RUNTIME_ISOLATION_REQUIRED: timeline guides require isolated port 8190")
         if runtime_adapter is None and not self.allow_mock_jobs:
             raise ValueError(
                 "REAL_RUNTIME_REQUIRED: 真实 ComfyUI 尚未就绪，当前不能开始生成；"
                 "请等待服务启动或前往环境设置/修复。"
             )
-        project = self.store.load_project(project_id)
-        if project.get("guide_frames") and runtime_target != "experimental":
-            raise ValueError(
-                "GUIDE_RUNTIME_ISOLATION_REQUIRED: timeline guides require isolated port 8190")
         previous_project_state = project["state"]
-        if project["state"] == "GPU_FAILED":
+        if dry_run and project["state"] != "USER_CONFIRM":
+            raise ValueError(
+                f"preflight requires USER_CONFIRM; project is {project['state']}")
+        if dry_run:
+            study = build_study_state(self.store, project_id)
+            if not study["generate_allowed"]:
+                raise ValueError(
+                    "PREFLIGHT_STUDY_GATES_FAILED: "
+                    + ", ".join(study["gate_reasons"])
+                )
+        if not dry_run and project["state"] == "GPU_FAILED":
             study = build_study_state(self.store, project_id)
             if not study["generate_allowed"]:
                 raise ValueError(
@@ -359,13 +419,13 @@ class JobAPI:
                                reason="retry after historical failed job")
             project["state"] = machine.state
             self.store.save_project(project)
-        elif project["state"] == "QUALITY_FAILED":
+        elif not dry_run and project["state"] == "QUALITY_FAILED":
             machine = ProjectStateMachine(project["state"])
             machine.transition("user_reviewed", actor="architect",
                                reason="retry after quality failure")
             project["state"] = machine.state
             self.store.save_project(project)
-        elif project["state"] == "COMPLETED":
+        elif not dry_run and project["state"] == "COMPLETED":
             study = build_study_state(self.store, project_id)
             if not study["generate_allowed"]:
                 raise ValueError(
@@ -421,7 +481,23 @@ class JobAPI:
             try:
                 preflight_result = runtime_adapter.preflight()
             except Exception as exc:  # noqa: BLE001
+                if runtime_target == "experimental":
+                    raise ValueError("EXPERIMENTAL_RUNTIME_UNAVAILABLE") from exc
                 raise ValueError(f"MODEL_PATH_ERROR: 模型路径或工作流绑定未通过预检。{exc}") from exc
+        if runtime_target == "experimental":
+            live_health = (preflight_result or {}).get("health") or {}
+            live_version = str(live_health.get("comfyui_version")
+                               or (live_health.get("system") or {}).get(
+                                   "comfyui_version") or "")
+            if live_version != "0.36.0":
+                raise ValueError("EXPERIMENTAL_RUNTIME_VERSION_MISMATCH")
+        elif runtime_target == "production" and runtime_adapter is not None:
+            live_health = (preflight_result or {}).get("health") or {}
+            live_version = str(live_health.get("comfyui_version")
+                               or (live_health.get("system") or {}).get(
+                                   "comfyui_version") or "")
+            if live_version and live_version != "0.33.1":
+                raise ValueError("PRODUCTION_RUNTIME_VERSION_MISMATCH")
 
         try:
             params, profile_context = resolve_product_parameters(
@@ -487,7 +563,7 @@ class JobAPI:
                 raise ValueError(str(exc)) from exc
 
         now = self.clock()
-        job_id = self.store.new_id("job")
+        job_id = self.store.new_id("preflight" if dry_run else "job")
         job = {
             "id": job_id,
             "project_id": project_id,
@@ -534,6 +610,9 @@ class JobAPI:
             },
             "runtime": "native" if runtime_adapter else "mock",
             "runtime_target": runtime_target,
+            "runtime_id": ("experimental-h3-8190" if runtime_target == "experimental"
+                           else "production-h3-8189"),
+            "execution_purpose": (execution_purpose or "PRODUCTION"),
             "created_at": self.store.timestamp(),
             "started_at": now,
             "elapsed": 0.0,
@@ -591,6 +670,12 @@ class JobAPI:
             history, workflow_id=job["workflow"], duration=params["duration"],
             fps=params["fps"], resolution=params["resolution"],
             steps=params["steps"], cold_start=True)
+        if dry_run:
+            if runtime_target != "experimental" or runtime_adapter is None:
+                raise ValueError("A5_PREFLIGHT_REQUIRES_EXPERIMENTAL_RUNTIME")
+            return self._persist_experimental_preflight(
+                project_id, project, prompt, approved, params, normalized_motion,
+                guide_bindings, job, runtime_adapter, preflight_result)
         jobs = self.store.load_jobs(project_id)
         jobs[job_id] = job
         self.store.save_jobs(project_id, jobs)
@@ -624,6 +709,121 @@ class JobAPI:
             self._threads[job_id] = thread
             thread.start()
         return self.get_job(job_id)
+
+    def _persist_experimental_preflight(
+            self, project_id: str, project: dict, prompt: dict,
+            approved_refs: List[dict], params: dict, camera_motion: str,
+            guide_bindings: List[dict], job: dict, runtime_adapter,
+            preflight_result: Optional[dict]) -> Dict[str, Any]:
+        """Compile and persist a path-free preflight snapshot, never a Job."""
+        from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
+
+        client = getattr(runtime_adapter, "client", None)
+        if client is None:
+            raise ValueError("EXPERIMENTAL_RUNTIME_UNAVAILABLE")
+        queue_before = client.get_queue()
+        if queue_before.get("queue_running") or queue_before.get("queue_pending"):
+            raise ValueError("EXPERIMENTAL_RUNTIME_QUEUE_NOT_IDLE")
+
+        request = self._build_request(
+            project_id, project, prompt, approved_refs, params,
+            camera_motion, guide_bindings)
+        # Mirror the deterministic input names used by the real staging path,
+        # but do not copy any media into the experimental runtime during a dry run.
+        stored_refs = self.store.load_references(project_id)
+        for reference in request.reference_assets:
+            record = stored_refs.get(str(reference.get("asset_id") or "")) or {}
+            source = Path(str(record.get("stored_path") or ""))
+            if not source.is_file():
+                raise ValueError("PREFLIGHT_REFERENCE_MISSING")
+            reference["path_or_ref"] = unique_comfy_filename(record, source)
+            reference["filename"] = reference["path_or_ref"]
+
+        try:
+            prepared = runtime_adapter.prepare(request)
+            prepared = runtime_adapter.attach_job_identity(prepared, job["id"])
+        except Exception as exc:  # noqa: BLE001 - keep private runtime paths out of API errors
+            code = str(getattr(exc, "code", "") or type(exc).__name__)
+            safe_code = "".join(char for char in code.upper()
+                                if char.isalnum() or char in "_-")[:80]
+            raise ValueError(
+                f"A5_PREFLIGHT_COMPILE_FAILED:{safe_code or 'RUNTIME_CONTRACT'}") from exc
+        payload = prepared.get("translated_payload") or {}
+        snapshot = self._build_workflow_snapshot(
+            request, approved_refs, payload)
+        workflow_sha = canonical_workflow_sha256(payload)
+        if workflow_sha != snapshot.get("execution_workflow_sha256"):
+            raise ValueError("PREFLIGHT_WORKFLOW_SHA_MISMATCH")
+        expected_output = expected_save_video_identity(
+            payload, job["id"], workflow_sha)
+        runtime_identity = build_runtime_identity(
+            "experimental", runtime_adapter, preflight_result)
+        spec = getattr(runtime_adapter, "runtime_identity_spec", {}) or {}
+        if (runtime_identity.get("runtime_id") != "experimental-h3-8190"
+                or runtime_identity.get("comfyui_version") != "0.36.0"
+                or runtime_identity.get("comfyui_git_sha")
+                != "ee71d5c4993f29086b27fde1629a945ae48425bf"
+                or runtime_identity.get("runtime_config_fingerprint")
+                != spec.get("config_fingerprint")):
+            raise ValueError("PREFLIGHT_RUNTIME_IDENTITY_MISMATCH")
+        queue_after = client.get_queue()
+        if queue_before != queue_after:
+            raise ValueError("PREFLIGHT_RUNTIME_QUEUE_CHANGED")
+
+        guide_rows = [{key: guide.get(key) for key in (
+            "asset_id", "role", "requested_time_seconds", "resolved_frame_idx",
+            "ordinal", "content_sha256", "source_identity", "approval_evidence")}
+            for guide in guide_bindings]
+        node_types: Dict[str, int] = {}
+        for node in payload.values():
+            node_type = str(node.get("class_type") or "unknown")
+            node_types[node_type] = node_types.get(node_type, 0) + 1
+        record = {
+            "schema_version": 1,
+            "snapshot_type": "A5_EXPERIMENTAL_PREFLIGHT",
+            "id": job["id"],
+            "project_id": project_id,
+            "state": "DRY_RUN",
+            "created_at": self.store.timestamp(),
+            "execution_purpose": "A5_EXPERIMENTAL_VALIDATION",
+            "runtime_target": "experimental",
+            "runtime_identity": runtime_identity,
+            "guide_count": len(guide_rows),
+            "guide_bindings": guide_rows,
+            "target_frame_count": int(params["frame_count"]),
+            "native_generation_fps": NATIVE_H3_FPS,
+            "prompt_sha256": str(prompt.get("prompt_hash") or ""),
+            "reference_bindings": reference_bindings(approved_refs),
+            "execution_workflow_sha256": workflow_sha,
+            "workflow_node_count": len(payload),
+            "workflow_node_types": node_types,
+            "runtime_capability": prepared.get("guide_capability"),
+            "expected_output_identity": expected_output,
+            "prompt_id": None,
+            "submission_attempted": False,
+            "submission_state": "NOT_PERFORMED",
+            "private_paths_included": False,
+        }
+        preflight_dir = self.store.data_root / "preflights"
+        self.store.save_json(preflight_dir / f"{job['id']}.json", record)
+        return {
+            "id": job["id"], "project_id": project_id,
+            "state": "DRY_RUN", "execution_purpose": record["execution_purpose"],
+            "runtime_identity": runtime_identity,
+            "guide_count": len(guide_rows),
+            "guide_frame_indexes": [row["resolved_frame_idx"] for row in guide_rows],
+            "target_frame_count": int(params["frame_count"]),
+            "native_generation_fps": NATIVE_H3_FPS,
+            "workflow_sha256": workflow_sha,
+            "workflow_node_count": len(payload),
+            "runtime_capability": prepared.get("guide_capability"),
+            "expected_output_prefix": expected_output.get("filename_prefix"),
+            "output_root_fingerprint": runtime_identity.get("output_root_fingerprint"),
+            "prompt_id": None, "submission_attempted": False,
+            "submission_state": "NOT_PERFORMED",
+            "preflight_snapshot_persisted": True,
+            "queue_unchanged": True,
+        }
 
     def _build_workflow_snapshot(self, request: Any,
                                  approved_refs: List[dict],
@@ -1378,6 +1578,21 @@ class JobAPI:
                 raise ValueError("RESULT_RECOVERY_RUNTIME_UNAVAILABLE")
             runtime_identity = dict((job.get("execution_trace") or {}).get(
                 "runtime_identity") or {})
+            if int(runtime_identity.get("identity_schema_version") or 1) >= 2:
+                expected_runtime_id = (
+                    "experimental-h3-8190" if job.get("runtime_target") == "experimental"
+                    else "production-h3-8189")
+                runtime_spec = getattr(runtime_adapter, "runtime_identity_spec", {}) or {}
+                if (runtime_identity.get("runtime_id") != expected_runtime_id
+                        or runtime_spec.get("runtime_id") != expected_runtime_id):
+                    raise ValueError("RESULT_RECOVERY_RUNTIME_IDENTITY_MISMATCH")
+                if job.get("runtime_target") == "experimental" and (
+                        runtime_identity.get("comfyui_version") != "0.36.0"
+                        or runtime_identity.get("comfyui_git_sha")
+                        != "ee71d5c4993f29086b27fde1629a945ae48425bf"
+                        or runtime_identity.get("runtime_config_fingerprint")
+                        != runtime_spec.get("config_fingerprint")):
+                    raise ValueError("RESULT_RECOVERY_RUNTIME_FINGERPRINT_MISMATCH")
             expected_port = runtime_identity.get("port")
             actual_port = urlsplit(str(getattr(client, "base_url", ""))).port
             if expected_port is not None and actual_port != int(expected_port):
@@ -1685,6 +1900,15 @@ class JobAPI:
                 job = self.store.load_jobs(project_id).get(job_id) or job
                 if job.get("cancelled") or job.get("state") == "CANCELLED":
                     return
+            # Persist an ambiguity marker immediately before the only native
+            # submit boundary. If acknowledgement persistence fails after
+            # Comfy accepts /prompt, reconciliation searches by Job/workflow
+            # identity instead of risking a duplicate generation.
+            job = self.store.load_jobs(project_id).get(job_id) or job
+            if is_native_comfy:
+                job["submission_state"] = "SUBMITTING"
+                job["lifecycle_state"] = "SUBMISSION_PENDING"
+                self._save_job(project_id, job)
             generate = runtime_adapter.generate
             if prepared is not None and "prepared" in inspect.signature(generate).parameters:
                 snapshot = generate(request, prepared=prepared)
@@ -1760,6 +1984,23 @@ class JobAPI:
                 # generation failure.
                 return
             job = latest or job
+            native_record = {}
+            native_job_key = (prepared or {}).get("job_id") if isinstance(prepared, dict) else None
+            runtime_jobs = getattr(runtime_adapter, "jobs", {}) or {}
+            if native_job_key:
+                native_record = runtime_jobs.get(native_job_key) or {}
+            acknowledged_prompt = str(native_record.get("prompt_id") or "")
+            if acknowledged_prompt and not job.get("prompt_id"):
+                job["prompt_id"] = acknowledged_prompt
+                job["submission_state"] = "RECONCILING"
+                job["prompt_id_persistence_recovered"] = True
+                try:
+                    self._save_job(project_id, job)
+                    job = self.store.load_jobs(project_id).get(job_id) or job
+                except Exception:
+                    # The pre-submit SUBMITTING snapshot remains the durable
+                    # signal if the store is still unavailable.
+                    pass
             message = str(exc).lower()
             runtime_mismatch = "missing_node_type" in message or "node type" in message and "not found" in message
             category, friendly = _classify_failure(exc, runtime_mismatch=runtime_mismatch)
@@ -1774,10 +2015,8 @@ class JobAPI:
                     project_id, job_id, result_stage, "FAILED", error=exc,
                     error_code=(getattr(exc, "code", "")
                                 or str(exc).split(":", 1)[0]))
-            ambiguous_submission = (
-                before_submit is not None
-                and job.get("submission_state") in ("SUBMISSION_UNKNOWN", "RECONCILING")
-            )
+            ambiguous_submission = job.get("submission_state") in (
+                "SUBMITTING", "SUBMISSION_UNKNOWN", "RECONCILING")
             if (ambiguous_submission or isinstance(
                     exc, (ComfyUICommunicationTimeout, ComfyUIOfflineError,
                           ComfyProtocolError, GenerationTimeoutError))):

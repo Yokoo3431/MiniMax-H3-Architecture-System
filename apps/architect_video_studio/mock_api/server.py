@@ -7,6 +7,7 @@ GPU, or Native runtime interaction.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -253,6 +254,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 return self._ok(apis["study"].get_state(m.group(1)))
             if method == "GET" and path == "/api/capabilities/multiframe-guides":
                 return self._ok(apis["guide"].capabilities())
+            if method == "GET" and path == "/api/system/runtime-registry":
+                return self._ok(apis["guide"].runtime_registry())
             m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames/resolve", path)
             if m and method == "POST":
                 params = body.get("generation_parameters") or {}
@@ -344,6 +347,19 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                 return self._ok(apis["job"].estimate(
                     m.group(1), body.get("generation_parameters")))
             m = re.fullmatch(r"/api/projects/([^/]+)/jobs", path)
+            preflight_match = re.fullmatch(r"/api/projects/([^/]+)/jobs/preflight", path)
+            if preflight_match and method == "POST":
+                return self._ok(apis["job"].submit_job(
+                    preflight_match.group(1),
+                    seed=int(body.get("seed", 42)),
+                    risk_reviewed=bool(body.get("risk_reviewed", False)),
+                    generation_parameters=body.get("generation_parameters"),
+                    camera_motion=body.get("camera_motion"),
+                    runtime_target=body.get("runtime_target", "production"),
+                    runtime_id=body.get("runtime_id"),
+                    execution_purpose=body.get("execution_purpose"),
+                    dry_run=True,
+                ))
             if m and method == "GET":
                 return self._ok(apis["job"].list_jobs(m.group(1)))
             if m and method == "POST":
@@ -354,6 +370,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     generation_parameters=body.get("generation_parameters"),
                     camera_motion=body.get("camera_motion"),
                     runtime_target=body.get("runtime_target", "production"),
+                    runtime_id=body.get("runtime_id"),
+                    execution_purpose=body.get("execution_purpose"),
                 ))
             m = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if m and method == "GET":
@@ -497,18 +515,34 @@ def make_server(addr: Tuple[str, int], data_root: Path,
         )
     experimental_url = os.environ.get(
         "AVS_A5_EXPERIMENTAL_URL", "http://127.0.0.1:8190").strip().rstrip("/")
-    experimental_input = os.environ.get("AVS_A5_EXPERIMENTAL_INPUT", "").strip()
-    experimental_output = os.environ.get("AVS_A5_EXPERIMENTAL_OUTPUT", "").strip()
-    experimental_io_isolated = bool(
-        runtime_paths and _experimental_io_isolated(
-            experimental_input, experimental_output,
-            runtime_paths.input_root, runtime_paths.output_root))
-    if (os.environ.get("AVS_A5_EXPERIMENTAL_ENABLED", "0").strip() == "1"
-            and experimental_url in {"http://127.0.0.1:8190", "http://localhost:8190"}
-            and experimental_io_isolated
-            and experimental_input and experimental_output
-            and Path(experimental_input).is_dir()
-            and Path(experimental_output).is_dir()):
+    from runtime.adapters.experimental_runtime_registry import (
+        inspect_experimental_runtime_registry,
+    )
+    experimental_registry = inspect_experimental_runtime_registry(
+        data_root,
+        production_input=runtime_paths.input_root if runtime_paths else None,
+        production_output=runtime_paths.output_root if runtime_paths else None,
+    )
+    experimental_config = experimental_registry.get("config") or {}
+    experimental_public = dict(experimental_registry.get("public") or {})
+    production_public = {
+        "runtime_id": "production-h3-8189", "runtime_role": "production",
+        "backend": "comfyui", "endpoint_identity": "loopback:8189",
+        "comfyui_version": "0.33.1", "comfyui_git_sha": None,
+        "route_enabled": True,
+        "output_root_fingerprint": (
+            getattr(runtime_adapter.client, "output_root_fingerprint", None)
+            if runtime_adapter else None),
+    }
+    production_public["config_fingerprint"] = hashlib.sha256(
+        json.dumps(production_public, sort_keys=True, separators=(",", ":"))
+        .encode("utf-8")).hexdigest()
+    if runtime_adapter is not None:
+        runtime_adapter.runtime_identity_spec = dict(production_public)
+    experimental_input = str(experimental_config.get("input_root") or "")
+    experimental_output = str(experimental_config.get("output_root") or "")
+    experimental_url = str(experimental_config.get("endpoint") or experimental_url)
+    if experimental_registry.get("valid"):
         from runtime.adapters.comfyui_client import ComfyUIClient
         from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter
         experimental_runtime_adapter = NativeRuntimeAdapter(
@@ -526,6 +560,17 @@ def make_server(addr: Tuple[str, int], data_root: Path,
             comfy_input_dir=experimental_input,
             production_binding=True,
         )
+        experimental_runtime_adapter.runtime_identity_spec = dict(experimental_public)
+        experimental_runtime_adapter.runtime_launch_contract = {
+            "source_root": experimental_config.get("source_root"),
+            "input_root": experimental_input,
+            "output_root": experimental_output,
+            "temp_root": experimental_config.get("temp_root"),
+            "user_root": experimental_config.get("user_root"),
+            "python_executable": experimental_config.get("python_executable"),
+            "extra_model_paths_config": experimental_config.get(
+                "extra_model_paths_config"),
+        }
     output_api = OutputAPI(store, allow_mock_outputs=False,
                            runtime_paths=runtime_paths)
     from runtime.adapters.comfyui_client import ComfyUIClient
@@ -538,7 +583,9 @@ def make_server(addr: Tuple[str, int], data_root: Path,
         "reference": ReferenceAPI(store),
         "guide": GuideFrameAPI(store, production_guide_client,
                                 experimental_guide_client,
-                                experimental_enabled=experimental_runtime_adapter is not None),
+                                experimental_enabled=experimental_registry.get("valid") is True,
+                                production_identity=production_public,
+                                experimental_identity=experimental_public),
         "study": StudyAPI(store),
         "intent": IntentAPI(store),
         "prompt": PromptAPI(store),
@@ -548,7 +595,9 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                       allow_mock_jobs=False,
                       comfy_input_dir=str(runtime_paths.input_root) if runtime_paths else None,
                       experimental_comfy_input_dir=experimental_input or None,
-                      runtime_paths=runtime_paths),
+                      runtime_paths=runtime_paths,
+                      experimental_route_enabled=(
+                          experimental_registry.get("valid") is True)),
         "output": output_api,
         "system": SystemAPI(store),
     }

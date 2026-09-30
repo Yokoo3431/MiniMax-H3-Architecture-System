@@ -27,6 +27,7 @@ class RuntimeIdentityTests(unittest.TestCase):
 
         self.assertEqual(identity["runtime_role"], "experimental")
         self.assertEqual(identity["target"], "experimental")
+        self.assertEqual(identity["backend"], "comfyui")
         self.assertEqual(identity["execution_backend"], "native_comfyui")
         self.assertEqual(identity["port"], 8190)
         self.assertEqual(identity["comfyui_version"], "0.36.0")
@@ -34,7 +35,7 @@ class RuntimeIdentityTests(unittest.TestCase):
                          "ee71d5c4993f29086b27fde1629a945ae48425bf")
         self.assertEqual(identity["output_root_fingerprint"], "a" * 64)
         self.assertEqual(identity["runtime_id"],
-                         "native_comfyui:experimental:loopback:8190")
+                         "experimental-h3-8190")
         self.assertRegex(identity["endpoint_fingerprint"], r"^[0-9a-f]{64}$")
         self.assertRegex(identity["runtime_config_fingerprint"], r"^[0-9a-f]{64}$")
         serialized = json.dumps(identity)
@@ -63,6 +64,8 @@ class RuntimeIdentityTests(unittest.TestCase):
     def test_mock_identity_is_explicit(self):
         identity = build_runtime_identity("production", None)
         self.assertEqual(identity["runtime_role"], "production")
+        self.assertEqual(identity["runtime_id"], "production-h3-8189")
+        self.assertEqual(identity["backend"], "mock")
         self.assertEqual(identity["execution_backend"], "mock")
         self.assertEqual(identity["port"], 8189)
         self.assertIsNone(identity["comfyui_version"])

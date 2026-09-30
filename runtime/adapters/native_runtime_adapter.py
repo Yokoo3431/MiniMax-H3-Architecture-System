@@ -170,6 +170,20 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                     "pinned loader: " + json.dumps(h3_root, ensure_ascii=False)
                 )
         health = self.client.health_check()
+        runtime_spec = getattr(self, "runtime_identity_spec", {}) or {}
+        if runtime_spec.get("runtime_role") == "experimental":
+            from runtime.adapters.experimental_runtime_registry import (
+                live_runtime_executable_matches, live_runtime_process_matches,
+            )
+            launch_contract = getattr(self, "runtime_launch_contract", {}) or {}
+            if not launch_contract or not live_runtime_process_matches(
+                    health.get("process_argv"), launch_contract):
+                raise ComfyUIExecutionError(
+                    "EXPERIMENTAL_RUNTIME_PROCESS_IDENTITY_MISMATCH")
+            if not live_runtime_executable_matches(
+                    launch_contract.get("python_executable") or ""):
+                raise ComfyUIExecutionError(
+                    "EXPERIMENTAL_RUNTIME_PYTHON_IDENTITY_MISMATCH")
         object_info = self.client.object_info()
         golden_results = {}
         for workflow_id in SUPPORTED_WORKFLOWS:
@@ -263,7 +277,13 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             payload = compile_native_guides(
                 payload, guides, object_info=object_info,
                 target_frame_count=target_count)
-            compiled_check = validate_production_payload(payload, object_info)
+            # Guide image names are deterministic and provenance-validated,
+            # but the CPU-only dry run deliberately does not stage them into
+            # Comfy's input directory.  Treat these LoadImage widgets like the
+            # synthetic names accepted by the initial Golden preflight; the
+            # real execution path validates them after staging.
+            compiled_check = validate_production_payload(
+                payload, object_info, allow_dynamic_asset_inputs=True)
             if not compiled_check["ready"]:
                 raise ComfyUIExecutionError(
                     "GUIDE_COMPILED_GRAPH_INVALID: "

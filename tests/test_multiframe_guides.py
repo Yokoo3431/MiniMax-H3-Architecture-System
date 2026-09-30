@@ -287,17 +287,17 @@ class MultiFrameGuideTests(unittest.TestCase):
 
     def test_experimental_job_route_is_real_loopback_8190_only(self):
         with self.assertRaisesRegex(ValueError, "EXPERIMENTAL_RUNTIME_UNAVAILABLE"):
-            JobAPI._validate_experimental_target("experimental", None)
+            JobAPI._validate_experimental_endpoint(None)
         for url in ("http://127.0.0.1:8190", "http://localhost:8190/"):
             adapter = SimpleNamespace(client=SimpleNamespace(base_url=url))
-            JobAPI._validate_experimental_target("experimental", adapter)
+            JobAPI._validate_experimental_endpoint(adapter)
         for url in ("http://127.0.0.1:8189", "http://192.168.1.5:8190",
                     "https://localhost:8190", "http://localhost.evil.example:8190",
                     "http://localhost:abc"):
             adapter = SimpleNamespace(client=SimpleNamespace(base_url=url))
             with self.subTest(url=url), self.assertRaisesRegex(
                     ValueError, "EXPERIMENTAL_RUNTIME_IDENTITY_MISMATCH"):
-                JobAPI._validate_experimental_target("experimental", adapter)
+                JobAPI._validate_experimental_endpoint(adapter)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             prod_input = root / "production" / "input"

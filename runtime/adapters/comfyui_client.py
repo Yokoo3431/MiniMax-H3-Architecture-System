@@ -368,6 +368,9 @@ class ComfyUIClient:
             "required_frontend_version": system.get("required_frontend_version"),
             "ram_total": system.get("ram_total"),
             "ram_free": system.get("ram_free"),
+            # Internal preflight evidence only. API projections deliberately
+            # expose runtime IDs/fingerprints, never this path-bearing argv.
+            "process_argv": system.get("argv") if isinstance(system.get("argv"), list) else None,
         }
 
     def object_info(self) -> Dict[str, Any]:
