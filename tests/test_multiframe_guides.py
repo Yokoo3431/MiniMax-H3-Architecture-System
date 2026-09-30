@@ -285,6 +285,60 @@ class MultiFrameGuideTests(unittest.TestCase):
         self.assertEqual(experimental["status"], "AVAILABLE")
         self.assertEqual(experimental["routing"], "EXPLICIT_ONLY")
 
+        class RuntimeProbe:
+            def __init__(self, version="0.36.0", node=ADD_GUIDE_INFO, offline=False):
+                self.version = version
+                self.node = node
+                self.offline = offline
+
+            def health_check(self):
+                if self.offline:
+                    raise ConnectionError("synthetic offline runtime")
+                return {"system": {"comfyui_version": self.version}}
+
+            def object_info(self):
+                return ({"MiniMaxH3AddGuide": self.node} if self.node else {})
+
+        static_identity = {
+            "runtime_id": "experimental-h3-8190", "runtime_role": "experimental",
+            "comfyui_version": "0.36.0", "comfyui_git_sha": "e" * 40,
+            "available": True, "status": "AVAILABLE", "health": "NOT_CHECKED",
+            "capabilities": ["MiniMaxH3AddGuide"], "route_enabled": True,
+        }
+        live_api = GuideFrameAPI(
+            None, experimental_client=RuntimeProbe(), experimental_enabled=True,
+            experimental_identity=static_identity)
+        live = live_api.capabilities()["experimental"]
+        self.assertTrue(live["available"])
+        self.assertEqual(live["health"], "PASS")
+        self.assertEqual(live["observed_version"], "0.36.0")
+
+        offline_api = GuideFrameAPI(
+            None, experimental_client=RuntimeProbe(offline=True),
+            experimental_enabled=True, experimental_identity=static_identity)
+        offline = offline_api.capabilities()["experimental"]
+        self.assertFalse(offline["available"])
+        self.assertEqual(offline["status"], "UNAVAILABLE")
+        self.assertEqual(offline["health"], "UNAVAILABLE")
+        self.assertEqual(offline["capabilities"], [])
+
+        wrong_version_api = GuideFrameAPI(
+            None, experimental_client=RuntimeProbe(version="0.35.0"),
+            experimental_enabled=True, experimental_identity=static_identity)
+        wrong_version = wrong_version_api.capabilities()["experimental"]
+        self.assertFalse(wrong_version["available"])
+        self.assertEqual(wrong_version["status"], "UNAVAILABLE")
+        self.assertEqual(wrong_version["reason"],
+                         "EXPERIMENTAL_RUNTIME_VERSION_MISMATCH")
+        self.assertEqual(wrong_version["observed_version"], "0.35.0")
+
+        missing_node_api = GuideFrameAPI(
+            None, experimental_client=RuntimeProbe(node=None),
+            experimental_enabled=True, experimental_identity=static_identity)
+        missing_node = missing_node_api.capabilities()["experimental"]
+        self.assertFalse(missing_node["available"])
+        self.assertEqual(missing_node["status"], "UNAVAILABLE")
+
     def test_experimental_job_route_is_real_loopback_8190_only(self):
         with self.assertRaisesRegex(ValueError, "EXPERIMENTAL_RUNTIME_UNAVAILABLE"):
             JobAPI._validate_experimental_endpoint(None)
@@ -349,6 +403,61 @@ class MultiFrameGuideTests(unittest.TestCase):
                              guide_ids[::-1])
             self.assertEqual([row["requested_time_seconds"]
                               for row in reordered["guide_frames"]], [1.5, 3.0])
+
+    def test_update_replaces_guide_asset_atomically_and_rejects_duplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StudioStore(directory)
+            project = ProjectAPI(store).create_project("Guide Replace Study")
+            project_id = project["id"]
+            refs = ReferenceAPI(store)
+            assets = []
+            for index in range(1, 4):
+                result = refs.upload_and_approve(
+                    project_id, f"guide-{index}.png", role="timeline_guide",
+                    data_base64=base64.b64encode(f"guide-{index}".encode()).decode())
+                assets.append(result["reference"])
+            api = GuideFrameAPI(store)
+            first = api.add(project_id, assets[0]["id"], 1.5)["guide_frames"][0]
+            second = api.add(project_id, assets[1]["id"], 3.0)["guide_frames"][1]
+
+            replaced = api.update(project_id, first["guide_id"], asset_id=assets[2]["id"])
+            self.assertEqual(replaced["guide_frames"][0]["guide_id"], first["guide_id"])
+            self.assertEqual(replaced["guide_frames"][0]["asset_id"], assets[2]["id"])
+            self.assertEqual(replaced["guide_frames"][0]["requested_time_seconds"], 1.5)
+            self.assertEqual(replaced["guide_frames"][0]["filename"], "guide-3.png")
+            self.assertEqual(replaced["guide_frames"][1]["guide_id"], second["guide_id"])
+
+            with self.assertRaisesRegex(GuideFrameError, "GUIDE_DUPLICATE_ASSET"):
+                api.update(project_id, first["guide_id"], asset_id=assets[1]["id"])
+
+            with self.assertRaisesRegex(GuideFrameError, "GUIDE_UPDATE_EMPTY"):
+                api.update(project_id, first["guide_id"])
+
+    def test_update_replacement_rejects_unapproved_or_cross_project_asset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StudioStore(directory)
+            project = ProjectAPI(store).create_project("Guide Replace Study")
+            other = ProjectAPI(store).create_project("Other Study")
+            project_id = project["id"]
+            other_id = other["id"]
+            refs = ReferenceAPI(store)
+            first = refs.upload_and_approve(
+                project_id, "guide.png", role="timeline_guide",
+                data_base64=base64.b64encode(b"guide").decode())["reference"]
+            other_guide = refs.upload_and_approve(
+                other_id, "other-guide.png", role="timeline_guide",
+                data_base64=base64.b64encode(b"other guide").decode())["reference"]
+            api = GuideFrameAPI(store)
+            guide = api.add(project_id, first["id"], 1.5)["guide_frames"][0]
+            with self.assertRaisesRegex(GuideFrameError, "GUIDE_CROSS_PROJECT"):
+                api.update(project_id, guide["guide_id"], asset_id=other_guide["id"])
+
+            unapproved = dict(first, id="ref-unapproved", state="PENDING")
+            project_references = store.load_references(project_id)
+            project_references[unapproved["id"]] = unapproved
+            store.save_references(project_id, project_references)
+            with self.assertRaisesRegex(GuideFrameError, "GUIDE_NOT_APPROVED"):
+                api.update(project_id, guide["guide_id"], asset_id=unapproved["id"])
 
 
 if __name__ == "__main__":

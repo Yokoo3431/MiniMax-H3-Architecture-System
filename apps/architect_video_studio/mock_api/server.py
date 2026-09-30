@@ -269,7 +269,8 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames/([^/]+)", path)
             if m and method == "PATCH":
                 return self._ok(apis["guide"].update(
-                    m.group(1), m.group(2), body.get("time_seconds")))
+                    m.group(1), m.group(2), body.get("time_seconds"),
+                    asset_id=body.get("asset_id")))
             if m and method == "DELETE":
                 return self._ok(apis["guide"].remove(m.group(1), m.group(2)))
             m = re.fullmatch(r"/api/projects/([^/]+)/guide-frames", path)

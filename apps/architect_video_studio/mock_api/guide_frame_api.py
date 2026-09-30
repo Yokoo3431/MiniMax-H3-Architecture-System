@@ -33,18 +33,62 @@ class GuideFrameAPI:
         return {"guide_frames": rows, "capabilities": self.capabilities()}
 
     def capabilities(self) -> dict[str, Any]:
-        production = self._inspect_client(
-            self.production_client, "production", 8189)
-        experimental = self._inspect_client(
-            self.experimental_client, "experimental", 8190)
-        production.update(self.production_identity)
-        experimental.update(self.experimental_identity)
+        production = self._runtime_capability(
+            self.production_client, "production", 8189, self.production_identity)
+        experimental = self._runtime_capability(
+            self.experimental_client, "experimental", 8190, self.experimental_identity)
         result = {
             "production": production,
             "experimental": experimental,
             "routing": "EXPLICIT_ONLY",
             "experimental_job_route_enabled": self.experimental_enabled,
         }
+        return result
+
+    def _runtime_capability(self, client, name: str, port: int,
+                            identity: dict) -> dict[str, Any]:
+        """Combine trusted static identity with authoritative live capability.
+
+        Registry metadata fingerprints a runtime installation; it cannot prove
+        that the endpoint is currently healthy or still serves the pinned
+        version/schema.  Those fields must always come from the live probe.
+        """
+        live = self._inspect_client(client, name, port)
+        result = {**identity, **live}
+        identity_fields = (
+            "runtime_id", "runtime_role", "backend", "endpoint_identity",
+            "comfyui_git_sha", "python_version", "packages", "root_fingerprints",
+            "extra_model_paths_config_sha256", "config_fingerprint",
+            "output_root_fingerprint", "route_enabled", "comfyui_version",
+        )
+        for field in identity_fields:
+            if field in identity:
+                result[field] = identity[field]
+
+        expected_version = str(identity.get("comfyui_version") or "")
+        observed_version = str(live.get("version") or "unknown")
+        result["observed_version"] = observed_version
+        if live.get("health") != "PASS":
+            result["available"] = False
+            result["status"] = "UNAVAILABLE"
+            result["capabilities"] = []
+            result["reason"] = str(live.get("reason") or "runtime health check failed")
+            if expected_version:
+                result["version"] = expected_version
+        elif expected_version and observed_version != expected_version:
+            result["available"] = False
+            result["status"] = "UNAVAILABLE"
+            result["capabilities"] = []
+            result["reason"] = "EXPERIMENTAL_RUNTIME_VERSION_MISMATCH"
+            result["version"] = observed_version
+        else:
+            result["available"] = bool(live.get("available"))
+            result["status"] = str(live.get("status") or "UNAVAILABLE")
+            result["reason"] = str(live.get("reason") or "")
+            result["version"] = observed_version
+            result["capabilities"] = (
+                list(identity.get("capabilities") or [])
+                if result["available"] else [])
         return result
 
     def runtime_registry(self) -> dict[str, Any]:
@@ -101,17 +145,39 @@ class GuideFrameAPI:
         self._save(project_id, project, rows, "add_timeline_guide")
         return self.list(project_id)
 
-    def update(self, project_id: str, guide_id: str, time_seconds: Any) -> dict[str, Any]:
+    def update(self, project_id: str, guide_id: str, time_seconds: Any = None,
+               asset_id: Any = None) -> dict[str, Any]:
         project = self.store.load_project(project_id)
         rows = list(project.get("guide_frames") or [])
         position = self._find(rows, guide_id)
-        seconds = self._time_value(time_seconds)
-        if position and seconds <= self._time_value(rows[position - 1]["requested_time_seconds"]):
-            raise GuideFrameError("GUIDE_ORDER_INVALID: time must follow the previous guide")
-        if position + 1 < len(rows) and seconds >= self._time_value(
-                rows[position + 1]["requested_time_seconds"]):
-            raise GuideFrameError("GUIDE_ORDER_INVALID: time must precede the next guide")
-        rows[position]["requested_time_seconds"] = float(seconds)
+        changed = False
+        if time_seconds is not None:
+            seconds = self._time_value(time_seconds)
+            if position and seconds <= self._time_value(
+                    rows[position - 1]["requested_time_seconds"]):
+                raise GuideFrameError("GUIDE_ORDER_INVALID: time must follow the previous guide")
+            if position + 1 < len(rows) and seconds >= self._time_value(
+                    rows[position + 1]["requested_time_seconds"]):
+                raise GuideFrameError("GUIDE_ORDER_INVALID: time must precede the next guide")
+            rows[position]["requested_time_seconds"] = float(seconds)
+            changed = True
+        if asset_id is not None:
+            asset_id = str(asset_id)
+            if any(index != position and str(row.get("asset_id")) == asset_id
+                   for index, row in enumerate(rows)):
+                raise GuideFrameError("GUIDE_DUPLICATE_ASSET: this asset is already on the timeline")
+            references = self.store.load_references(project_id)
+            record = references.get(asset_id)
+            if record is None:
+                try:
+                    _, record = self.store.find_reference(asset_id)
+                except KeyError:
+                    record = None
+            self._require_guide_asset(project_id, record)
+            rows[position]["asset_id"] = asset_id
+            changed = True
+        if not changed:
+            raise GuideFrameError("GUIDE_UPDATE_EMPTY: provide time_seconds or asset_id")
         self._save(project_id, project, rows, "update_timeline_guide")
         return self.list(project_id)
 

@@ -395,6 +395,8 @@ function renderGuideFrames() {
   }
   const count = document.getElementById('guide-count');
   if (count) count.textContent = String(guideFrames.length);
+  const approvedGuides = refs.filter((item) => item.role === 'timeline_guide'
+    && item.state === 'APPROVED');
   const resolutionById = new Map((guideResolution?.guides || [])
     .map((item) => [item.guide_id, item]));
   const list = document.getElementById('guide-list');
@@ -404,6 +406,15 @@ function renderGuideFrames() {
       const preview = item.preview_url
         ? `<img src="${esc(item.preview_url)}" alt="分镜引导图 ${index + 1}">`
         : '<span class="guide-thumb-placeholder" aria-hidden="true">图</span>';
+      const occupiedByOthers = new Set(guideFrames
+        .filter((guide) => guide.guide_id !== item.guide_id)
+        .map((guide) => String(guide.asset_id)));
+      const replacementAssets = approvedGuides.filter((asset) =>
+        String(asset.id) === String(item.asset_id) || !occupiedByOthers.has(String(asset.id)));
+      const canReplace = replacementAssets.some((asset) =>
+        String(asset.id) !== String(item.asset_id));
+      const replacementOptions = replacementAssets.map((asset) =>
+        `<option value="${esc(asset.id)}" ${String(asset.id) === String(item.asset_id) ? 'selected' : ''}>${esc(asset.filename || asset.id)}</option>`).join('');
       return `<article class="guide-card" data-guide-id="${esc(item.guide_id)}">
         ${preview}
         <div class="guide-card-meta">
@@ -416,6 +427,11 @@ function renderGuideFrames() {
           <button class="spectrum-Button btn ghost guide-move-down" type="button" aria-label="下移引导帧" title="下移" ${index === guideFrames.length - 1 ? 'disabled' : ''}>↓</button>
           <button class="spectrum-Button btn ghost guide-remove" type="button" aria-label="移除引导帧">移除</button>
         </div>
+        <div class="guide-replace-row">
+          <select class="avs-select guide-asset-replacement" aria-label="${index + 1}. 替换分镜引导图" ${canReplace ? '' : 'disabled'}>${replacementOptions}</select>
+          <button class="spectrum-Button btn ghost guide-replace" type="button" ${canReplace ? '' : 'disabled'}>替换图片</button>
+        </div>
+        ${canReplace ? '' : '<span class="guide-replace-hint muted small">请先上传并审批另一张未用于时间线的引导图。</span>'}
       </article>`;
     }).join('');
   }
@@ -500,6 +516,18 @@ async function updateGuideFrame(guideId, timeSeconds) {
     guideFrames = result.guide_frames || [];
     guideCapabilities = result.capabilities || guideCapabilities;
     guideResolution = null; renderGuideFrames(); await refreshGuideResolution();
+  } catch (error) { showErr(error.message); renderGuideFrames(); }
+}
+
+async function replaceGuideAsset(guideId, assetId) {
+  if (!assetId) { showErr('请选择一张已审批且未用于其他时间点的引导图'); return; }
+  try {
+    const result = await patch(`/api/projects/${projectId}/guide-frames/${encodeURIComponent(guideId)}`, {
+      asset_id: assetId,
+    });
+    guideFrames = result.guide_frames || [];
+    guideCapabilities = result.capabilities || guideCapabilities;
+    guideResolution = null; clearErr(); renderGuideFrames(); await refreshGuideResolution();
   } catch (error) { showErr(error.message); renderGuideFrames(); }
 }
 
@@ -890,11 +918,14 @@ document.getElementById('guide-list').addEventListener('change', (event) => {
 });
 document.getElementById('guide-list').addEventListener('click', (event) => {
   const button = event.target.closest('.guide-remove');
+  const replaceButton = event.target.closest('.guide-replace');
   const card = event.target.closest('[data-guide-id]');
   const guideId = card?.dataset.guideId;
-  if (!button && !event.target.closest('.guide-move-up, .guide-move-down')) return;
+  if (!button && !replaceButton && !event.target.closest('.guide-move-up, .guide-move-down')) return;
   if (!guideId) return;
   if (button) removeGuideFrame(guideId);
+  else if (replaceButton) replaceGuideAsset(
+    guideId, card.querySelector('.guide-asset-replacement')?.value);
   else if (event.target.closest('.guide-move-up')) moveGuideFrame(guideId, -1);
   else if (event.target.closest('.guide-move-down')) moveGuideFrame(guideId, 1);
 });
