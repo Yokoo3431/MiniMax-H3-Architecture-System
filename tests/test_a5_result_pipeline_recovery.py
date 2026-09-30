@@ -438,6 +438,49 @@ class TestResultRecovery(unittest.TestCase):
         finally:
             harness.close()
 
+    def test_recovery_and_result_http_payloads_do_not_expose_absolute_paths(self):
+        harness = RecoveryHarness()
+        server = StudioServer(
+            ("127.0.0.1", 0), harness.store,
+            {"job": harness.jobs, "output": harness.output_api})
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_address[1]}"
+            request = urllib.request.Request(
+                f"{base}/api/jobs/{harness.job_id}/recover-result",
+                data=b"{}", headers={"Content-Type": "application/json"},
+                method="POST")
+            with urllib.request.urlopen(request, timeout=3) as response:
+                recovered = json.loads(response.read().decode("utf-8"))["data"]
+            encoded_recovery = json.dumps(recovered, ensure_ascii=False)
+            self.assertNotIn(str(harness.root), encoded_recovery)
+            self.assertNotIn("runtime_output_path", recovered)
+            self.assertNotIn("final_output_path", recovered)
+            self.assertNotIn("prompt_snapshot", recovered)
+            self.assertEqual(recovered["state"], "COMPLETED")
+            self.assertEqual(recovered["media_url"],
+                             f"/api/jobs/{harness.job_id}/media")
+
+            with urllib.request.urlopen(
+                    f"{base}/api/jobs/{harness.job_id}/result", timeout=3) as response:
+                manifest = json.loads(response.read().decode("utf-8"))["data"]
+            encoded_manifest = json.dumps(manifest, ensure_ascii=False)
+            self.assertNotIn(str(harness.root), encoded_manifest)
+            self.assertNotIn("runtime_output_path", manifest)
+            self.assertNotIn("final_output_path", manifest)
+            self.assertFalse(Path(manifest["package_root"]).is_absolute())
+            for value in manifest["files"].values():
+                self.assertFalse(Path(value).is_absolute())
+            self.assertEqual(harness.history_calls, 1)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+            harness.close()
+
     def test_wrong_prompt_and_wrong_runtime_are_rejected_without_submission(self):
         def wrong_prompt(history):
             return {**history, "prompt_id": "unrelated-prompt"}

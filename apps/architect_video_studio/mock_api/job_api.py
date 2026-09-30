@@ -1355,7 +1355,7 @@ class JobAPI:
             if job.get("state") == "COMPLETED":
                 media = self.output_api._job_media_path(project_id, job)
                 if media is not None:
-                    return _decorate_job(job)
+                    return _recovery_job_payload(job)
 
             prompt_id = str(job.get("prompt_id") or "")
             workflow_sha = str(job.get("execution_workflow_sha256") or "")
@@ -1483,7 +1483,7 @@ class JobAPI:
                 raise ValueError(error.code)
             self._record_result_event(project_id, job_id, "RECOVERY", "PASS",
                                       detail={"package_built": True})
-            return _decorate_job(self.store.find_job(job_id)[1])
+            return _recovery_job_payload(self.store.find_job(job_id)[1])
 
     def retry_output_delivery(self, job_id: str) -> Dict[str, Any]:
         """Retry only the destination copy; never rerun Comfy generation."""
@@ -2350,3 +2350,22 @@ def _decorate_job(job: Dict[str, Any]) -> Dict[str, Any]:
     else:
         out["friendly_reason"] = ""
     return out
+
+
+def _recovery_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a path-free, minimal owner/API result for recovery requests."""
+    decorated = _decorate_job(job)
+    keys = (
+        "id", "state", "lifecycle_state", "submission_state", "runtime",
+        "runtime_target", "workflow", "prompt_id", "execution_workflow_sha256",
+        "result_pipeline", "delivery_state", "package_built", "current_stage",
+        "progress", "failure_code", "error_category", "user_message",
+        "is_terminal", "is_recoverable", "is_active", "status_label",
+        "friendly_reason",
+    )
+    payload = {key: decorated[key] for key in keys if key in decorated}
+    payload["media_url"] = (
+        f"/api/jobs/{job.get('id')}/media"
+        if job.get("state") == "COMPLETED" else None
+    )
+    return payload

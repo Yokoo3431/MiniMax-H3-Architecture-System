@@ -19,8 +19,8 @@
     {
       "path": "tests/test_a5_result_pipeline_recovery.py",
       "tracked_status": "tracked",
-      "sha256": "21ED9670798289A53A385B55F90F395B386F8AA3D85A3D6F5E3E76555F2DA95E",
-      "discovered_test_count": 15,
+      "sha256": "528B1D8E940304A6BD41306BABF9BCF9246695F39FCB45F4ACE08C80C5F0D881",
+      "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {

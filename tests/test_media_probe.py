@@ -132,6 +132,11 @@ class TestOutputManifestProbeWiring(unittest.TestCase):
             self.assertEqual(manifest["output"]["media_url"],
                              "/api/jobs/job-test/media")
             self.assertNotIn(str(media), json.dumps(manifest["ffprobe"]))
+            self.assertFalse(Path(manifest["package_root"]).is_absolute())
+            self.assertNotIn("runtime_output_path", manifest)
+            self.assertNotIn("final_output_path", manifest)
+            self.assertTrue(all(not Path(value).is_absolute()
+                                for value in manifest["files"].values()))
 
 
 if __name__ == "__main__":

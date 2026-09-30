@@ -563,14 +563,20 @@ class OutputAPI:
             from runtime.media_probe import probe_media_file
 
             ffprobe = probe_media_file(media, runtime_paths=self.runtime_paths)
+        final_path = str(job.get("final_output_path") or "")
+        runtime_path = str(job.get("runtime_output_path") or "")
+        package_root = package.resolve().relative_to(
+            self.store.project_dir(project_id).resolve()).as_posix()
         return {
             "job_id": job["id"],
             "project_id": project_id,
             "runtime": job.get("runtime", ""),
             "workflow": job.get("workflow"),
-            "runtime_output_path": job.get("runtime_output_path", ""),
-            "final_output_path": job.get("final_output_path", ""),
-            "package_root": str(package),
+            # Public manifests contain logical package locations only. Actual
+            # filesystem paths remain server-side for local delivery actions.
+            "runtime_output_name": Path(runtime_path).name if runtime_path else "",
+            "final_output_name": Path(final_path).name if final_path else "",
+            "package_root": package_root,
             "output": {
                 "available": bool(media),
                 "filename": media.name if media else "",
@@ -587,13 +593,13 @@ class OutputAPI:
             },
             "ffprobe": ffprobe,
             "files": {
-                "prompt_json": str(package / "prompt" / "prompt.json"),
-                "provenance_json": str(package / "report" / "provenance.json"),
-                "runtime_info_json": str(package / "report" / "runtime_info.json"),
-                "report_json": str(package / "report" / "report.json"),
-                "video_mp4": str(job.get("final_output_path") or package / "output" / "video.mp4"),
+                "prompt_json": "prompt/prompt.json",
+                "provenance_json": "report/provenance.json",
+                "runtime_info_json": "report/runtime_info.json",
+                "report_json": "report/report.json",
+                "video_mp4": "output/video.mp4",
                 # Kept for backwards-compatible mock fixtures only. Production
                 # jobs never expose this as a successful output.
-                "output_mp4_placeholder": str(package / "output" / "output.mp4"),
+                "output_mp4_placeholder": "output/output.mp4",
             },
         }
