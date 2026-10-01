@@ -62,6 +62,8 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("完成的输出会显示在这里。", output_html)
         self.assertNotIn("Rendered output will appear here.", output_html)
         study_script = self.read("js/workspace.js")
+        self.assertIn("function hasExperimentalPurpose()", study_script)
+        self.assertGreaterEqual(study_script.count("const experimentPurposeAvailable = hasExperimentalPurpose();"), 2)
         self.assertIn("const created = await post(`/api/projects/${projectId}/jobs`", study_script)
         self.assertIn("job?.id", study_script)
         self.assertIn("if (progress == null) progressBar.style.removeProperty('width');", study_script)

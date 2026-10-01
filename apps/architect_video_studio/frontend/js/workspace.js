@@ -310,6 +310,10 @@ function selectedA6RoleIds() {
     .filter(([, assetId]) => !!assetId);
 }
 
+function hasExperimentalPurpose() {
+  return guideFrames.length > 0 || selectedA6RoleIds().length > 0;
+}
+
 function renderReferenceBoard() {
   const root = document.getElementById('a6-reference-list');
   if (!root) return;
@@ -317,8 +321,7 @@ function renderReferenceBoard() {
   const experimental = guideCapabilities?.experimental || {};
   const ref2va = experimental.ref2va || {};
   const routeEnabled = guideCapabilities?.experimental_job_route_enabled === true;
-  const experimentPurposeAvailable = guideFrames.length > 0
-    || selectedA6RoleIds().length > 0;
+  const experimentPurposeAvailable = hasExperimentalPurpose();
   const dayNight = currentWorkflow() === '02_Day_Night_Transition';
   const capability = document.getElementById('a6-runtime-capability');
   if (capability) {
@@ -502,6 +505,7 @@ function renderGuideFrames() {
   const production = guideCapabilities?.production;
   const experimental = guideCapabilities?.experimental;
   const experimentRoute = guideCapabilities?.experimental_job_route_enabled === true;
+  const experimentPurposeAvailable = hasExperimentalPurpose();
   const canRouteExperiment = !!(experimental?.health === 'PASS'
     && experimentRoute && experimentPurposeAvailable);
   const selector = document.getElementById('runtime-target');
