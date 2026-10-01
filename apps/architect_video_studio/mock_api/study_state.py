@@ -18,8 +18,8 @@ from .job_state import (
     normalize_terminal_record,
 )
 from runtime.reference_contract import (
-    REF2VA_ROLE_ORDER, reference_bindings, required_reference_roles,
-    resolve_selected_references,
+    REF2VA_CONTENT_ROLES, reference_bindings, required_reference_roles,
+    resolve_selected_references, selected_ref2va_roles,
 )
 
 
@@ -78,20 +78,33 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         store.save_jobs(project_id, jobs_by_id)
 
     selected_workflow = intent.get("selected_workflow")
-    required_roles = required_reference_roles(selected_workflow)
     refs_by_id = {str(item.get("id")): item for item in refs if item.get("id")}
     selected_ids = project.get("selected_reference_asset_ids")
     selected_ids = selected_ids if isinstance(selected_ids, dict) else {}
-    selected_ref2va_roles = [
-        role for role in REF2VA_ROLE_ORDER
-        if role not in required_roles and selected_ids.get(role)
-    ]
-    include_ref2va_roles = bool(selected_ref2va_roles)
+    selected_a6_roles = list(selected_ref2va_roles(selected_ids))
+    include_ref2va_roles = bool(selected_a6_roles)
+    required_roles = (
+        () if include_ref2va_roles
+        and selected_workflow != "02_Day_Night_Transition"
+        else required_reference_roles(selected_workflow)
+    )
+    visible_roles = (selected_a6_roles if include_ref2va_roles
+                     and selected_workflow != "02_Day_Night_Transition"
+                     else list(required_roles))
     selected_records: list[Dict[str, Any]] = []
     reference_slots: list[Dict[str, Any]] = []
     slot_problems: list[str] = []
-    role_labels = {"first_frame": "首帧", "last_frame": "末帧"}
-    for role in required_roles:
+    role_labels = {
+        "first_frame": "首帧", "last_frame": "末帧",
+        "identity_reference": "建筑身份参考",
+        "style_reference": "风格参考",
+        "material_reference": "材质参考",
+        "site_reference": "场地参考",
+        "motion_reference_video": "运动参考视频",
+        "camera_reference_video": "相机参考视频",
+        "audio_reference": "音频参考",
+    }
+    for role in visible_roles:
         asset_id = selected_ids.get(role)
         if not asset_id and role == "first_frame":
             asset_id = project.get("current_reference_asset_id")
@@ -135,11 +148,17 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         reference_error = str(exc)
     reference = next((item for item in selected_records
                       if item.get("role") == "first_frame"), None)
+    if reference is None and include_ref2va_roles:
+        reference = next((item for item in selected_records
+                          if item.get("role") in REF2VA_CONTENT_ROLES), None)
     reference_uploaded = any(slot["asset_id"] for slot in reference_slots)
     reference_preview_ready = bool(
         reference and reference.get("stored_path")
         and Path(reference["stored_path"]).is_file())
-    expected_reference_count = len(required_roles) + len(selected_ref2va_roles)
+    expected_reference_count = (
+        len(selected_a6_roles) if include_ref2va_roles
+        and selected_workflow != "02_Day_Night_Transition"
+        else len(required_roles))
     reference_approved = (
         reference_error is None and len(current_refs) == expected_reference_count)
     if reference_error and "DUPLICATE" in reference_error:
@@ -237,6 +256,10 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         "current_reference_asset_id": reference.get("id") if reference else None,
         "reference_role": reference.get("role") if reference else None,
         "required_reference_roles": list(required_roles),
+        "reference_mode": "Ref2VA" if include_ref2va_roles else (
+            "FL2VA" if selected_workflow == "02_Day_Night_Transition" else "I2VA"),
+        "ref2va_endpoint_semantics": (
+            "NOT_USED_ENDPOINTS_REMAIN_SEPARATE" if include_ref2va_roles else None),
         "reference_slots": reference_slots,
         "reference_bindings": reference_bindings(
             current_refs, ref2va=include_ref2va_roles),

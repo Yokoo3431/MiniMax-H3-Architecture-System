@@ -30,10 +30,11 @@ from apps.architect_video_studio.mock_api.study_state import build_study_state  
 from runtime.adapters.ref2va_workflow_binding import (  # noqa: E402
     REF2VA_MODEL, Ref2VAWorkflowError, compile_ref2va_workflow,
 )
+from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter  # noqa: E402
 from runtime.h3_prompt_engine import OfflineH3Compiler, PromptReasoningRequest  # noqa: E402
 from runtime.reference_contract import (  # noqa: E402
     build_ref2va_reference_plan, reference_bindings,
-    ref2va_schema_capabilities,
+    ref2va_schema_capabilities, resolve_selected_references,
 )
 
 
@@ -114,25 +115,86 @@ class Ref2VAContractTests(unittest.TestCase):
         self.assertTrue(capability["available"])
         self.assertEqual(capability["limits"], {"image": 9, "video": 3, "audio": 3})
         self.assertEqual(capability["outputs"], ["CONDITIONING", "LATENT"])
+        self.assertTrue(capability["video_vae_input"])
+        self.assertFalse(capability["video_vae_required"])
+        self.assertTrue(capability["audio_vae_input"])
         broken = json.loads(json.dumps(self.schema))
         del broken["MiniMaxH3ReferenceToVideo"]["input"]["required"]["ref_image_size"]
         self.assertFalse(ref2va_schema_capabilities(broken)["available"])
 
+    def test_schema_reports_vae_when_required_by_older_core(self):
+        schema = node_info()
+        node = schema["MiniMaxH3ReferenceToVideo"]["input"]
+        node["required"]["vae"] = []
+        node["required"]["audio_vae"] = []
+        del node["optional"]["vae"]
+        del node["optional"]["audio_vae"]
+        capability = ref2va_schema_capabilities(schema)
+        self.assertTrue(capability["available"])
+        self.assertTrue(capability["video_vae_input"])
+        self.assertTrue(capability["video_vae_required"])
+        self.assertTrue(capability["audio_vae_input"])
+        self.assertTrue(capability["audio_vae_required"])
+
+    def test_native_adapter_compiles_content_role_without_endpoint_scaffold_leak(self):
+        reference = image_ref("site", "site_reference", "site")
+        reference.update({"path_or_ref": "site.png", "approval_state": "APPROVED"})
+
+        class Client:
+            base_url = "http://127.0.0.1:8190"
+
+            @staticmethod
+            def health_check():
+                return {"comfyui_version": "0.36.0"}
+
+            @staticmethod
+            def object_info():
+                return node_info()
+
+        adapter = NativeRuntimeAdapter(client=Client())
+        adapter.runtime_identity_spec = {"runtime_id": "experimental-h3-8190"}
+        request = {
+            "study_id": "study", "workflow_id": "04_Drone_Aerial",
+            "reference_assets": [reference], "guide_frames": [],
+            "camera_motion": "aerial_reveal",
+            "generation_parameters": {
+                "quality": "NATIVE_HIGH", "resolution": "1344x768",
+                "duration": 4.0, "fps": 24, "seed": 42,
+            },
+            "prompt_payload": {
+                "mode": "Ref2VA", "prompt": "<Picture 1> site context",
+                "prompt_hash": "synthetic-prompt-hash",
+            },
+        }
+        with patch("runtime.adapters.native_runtime_adapter.validate_request",
+                   return_value=[]), patch(
+                       "runtime.adapters.native_runtime_adapter.validate_production_payload",
+                       return_value={"ready": True}):
+            prepared = adapter.prepare(request)
+        graph = prepared["translated_payload"]
+        ref_node = next(node for node in graph.values()
+                        if node.get("class_type") == "MiniMaxH3ReferenceToVideo")
+        self.assertIn("ref_images.ref_image_0", ref_node["inputs"])
+        self.assertNotIn("first_frame", ref_node["inputs"])
+        self.assertFalse(any(node.get("class_type") == "MiniMaxH3ImageToVideo"
+                             for node in graph.values()))
+        self.assertEqual([item["role"] for item in
+                          prepared["ref2va_plan"]["bindings"]],
+                         ["site_reference"])
+
     def test_reference_plan_is_ordered_and_uses_flat_dynamic_api_input_keys(self):
         refs = [image_ref("site", "site_reference", "site"),
-                image_ref("first", "first_frame", "first"),
                 image_ref("style", "style_reference", "style")]
         plan = build_ref2va_reference_plan(
             refs, self.schema, project_id="study", runtime_id="experimental-h3-8190",
             video_vae_available=True)
         bindings = plan["bindings"]
         self.assertEqual([item["role"] for item in bindings],
-                         ["first_frame", "style_reference", "site_reference"])
+                         ["style_reference", "site_reference"])
         self.assertEqual([item["native_input"] for item in bindings],
-                         ["ref_images.ref_image_0", "ref_images.ref_image_1",
-                          "ref_images.ref_image_2"])
+                         ["ref_images.ref_image_0", "ref_images.ref_image_1"])
         self.assertEqual([item["prompt_tag"] for item in bindings],
-                         ["<Picture 1>", "<Picture 2>", "<Picture 3>"])
+                         ["<Picture 1>", "<Picture 2>"])
         self.assertNotIn("ref_images", bindings[0])
         self.assertEqual(bindings[0]["requested_fidelity"], "match")
         self.assertEqual(bindings[0]["runtime_compatibility"],
@@ -167,6 +229,32 @@ class Ref2VAContractTests(unittest.TestCase):
                 project_id="study", runtime_id="experimental-h3-8190",
                 video_vae_available=True)
 
+    def test_ref2va_rejects_endpoint_roles_instead_of_downgrading_them(self):
+        with self.assertRaisesRegex(
+                ValueError, "REF2VA_ENDPOINT_ROLE_REQUIRES_ENDPOINT_CONDITIONING"):
+            build_ref2va_reference_plan(
+                [image_ref("first", "first_frame", "first")], self.schema,
+                project_id="study", runtime_id="experimental-h3-8190",
+                video_vae_available=True)
+
+    def test_ref2va_selection_excludes_endpoints_and_rejects_day_night(self):
+        first = image_ref("first", "first_frame", "first")
+        site = image_ref("site", "site_reference", "site")
+        project = {
+            "current_reference_asset_id": "first",
+            "selected_reference_asset_ids": {
+                "first_frame": "first", "site_reference": "site",
+            },
+        }
+        selected = resolve_selected_references(
+            "study", project, {"first": first, "site": site},
+            "04_Drone_Aerial", include_ref2va_roles=True)
+        self.assertEqual([item["role"] for item in selected], ["site_reference"])
+        with self.assertRaisesRegex(ValueError, "REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED"):
+            resolve_selected_references(
+                "study", project, {"first": first, "site": site},
+                "02_Day_Night_Transition", include_ref2va_roles=True)
+
     def test_ref2va_rejects_cross_project_unapproved_duplicates_and_missing_vae(self):
         cases = [
             ([image_ref("x", "identity_reference", "x", project="elsewhere")],
@@ -187,8 +275,8 @@ class Ref2VAContractTests(unittest.TestCase):
                     video_vae_available=video_vae)
 
     def test_compiler_is_copy_only_and_emits_exact_dotted_slots(self):
-        refs = [image_ref("first", "first_frame", "first"),
-                image_ref("style", "style_reference", "style")]
+        refs = [image_ref("style", "style_reference", "style"),
+                image_ref("site", "site_reference", "site")]
         original = base_graph()
         result, plan = compile_ref2va_workflow(
             original, refs, self.schema, project_id="study",
@@ -201,9 +289,11 @@ class Ref2VAContractTests(unittest.TestCase):
         self.assertNotIn("ref_images", node["inputs"])
         self.assertEqual(result["3"]["inputs"]["unet_name"], REF2VA_MODEL)
         self.assertEqual(plan["graph"]["load_image_node_ids"], ["8", "9"])
+        self.assertFalse(any(node.get("class_type") == "MiniMaxH3ImageToVideo"
+                             for node in result.values()))
 
     def test_compiler_fails_closed_without_checkpoint_or_prompt_tags(self):
-        refs = [image_ref("first", "first_frame", "first")]
+        refs = [image_ref("site", "site_reference", "site")]
         with self.assertRaisesRegex(Ref2VAWorkflowError, "REF2VA_CHECKPOINT_UNAVAILABLE"):
             compile_ref2va_workflow(
                 base_graph(), refs, node_info(include_checkpoint=False),
@@ -227,20 +317,20 @@ class Ref2VAContractTests(unittest.TestCase):
     def test_compiler_requires_live_video_vae_loader_choice(self):
         with self.assertRaisesRegex(Ref2VAWorkflowError, "REF2VA_VIDEO_VAE_UNAVAILABLE"):
             compile_ref2va_workflow(
-                base_graph(), [image_ref("first", "first_frame", "first")],
+                base_graph(), [image_ref("site", "site_reference", "site")],
                 node_info(include_vae=False), project_id="study",
                 runtime_id="experimental-h3-8190")
 
     def test_offline_prompt_compiler_emits_matching_picture_roles(self):
         request = PromptReasoningRequest(
             mode="Ref2VA", duration=4.0, user_intent="保持建筑体量与场地关系",
-            reference_role="multi_reference_roles", reference_count=2,
+            reference_role="multi_reference_roles", reference_count=1,
             workflow_id="04_Drone_Aerial", camera_motion="slow_push",
-            reference_roles=("first_frame", "site_reference"),
+            reference_roles=("site_reference",),
         )
         prompt = OfflineH3Compiler().compile(request)
         self.assertIn("<Picture 1>", prompt["prompt"])
-        self.assertIn("<Picture 2>", prompt["prompt"])
+        self.assertNotIn("<Picture 2>", prompt["prompt"])
         self.assertIn("site context reference", prompt["prompt"])
 
 
@@ -354,8 +444,7 @@ class JobSnapshotTests(unittest.TestCase):
     def test_ref2va_snapshot_keeps_role_slot_and_source_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
             api = JobAPI(StudioStore(directory))
-            refs = [image_ref("first", "first_frame", "first"),
-                    image_ref("site", "site_reference", "site")]
+            refs = [image_ref("site", "site_reference", "site")]
             request = SimpleNamespace(
                 workflow_id="04_Drone_Aerial",
                 prompt_payload={"mode": "Ref2VA", "prompt_hash": "prompt-hash"},
@@ -368,8 +457,8 @@ class JobSnapshotTests(unittest.TestCase):
             site = next(item for item in snapshot["reference_bindings"]
                         if item["role"] == "site_reference")
             self.assertEqual(site["media_type"], "image")
-            self.assertEqual(site["ordinal"], 2)
-            self.assertEqual(site["native_input"], "ref_images.ref_image_1")
+            self.assertEqual(site["ordinal"], 1)
+            self.assertEqual(site["native_input"], "ref_images.ref_image_0")
             self.assertTrue(site["source_identity"].startswith("sha256:"))
             for key in ("content_sha256", "requested_fidelity",
                         "runtime_compatibility", "validation_evidence"):
@@ -404,20 +493,24 @@ class PromptIntegrationTests(unittest.TestCase):
             self.assertEqual(prompt["mode"], "Ref2VA")
             self.assertTrue(prompt["verified"]["pass"], prompt["verified"])
             self.assertIn("<Picture 1>", prompt["prompt"])
-            self.assertIn("<Picture 2>", prompt["prompt"])
+            self.assertNotIn("<Picture 2>", prompt["prompt"])
             self.assertEqual([item["role"] for item in prompt["reference_bindings"]],
-                             ["first_frame", "site_reference"])
-            self.assertEqual(prompt["reference_bindings"][1]["native_input"],
-                             "ref_images.ref_image_1")
+                             ["site_reference"])
+            self.assertEqual(prompt["reference_bindings"][0]["native_input"],
+                             "ref_images.ref_image_0")
             self.assertEqual(prompt["integrated_multimodal_description"],
                              prompt["integrated_multimodal_description"].strip())
             study = build_study_state(store, project_id)
             self.assertTrue(study["prompt_ready"], study["gate_reasons"])
             self.assertTrue(study["reference_approved"], study["reference_error"])
             self.assertTrue(study["generate_allowed"], study["gate_reasons"])
+            self.assertEqual(study["required_reference_roles"], [])
+            self.assertEqual(study["reference_mode"], "Ref2VA")
+            self.assertEqual(study["ref2va_endpoint_semantics"],
+                             "NOT_USED_ENDPOINTS_REMAIN_SEPARATE")
             self.assertEqual(
                 [item["role"] for item in study["reference_bindings"]],
-                ["first_frame", "site_reference"])
+                ["site_reference"])
 
     def test_a6_experimental_dry_run_persists_ref2va_plan_without_submission(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -471,11 +564,14 @@ class PromptIntegrationTests(unittest.TestCase):
                         "ordinal": ordinal + 1,
                     } for ordinal, item in enumerate(request.reference_assets)]
                     self.assert_roles = roles
+                    image_inputs = {
+                        f"ref_images.ref_image_{ordinal}": [str(8 + ordinal), 0]
+                        for ordinal, _ in enumerate(bindings)
+                    }
                     return {
                         "translated_payload": {
                             "5": {"class_type": "MiniMaxH3ReferenceToVideo",
-                                  "inputs": {"ref_images.ref_image_0": ["8", 0],
-                                             "ref_images.ref_image_1": ["9", 0]}},
+                                  "inputs": image_inputs},
                             "15": {"class_type": "SaveVideo", "inputs": {
                                 "filename_prefix": "video/04_Drone_Aerial_C2B_42",
                                 "video": ["5", 0]}},
@@ -514,14 +610,14 @@ class PromptIntegrationTests(unittest.TestCase):
             self.assertEqual(result["snapshot_type"],
                              "A6_REF2VA_EXPERIMENTAL_PREFLIGHT")
             self.assertEqual(result["execution_purpose"], "A6_REF2VA_VALIDATION")
-            self.assertEqual(result["ref2va_count"], 2)
+            self.assertEqual(result["ref2va_count"], 1)
             self.assertEqual(result["runtime_capability"]["node"],
                              "MiniMaxH3ReferenceToVideo")
             self.assertEqual(result["runtime_capability"]["status"], "AVAILABLE")
             self.assertEqual(
                 [item["native_input"] for item in
                  result["reference_execution_plan"]["bindings"]],
-                ["ref_images.ref_image_0", "ref_images.ref_image_1"])
+                ["ref_images.ref_image_0"])
             self.assertIn(result["id"], result["expected_output_prefix"])
             self.assertFalse(result["submission_attempted"])
             self.assertIsNone(result["prompt_id"])

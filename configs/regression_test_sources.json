@@ -33,8 +33,8 @@
     {
       "path": "tests/test_a6_ref2va_contract.py",
       "tracked_status": "tracked",
-      "sha256": "EBCA67F4D460ABB6FEE9589C06596294168F577E7FA5C5809E5CF86B370696CB",
-      "discovered_test_count": 19,
+      "sha256": "6A7A52F11B5A36E58602B1281148D6E060B882D3688FA5EC81B15311D7B2723A",
+      "discovered_test_count": 23,
       "classification": "CORE_REGRESSION"
     },
     {

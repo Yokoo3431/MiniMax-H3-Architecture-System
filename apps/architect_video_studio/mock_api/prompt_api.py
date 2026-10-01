@@ -29,7 +29,9 @@ from runtime.prompt_provenance import (
     stable_hash,
 )
 from runtime.reference_contract import reference_bindings, resolve_selected_references
-from runtime.reference_contract import REF2VA_ROLE_ORDER, required_reference_roles
+from runtime.reference_contract import (
+    selected_ref2va_roles,
+)
 from runtime.workflow_motion import normalize_camera_motion
 from runtime.h3_prompt_engine import (
     CLIReasoningProvider, OfflineH3Compiler, OpenAICompatibleProvider, PromptReasoningRequest,
@@ -177,10 +179,7 @@ class PromptAPI:
 
         refs = self.store.load_references(project_id)
         selected_roles = project.get("selected_reference_asset_ids") or {}
-        required_roles = required_reference_roles(workflow)
-        has_ref2va_roles = any(
-            role not in required_roles and selected_roles.get(role)
-            for role in REF2VA_ROLE_ORDER)
+        has_ref2va_roles = bool(selected_ref2va_roles(selected_roles))
         if has_ref2va_roles and workflow == "02_Day_Night_Transition":
             raise ValueError(
                 "REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED: 日夜首末帧仍使用现有 FL2VA 语义")

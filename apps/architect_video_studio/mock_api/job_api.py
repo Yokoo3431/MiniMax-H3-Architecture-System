@@ -51,8 +51,7 @@ from runtime.a4_profiles import (
     resolve_product_parameters,
 )
 from runtime.reference_contract import (
-    REF2VA_ROLE_ORDER, reference_bindings, required_reference_roles,
-    resolve_selected_references,
+    reference_bindings, resolve_selected_references, selected_ref2va_roles,
 )
 from runtime.multiframe_guides import (
     GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, resolve_guide_bindings,
@@ -463,10 +462,7 @@ class JobAPI:
         intent_for_route = self.store.load_intent(project_id) or {}
         route_workflow = str(intent_for_route.get("selected_workflow") or "")
         selected_roles = project.get("selected_reference_asset_ids") or {}
-        required_roles = set(required_reference_roles(route_workflow))
-        requires_ref2va = any(
-            role not in required_roles and selected_roles.get(role)
-            for role in REF2VA_ROLE_ORDER)
+        requires_ref2va = bool(selected_ref2va_roles(selected_roles))
         self._validate_experimental_target(
             runtime_target, runtime_adapter, runtime_id=runtime_id,
             execution_purpose=execution_purpose,

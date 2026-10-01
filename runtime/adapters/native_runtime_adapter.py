@@ -57,7 +57,9 @@ from runtime.adapters.golden_workflow_binding import (
 from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
 from runtime.h3_model_root import validate_h3_model_contract
 from runtime.product_hardening import map_comfy_event
-from runtime.reference_contract import required_reference_roles
+from runtime.reference_contract import (
+    REF2VA_CONTENT_ROLES, required_reference_roles,
+)
 from runtime.adapters.multiframe_guide_capability import (
     MultiFrameGuideCapabilityAdapter,
 )
@@ -277,11 +279,19 @@ class NativeRuntimeAdapter(RuntimeAdapter):
             if (str(getattr(self, "runtime_identity_spec", {}).get("runtime_id") or "")
                     != "experimental-h3-8190"):
                 raise ValueError("REF2VA_RUNTIME_IDENTITY_UNVERIFIED")
-            required_roles = required_reference_roles(workflow_id)
-            base_refs = [ref for ref in refs if ref.get("role") in required_roles]
-            if len(base_refs) != len(required_roles):
-                raise ValueError("REF2VA_REQUIRED_ENDPOINT_REFERENCE_MISSING")
-            base_request = {**data, "reference_assets": base_refs}
+            if not refs:
+                raise ValueError("REF2VA_REFERENCE_REQUIRED")
+            if any(ref.get("role") not in REF2VA_CONTENT_ROLES for ref in refs):
+                raise ValueError(
+                    "REF2VA_ENDPOINT_OR_UNSUPPORTED_ROLE: Ref2VA accepts only A6 content roles")
+            # The frozen Golden I2VA file is used only as a structural source
+            # for CLIP/VAE/sampler/output nodes. Its required first-frame widget
+            # is satisfied by a transient scaffold, then the Ref2VA compiler
+            # removes that loader and replaces the conditioning node. The
+            # scaffold is never part of the final graph or Job provenance.
+            scaffold = dict(refs[0])
+            scaffold["role"] = "first_frame"
+            base_request = {**data, "reference_assets": [scaffold]}
             payload = bind_golden_workflow(
                 base_request, workflow_id,
                 allow_a4_2_candidate=self.allow_a4_2_candidate)

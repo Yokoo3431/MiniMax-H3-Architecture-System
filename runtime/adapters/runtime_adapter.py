@@ -127,20 +127,47 @@ def validate_request(request: Dict[str, Any],
         a4_profile = {}
     if a4_profile.get("contract_version") == "a4.1":
         from runtime.a4_profiles import resolve_product_parameters
-        from runtime.reference_contract import reference_bindings, required_reference_roles
+        from runtime.reference_contract import (
+            ACTIVE_REFERENCE_ROLES, REF2VA_CONTENT_ROLES,
+            reference_bindings, required_reference_roles,
+        )
         try:
             expected_roles = required_reference_roles(str(request.get("workflow_id") or ""))
             is_ref2va = str(prompt.get("mode") or "") == "Ref2VA"
             if is_ref2va and str(request.get("workflow_id") or "") == "02_Day_Night_Transition":
                 errors.append("REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED")
-            endpoint_refs = ([ref for ref in refs if ref.get("role") in expected_roles]
-                             if is_ref2va else refs)
-            if len(endpoint_refs) != len(expected_roles):
+            if is_ref2va:
+                roles = [str(ref.get("role") or "") for ref in refs]
+                if any(role in ACTIVE_REFERENCE_ROLES for role in roles):
+                    errors.append(
+                        "REF2VA_ENDPOINT_ROLE_REQUIRES_ENDPOINT_CONDITIONING")
+                if not refs:
+                    errors.append("REF2VA_REFERENCE_REQUIRED")
+                for ref in refs:
+                    role = str(ref.get("role") or "")
+                    if role not in REF2VA_CONTENT_ROLES:
+                        errors.append(f"REF2VA_ROLE_UNSUPPORTED:{role or 'missing'}")
+                    if ref.get("project_id") != request.get("study_id"):
+                        errors.append(f"Ref2VA reference {role} is not from this Study")
+                    if ref.get("approval_state") != "APPROVED":
+                        errors.append(f"Ref2VA reference {role} is not approved")
+                asset_ids = [str(ref.get("asset_id") or "") for ref in refs]
+                hashes = [str(ref.get("sha256") or "").lower() for ref in refs]
+                if not all(asset_ids) or len(set(asset_ids)) != len(asset_ids):
+                    errors.append("Ref2VA reference asset IDs must be present and distinct")
+                nonempty_hashes = [value for value in hashes if value]
+                if len(nonempty_hashes) != len(set(nonempty_hashes)):
+                    errors.append("Ref2VA references must have distinct content")
+                prompt_refs = prompt.get("reference_bindings") or []
+                expected_bindings = reference_bindings(refs, ref2va=True)
+                if prompt_refs != expected_bindings:
+                    errors.append("A4.1 Prompt reference bindings differ from Job references")
+            elif len(refs) != len(expected_roles):
                 errors.append(f"A4.1 requires reference roles {list(expected_roles)}")
             else:
                 asset_ids = []
                 hashes = []
-                for ref, role in zip(endpoint_refs, expected_roles):
+                for ref, role in zip(refs, expected_roles):
                     if ref.get("role") != role:
                         errors.append(f"A4.1 reference role order must be {list(expected_roles)}")
                     if ref.get("project_id") != request.get("study_id"):
@@ -154,7 +181,7 @@ def validate_request(request: Dict[str, Any],
                 if len(hashes) > 1 and hashes[0] and hashes[1] and hashes[0] == hashes[1]:
                     errors.append("A4.1 first and last references must have distinct content")
                 prompt_refs = prompt.get("reference_bindings") or []
-                expected_bindings = reference_bindings(refs, ref2va=is_ref2va)
+                expected_bindings = reference_bindings(refs)
                 if prompt_refs != expected_bindings:
                     errors.append("A4.1 Prompt reference bindings differ from Job references")
             resolved, resolved_profile = resolve_product_parameters(

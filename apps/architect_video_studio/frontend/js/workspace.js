@@ -295,7 +295,11 @@ function renderRefs() {
     : `<span>${esc(selectedRef.filename)}</span>`;
   document.getElementById('choose-ref-btn').style.display = 'none';
   document.getElementById('replace-ref-btn').style.display = 'inline-flex';
-  document.getElementById('refs').textContent = selectedRef.state === 'APPROVED' ? '当前参考图' : '待处理参考图';
+  document.getElementById('refs').textContent = selectedRef.state !== 'APPROVED'
+    ? '待处理参考图'
+    : study?.reference_mode === 'Ref2VA'
+      ? `A6 ${selectedRef.role} 角色图 · 不作为精确首帧`
+      : '当前参考图';
   const approved = selectedRef.state === 'APPROVED';
   state.textContent = approved ? '参考图已批准 ✓' : '待审批';
   state.className = `badge ${approved ? 'done' : 'warn'}`;
@@ -379,7 +383,7 @@ function renderReferenceBoard() {
     validation.textContent = dayNight
       ? '当前 Day / Night 工作流保留 first_frame + last_frame 的 FL2VA 契约；请先移除 A6 角色或切换工作流。'
       : selectedA6RoleIds().length
-        ? '已选择 A6 参考角色。生成仅在 Ref2VA 权重、隔离运行时与路由均通过检查后开放。'
+        ? '已选择 A6 参考角色。Ref2VA 本次只使用这些角色图；既有首/末帧不会保留其精确端点语义。若要精确首/末帧，请移除 A6 角色并使用现有 I2VA/FL2VA。'
         : '尚无额外 A6 参考角色；现有 first_frame / last_frame 流程不变。';
   }
 }
@@ -852,7 +856,8 @@ function updateGate() {
   const button = document.getElementById('generate-btn');
   const preflightButton = document.getElementById('a5-preflight-btn');
   if (preflightButton) {
-    preflightButton.hidden = runtimeTarget !== 'experimental' || requiresRef2VA;
+    preflightButton.hidden = runtimeTarget !== 'experimental'
+      || (!guideFrames.length && !requiresRef2VA);
     preflightButton.disabled = true;
   }
   button.disabled = !(approved && promptReady && risk && study.generate_allowed);
@@ -882,6 +887,9 @@ function updateGate() {
       button.disabled = true;
       return;
     }
+    if (requiresRef2VA) {
+      note.textContent = 'A6 Ref2VA 使用已批准的角色参考图；现有首/末帧不作为精确端点条件。可先运行 CPU 实验路由预检。';
+    }
     if (runtimeTarget === 'experimental' && !guideFrames.length && !requiresRef2VA) {
       note.textContent = '隔离运行时仅用于显式 A5 Guide 或 A6 Ref2VA 验收；普通视频继续使用生产 8189。';
       button.disabled = true;
@@ -892,7 +900,7 @@ function updateGate() {
       button.disabled = true;
       return;
     }
-    if (runtimeTarget === 'experimental' && !guideFrames.length) {
+    if (runtimeTarget === 'experimental' && !guideFrames.length && !requiresRef2VA) {
       note.textContent = '隔离实验运行时仅用于显式 A5 多帧引导验证；请先添加并批准分镜引导图';
       button.disabled = true;
       return;
@@ -933,9 +941,13 @@ function updateGate() {
     else note.textContent = '准备完成，可以生成';
   }
   if (preflightButton) {
+    const a6PreflightReady = requiresRef2VA && ref2vaReady;
+    const a5PreflightReady = guideFrames.length > 0
+      && guideResolution?.valid === true;
     preflightButton.disabled = !(runtimeTarget === 'experimental' && runtimeReady
       && approved && promptReady && risk && study?.generate_allowed
-      && guideFrames.length > 0 && guideResolution?.valid === true);
+      && (a6PreflightReady || a5PreflightReady));
+    preflightButton.textContent = '仅验证实验路由（不生成）';
   }
 }
 
@@ -973,10 +985,11 @@ async function generate() {
   } catch (e) { showErr(friendlyError(e, '生成任务提交失败，请检查参考图、提示词和设置。')); }
 }
 
-async function runA5Preflight() {
+async function runExperimentalPreflight() {
   const button = document.getElementById('a5-preflight-btn');
   const note = document.getElementById('gate-note');
   if (value('runtime-target') !== 'experimental') return;
+  const isA6 = selectedA6RoleIds().length > 0;
   button.disabled = true;
   button.textContent = '正在进行 CPU 预检…';
   try {
@@ -988,13 +1001,16 @@ async function runA5Preflight() {
       seed, risk_reviewed: document.getElementById('risk-check').checked,
       generation_parameters: params,
       runtime_target: 'experimental', runtime_id: 'experimental-h3-8190',
-      execution_purpose: 'A5_EXPERIMENTAL_VALIDATION',
+      execution_purpose: isA6
+        ? 'A6_REF2VA_VALIDATION' : 'A5_EXPERIMENTAL_VALIDATION',
     });
-    note.textContent = `CPU 预检通过 · ${result.guide_count} guides · 帧 ${result.guide_frame_indexes.join(', ')} · workflow ${result.workflow_sha256.slice(0, 12)}…；未提交 /prompt`;
+    note.textContent = isA6
+      ? `A6 CPU 预检通过 · ${result.ref2va_count} 个角色参考 · workflow ${result.workflow_sha256.slice(0, 12)}…；未提交 /prompt`
+      : `A5 CPU 预检通过 · ${result.guide_count} guides · 帧 ${result.guide_frame_indexes.join(', ')} · workflow ${result.workflow_sha256.slice(0, 12)}…；未提交 /prompt`;
   } catch (e) {
-    showErr(friendlyError(e, 'A5 CPU 预检未通过；未提交 /prompt。'));
+    showErr(friendlyError(e, '实验 CPU 预检未通过；未提交 /prompt。'));
   } finally {
-    button.textContent = '仅验证 A5 路由（不生成）';
+    button.textContent = '仅验证实验路由（不生成）';
     updateGate();
   }
 }
@@ -1078,7 +1094,7 @@ document.getElementById('prompt-engine').addEventListener('change', () => {
   prompt = null; renderPrompt(); updateGate(); schedulePromptRefresh();
 });
 document.getElementById('generate-btn').addEventListener('click', generate);
-document.getElementById('a5-preflight-btn').addEventListener('click', runA5Preflight);
+document.getElementById('a5-preflight-btn').addEventListener('click', runExperimentalPreflight);
 document.getElementById('runtime-target').addEventListener('change', updateGate);
 document.getElementById('choose-guide-file-btn').addEventListener('click', () =>
   document.getElementById('guide-file').click());

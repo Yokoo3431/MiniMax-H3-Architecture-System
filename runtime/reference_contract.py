@@ -22,6 +22,11 @@ REFERENCE_ROLES = (
 )
 ACTIVE_REFERENCE_ROLES = ("first_frame", "last_frame")
 DAY_NIGHT_WORKFLOW = "02_Day_Night_Transition"
+REF2VA_CONTENT_ROLES = (
+    "identity_reference", "style_reference", "material_reference",
+    "site_reference", "motion_reference_video", "camera_reference_video",
+    "audio_reference",
+)
 
 # Role order is product data, not a ComfyUI node/socket ordering.  The native
 # Ref2VA adapter groups these deterministically by media family and then uses
@@ -89,11 +94,21 @@ def required_reference_roles(workflow_id: str | None) -> tuple[str, ...]:
             else ("first_frame",))
 
 
+def selected_ref2va_roles(selected_reference_asset_ids: Mapping[str, Any] | None
+                          ) -> tuple[str, ...]:
+    """Return selected A6 content roles; endpoint and timeline roles stay separate."""
+    selected = (selected_reference_asset_ids
+                if isinstance(selected_reference_asset_ids, Mapping) else {})
+    return tuple(role for role in REF2VA_CONTENT_ROLES if selected.get(role))
+
+
 def ref2va_media_type(reference: Mapping[str, Any]) -> str:
     """Resolve a typed Ref2VA family without trusting a user-supplied mismatch."""
     role = str(reference.get("role") or "")
     if role == "timeline_guide":
         raise ValueError("REF2VA_TIMELINE_GUIDE_USES_ADDGUIDE")
+    if role in ACTIVE_REFERENCE_ROLES:
+        raise ValueError("REF2VA_ENDPOINT_ROLE_REQUIRES_ENDPOINT_CONDITIONING")
     expected = REF2VA_ROLE_MEDIA.get(role)
     actual = str(reference.get("media_type") or expected or "").lower()
     if expected is None:
@@ -125,6 +140,7 @@ def ref2va_schema_capabilities(object_info: Mapping[str, Any]) -> dict[str, Any]
                 "node": "MiniMaxH3ReferenceToVideo", "limits": {}}
     inputs = node.get("input") or {}
     optional = inputs.get("optional") or {}
+    required = inputs.get("required") or {}
     limits: dict[str, int | None] = {}
     for family, (field, _prefix) in REF2VA_MEDIA_INPUTS.items():
         spec = optional.get(field)
@@ -144,7 +160,6 @@ def ref2va_schema_capabilities(object_info: Mapping[str, Any]) -> dict[str, Any]
                 paired_audio[1]["template"]["max"])
         except (KeyError, TypeError, ValueError):
             paired_audio_maximum = None
-    required = inputs.get("required") or {}
     required_names = {str(name) for name in required}
     required_ok = {"clip", "prompt", "width", "height", "length",
                    "ref_image_size"}.issubset(
@@ -156,8 +171,14 @@ def ref2va_schema_capabilities(object_info: Mapping[str, Any]) -> dict[str, Any]
         "node": "MiniMaxH3ReferenceToVideo",
         "limits": limits,
         "paired_video_audio_limit": paired_audio_maximum,
-        "video_vae_input": "vae" in optional,
-        "audio_vae_input": "audio_vae" in optional,
+        # Comfy core versions have moved these sockets between required and
+        # optional without changing their names. Report presence separately
+        # from optionality so capability checks don't mistake a required VAE
+        # input for a missing one.
+        "video_vae_input": "vae" in required or "vae" in optional,
+        "video_vae_required": "vae" in required,
+        "audio_vae_input": "audio_vae" in required or "audio_vae" in optional,
+        "audio_vae_required": "audio_vae" in required,
         "outputs": list(node.get("output") or []),
         "prompt_tags": dict(REF2VA_PROMPT_TAGS),
     }
@@ -175,6 +196,9 @@ def build_ref2va_reference_plan(
         raise ValueError(str(schema.get("reason") or "REF2VA_SCHEMA_UNAVAILABLE"))
     if not references:
         raise ValueError("REF2VA_REFERENCE_REQUIRED")
+    if any(str(item.get("role") or "") in ACTIVE_REFERENCE_ROLES
+           for item in references):
+        raise ValueError("REF2VA_ENDPOINT_ROLE_REQUIRES_ENDPOINT_CONDITIONING")
     ordered = order_ref2va_references(references)
     counts = {family: 0 for family in REF2VA_MEDIA_INPUTS}
     seen_ids: set[str] = set()
@@ -269,7 +293,13 @@ def resolve_selected_references(project_id: str, project: Mapping[str, Any],
     single-reference workflows. Day/Night never infers either endpoint from
     upload history and requires two separately selected asset IDs.
     """
-    required = required_reference_roles(workflow_id)
+    if include_ref2va_roles and workflow_id == DAY_NIGHT_WORKFLOW:
+        raise ValueError("REF2VA_DAY_NIGHT_ENDPOINT_MODE_UNSUPPORTED")
+    # Ref2VA is an alternate conditioning mode, not an additive decoration on
+    # I2VA/FL2VA. Its generic Picture slots cannot preserve exact endpoint
+    # semantics, so only typed A6 content roles enter this execution contract.
+    required = (() if include_ref2va_roles
+                else required_reference_roles(workflow_id))
     root = Path(reference_root).resolve() if reference_root is not None else None
     selected = project.get("selected_reference_asset_ids")
     selected = selected if isinstance(selected, Mapping) else {}
@@ -318,10 +348,7 @@ def resolve_selected_references(project_id: str, project: Mapping[str, Any],
         ids.append(asset_id)
         result.append(dict(record))
     if include_ref2va_roles:
-        required_set = set(required)
-        for role in REF2VA_ROLE_ORDER:
-            if role in required_set:
-                continue
+        for role in REF2VA_CONTENT_ROLES:
             asset_id = selected.get(role)
             if not isinstance(asset_id, str) or not asset_id.strip():
                 continue
@@ -355,8 +382,10 @@ def resolve_selected_references(project_id: str, project: Mapping[str, Any],
             ids.append(asset_id)
         result = order_ref2va_references(result)
 
+    if not result and include_ref2va_roles:
+        raise ValueError("REF2VA_REFERENCE_REQUIRED")
     if len(set(ids)) != len(ids):
-        raise ValueError("REFERENCE_DUPLICATE_ASSET_ID: first and last frames must be distinct")
+        raise ValueError("REFERENCE_DUPLICATE_ASSET_ID: selected references must be distinct")
     if len(result) > 1:
         hashes = [str(item.get("sha256") or "").strip().lower() for item in result]
         nonempty_hashes = [value for value in hashes if value]
@@ -451,9 +480,11 @@ def validate_guide_frames(value: Any) -> list[dict[str, Any]]:
 
 __all__ = [
     "ACTIVE_REFERENCE_ROLES", "DAY_NIGHT_WORKFLOW", "REFERENCE_ROLES",
-    "REF2VA_MEDIA_INPUTS", "REF2VA_ROLE_MEDIA", "REF2VA_ROLE_ORDER",
+    "REF2VA_CONTENT_ROLES", "REF2VA_MEDIA_INPUTS", "REF2VA_ROLE_MEDIA",
+    "REF2VA_ROLE_ORDER",
     "build_ref2va_reference_plan", "order_ref2va_references",
     "ref2va_media_type", "ref2va_schema_capabilities",
     "reference_bindings", "required_reference_roles",
-    "resolve_selected_references", "validate_guide_frames",
+    "resolve_selected_references", "selected_ref2va_roles",
+    "validate_guide_frames",
 ]
