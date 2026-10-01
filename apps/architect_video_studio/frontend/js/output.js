@@ -17,6 +17,17 @@ function outputFolderPath(outputPath) {
   return slash > 0 ? raw.slice(0, slash) : '';
 }
 
+function runtimeLabel(detail) {
+  const trace = detail?.execution_trace || {};
+  const identity = trace.runtime_identity || detail?.runtime_identity || {};
+  const role = identity.runtime_role || identity.target || detail?.runtime_target;
+  const version = identity.comfyui_version || trace.runtime_capability?.version || '';
+  const roleLabel = role === 'experimental' ? '隔离实验'
+    : role === 'production' ? '生产'
+      : '运行时身份未记录';
+  return `${roleLabel}${version ? ` · ComfyUI ${version}` : ''}`;
+}
+
 function setContextLinks(projectId, currentJobId, outputPath) {
   const links = document.getElementById('output-context-actions');
   if (!links) return;
@@ -87,7 +98,7 @@ async function load() {
         <div class="kv"><span class="k">Workflow</span><span>${esc(result.workflow)}</span></div>
         <div class="kv"><span class="k">分辨率 / fps</span><span>${esc(resolution)} / ${esc(fps || '—')}</span></div>
         <div class="kv"><span class="k">时长 / 帧</span><span>${esc(duration)} / ${esc(frameCount)}（H3 帧格）</span></div>
-        <div class="kv"><span class="k">Runtime</span><span>${esc(result.runtime === 'native' ? 'Native v0.33.1 · 已验证输出' : 'Prototype')}</span></div>
+        <div class="kv"><span class="k">运行时</span><span>${esc(runtimeLabel(detail))}</span></div>
         <div class="kv"><span class="k">Safe Load</span><span>pread（冻结）</span></div>
         <div class="kv"><span class="k">最终视频</span><span class="small">${esc(media.filename || '—')}</span></div>
       </div>`;
