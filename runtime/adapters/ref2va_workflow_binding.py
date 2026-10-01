@@ -70,6 +70,7 @@ def compile_ref2va_workflow(
         object_info: Mapping[str, Any], *, project_id: str,
         runtime_id: str, video_vae_available: bool = True,
         audio_vae_available: bool = False,
+        reference_image_size: str = REF2VA_DEFAULT_IMAGE_SIZE,
         checkpoint: str = REF2VA_MODEL) -> tuple[dict[str, Any], dict[str, Any]]:
     """Compile an image-only Ref2VA graph and return its audit-safe slot plan.
 
@@ -81,7 +82,8 @@ def compile_ref2va_workflow(
         plan = build_ref2va_reference_plan(
             references, object_info, project_id=project_id, runtime_id=runtime_id,
             video_vae_available=video_vae_available,
-            audio_vae_available=audio_vae_available)
+            audio_vae_available=audio_vae_available,
+            reference_image_size=reference_image_size)
     except ValueError as exc:
         raise Ref2VAWorkflowError(str(exc)) from exc
     if any(binding["media_type"] != "image" for binding in plan["bindings"]):
@@ -95,9 +97,10 @@ def compile_ref2va_workflow(
     if not {"clip", "prompt", "width", "height", "length",
             "ref_image_size"}.issubset(required):
         raise Ref2VAWorkflowError("REF2VA_SCHEMA_REQUIRED_INPUT_MISMATCH")
-    if REF2VA_DEFAULT_IMAGE_SIZE not in _enum_options(
+    if reference_image_size not in _enum_options(
             object_info, REF2VA_NODE, "ref_image_size"):
-        raise Ref2VAWorkflowError("REF2VA_IMAGE_SIZE_UNAVAILABLE")
+        raise Ref2VAWorkflowError(
+            f"REF2VA_IMAGE_SIZE_UNAVAILABLE:{reference_image_size}")
     if "ref_images" not in optional or "vae" not in optional:
         raise Ref2VAWorkflowError("REF2VA_SCHEMA_IMAGE_OR_VAE_INPUT_MISSING")
     if list(schema.get("output") or [])[:2] != ["CONDITIONING", "LATENT"]:
@@ -159,7 +162,7 @@ def compile_ref2va_workflow(
         "width": (old_node.get("inputs") or {}).get("width"),
         "height": (old_node.get("inputs") or {}).get("height"),
         "length": (old_node.get("inputs") or {}).get("length"),
-        "ref_image_size": REF2VA_DEFAULT_IMAGE_SIZE,
+        "ref_image_size": reference_image_size,
         **slot_links,
     }
     if any(value is None for key, value in new_inputs.items()

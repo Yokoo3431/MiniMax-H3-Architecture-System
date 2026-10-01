@@ -55,6 +55,7 @@ REF2VA_MEDIA_INPUTS = {
 }
 REF2VA_PROMPT_TAGS = {"image": "Picture", "video": "Video", "audio": "Audio"}
 REF2VA_DEFAULT_IMAGE_SIZE = "match"
+REF2VA_IMAGE_SIZE_OPTIONS = ("match", "max")
 
 
 def _content_sha256(reference: Mapping[str, Any], role: str) -> str:
@@ -161,6 +162,14 @@ def ref2va_schema_capabilities(object_info: Mapping[str, Any]) -> dict[str, Any]
         except (KeyError, TypeError, ValueError):
             paired_audio_maximum = None
     required_names = {str(name) for name in required}
+    image_size_spec = required.get("ref_image_size")
+    image_size_options = []
+    if (isinstance(image_size_spec, (list, tuple))
+            and len(image_size_spec) > 1
+            and isinstance(image_size_spec[1], Mapping)):
+        image_size_options = [str(value) for value in
+                              image_size_spec[1].get("options", [])
+                              if isinstance(value, str)]
     required_ok = {"clip", "prompt", "width", "height", "length",
                    "ref_image_size"}.issubset(
         required_names)
@@ -170,6 +179,7 @@ def ref2va_schema_capabilities(object_info: Mapping[str, Any]) -> dict[str, Any]
         "reason": "" if required_ok and slots_ok else "REF2VA_SCHEMA_INCOMPLETE",
         "node": "MiniMaxH3ReferenceToVideo",
         "limits": limits,
+        "reference_image_size_options": image_size_options,
         "paired_video_audio_limit": paired_audio_maximum,
         # Comfy core versions have moved these sockets between required and
         # optional without changing their names. Report presence separately
@@ -187,13 +197,18 @@ def ref2va_schema_capabilities(object_info: Mapping[str, Any]) -> dict[str, Any]
 def build_ref2va_reference_plan(
         references: list[Mapping[str, Any]], object_info: Mapping[str, Any], *,
         project_id: str, runtime_id: str, video_vae_available: bool,
-        audio_vae_available: bool = False) -> dict[str, Any]:
+        audio_vae_available: bool = False,
+        reference_image_size: str = REF2VA_DEFAULT_IMAGE_SIZE) -> dict[str, Any]:
     """Validate and assign deterministic native slots for a Ref2VA execution."""
     if runtime_id != "experimental-h3-8190":
         raise ValueError("REF2VA_EXPERIMENTAL_RUNTIME_REQUIRED")
     schema = ref2va_schema_capabilities(object_info)
     if not schema.get("available"):
         raise ValueError(str(schema.get("reason") or "REF2VA_SCHEMA_UNAVAILABLE"))
+    if reference_image_size not in REF2VA_IMAGE_SIZE_OPTIONS:
+        raise ValueError(f"REF2VA_IMAGE_SIZE_UNSUPPORTED:{reference_image_size}")
+    if reference_image_size not in schema.get("reference_image_size_options", []):
+        raise ValueError(f"REF2VA_IMAGE_SIZE_UNAVAILABLE:{reference_image_size}")
     if not references:
         raise ValueError("REF2VA_REFERENCE_REQUIRED")
     if any(str(item.get("role") or "") in ACTIVE_REFERENCE_ROLES
@@ -251,7 +266,7 @@ def build_ref2va_reference_plan(
             "approval_state": approval,
             "content_sha256": digest,
             "source_identity": source_identity,
-            "requested_fidelity": REF2VA_DEFAULT_IMAGE_SIZE,
+            "requested_fidelity": reference_image_size,
             "native_slot_index": family_ordinal - 1,
             "native_input": f"{field}.{prefix}{family_ordinal - 1}",
             "prompt_tag": f"<{REF2VA_PROMPT_TAGS[media_type]} {family_ordinal}>",
@@ -270,7 +285,7 @@ def build_ref2va_reference_plan(
         "node": schema["node"],
         "limits": dict(limits),
         "counts": counts,
-        "reference_image_size": REF2VA_DEFAULT_IMAGE_SIZE,
+        "reference_image_size": reference_image_size,
         "bindings": bindings,
         "required_vaes": {
             "video": any(item["media_type"] in {"image", "video"}

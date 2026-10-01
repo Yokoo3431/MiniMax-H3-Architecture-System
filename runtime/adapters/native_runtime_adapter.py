@@ -58,7 +58,8 @@ from runtime.adapters.runtime_paths import RuntimePathContract, RuntimePathError
 from runtime.h3_model_root import validate_h3_model_contract
 from runtime.product_hardening import map_comfy_event
 from runtime.reference_contract import (
-    REF2VA_CONTENT_ROLES, required_reference_roles,
+    REF2VA_CONTENT_ROLES, REF2VA_DEFAULT_IMAGE_SIZE,
+    required_reference_roles,
 )
 from runtime.adapters.multiframe_guide_capability import (
     MultiFrameGuideCapabilityAdapter,
@@ -302,6 +303,8 @@ class NativeRuntimeAdapter(RuntimeAdapter):
                 runtime_id="experimental-h3-8190",
                 video_vae_available=True,
                 audio_vae_available=False,
+                reference_image_size=str(self._request_param(
+                    request, "ref2va_image_size", REF2VA_DEFAULT_IMAGE_SIZE)),
                 checkpoint=REF2VA_MODEL,
             )
             compiled_check = validate_production_payload(

@@ -51,7 +51,9 @@ from runtime.a4_profiles import (
     resolve_product_parameters,
 )
 from runtime.reference_contract import (
-    reference_bindings, resolve_selected_references, selected_ref2va_roles,
+    REF2VA_DEFAULT_IMAGE_SIZE, REF2VA_IMAGE_SIZE_OPTIONS,
+    reference_bindings, ref2va_schema_capabilities,
+    resolve_selected_references, selected_ref2va_roles,
 )
 from runtime.multiframe_guides import (
     GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, compile_timeline_guide_prompt,
@@ -593,6 +595,27 @@ class JobAPI:
                 prompt["workflow"], params, seed=int(seed))
         except ValueError as exc:
             raise ValueError(f"参数不符合 H3 生成契约: {exc}") from exc
+        raw_generation_parameters = generation_parameters or {}
+        image_size_was_requested = (
+            "ref2va_image_size" in raw_generation_parameters)
+        if ref2va_mode:
+            ref2va_image_size = raw_generation_parameters.get(
+                "ref2va_image_size", REF2VA_DEFAULT_IMAGE_SIZE)
+            if (not isinstance(ref2va_image_size, str)
+                    or ref2va_image_size not in REF2VA_IMAGE_SIZE_OPTIONS):
+                raise ValueError("REF2VA_IMAGE_SIZE_UNSUPPORTED")
+            live_object_info = (preflight_result or {}).get("object_info") or {}
+            live_ref2va_schema = ref2va_schema_capabilities(live_object_info)
+            if (not live_ref2va_schema.get("available")
+                    or ref2va_image_size not in live_ref2va_schema.get(
+                        "reference_image_size_options", [])):
+                raise ValueError(
+                    f"REF2VA_IMAGE_SIZE_UNAVAILABLE:{ref2va_image_size}")
+            # Persist the fidelity choice in the immutable Job snapshot and
+            # pass the same value to the native graph compiler.
+            params["ref2va_image_size"] = ref2va_image_size
+        elif image_size_was_requested:
+            raise ValueError("REF2VA_IMAGE_SIZE_ONLY_FOR_REF2VA")
         prompt_params = prompt.get("generation_parameters") or {}
         if prompt_params and (
                 normalize_quality_id(prompt_params.get("quality", "NATIVE_HIGH"))
@@ -920,6 +943,7 @@ class JobAPI:
                                          if guide_prompt else None),
             "reference_bindings": reference_bindings(
                 approved_refs, ref2va=ref2va_mode),
+            "generation_parameters": dict(params),
             "execution_workflow_sha256": workflow_sha,
             "workflow_node_count": len(payload),
             "workflow_node_types": node_types,

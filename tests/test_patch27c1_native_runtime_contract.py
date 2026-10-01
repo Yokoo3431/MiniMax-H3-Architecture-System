@@ -145,8 +145,13 @@ class TestOutputCompatibility(unittest.TestCase):
     def test_metadata_aligns_with_patch27a(self):
         native_meta = set(load_contract()["native_output"]["metadata"])
         patch27a = safe_load(PATCH27A_CONTRACT.read_text(encoding="utf-8"))
-        request_fields = set(patch27a["video_generation_request"]["generation_parameters"]
-                             .get("fields", {}))
+        request = patch27a["video_generation_request"]
+        request_fields = set(request["generation_parameters"].get("fields", {}))
+        prompt_modes = request["prompt_payload"]["fields"]["mode"]["allowed"]
+        self.assertIn("Ref2VA", prompt_modes)
+        ref2va_size = request["generation_parameters"]["fields"][
+            "ref2va_image_size"]
+        self.assertEqual(ref2va_size["allowed"], ["match", "max"])
         # seed/prompt_hash etc. must be present in native metadata
         for key in ("study_id", "workflow_id", "camera_motion", "resolution",
                     "fps", "duration", "quality", "seed", "prompt_hash"):

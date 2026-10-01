@@ -137,6 +137,12 @@ video_generation_request:
         type: enum
         allowed: ["NATIVE_H3", "H3_REGENERATE_2K", "POST_UPSCALE_2K", "POST_UPSCALE"]
         nullable: true
+      ref2va_image_size:
+        type: enum
+        allowed: ["match", "max"]
+        default: "match"
+        applies_when: "prompt_payload.mode == Ref2VA"
+        semantics: "match follows generation pixel area; max requests the reference pipeline's maximum image fidelity"
       aspect_ratio:
         type: enum
         allowed: ["auto", "16:9", "9:16", "1:1"]
@@ -174,7 +180,7 @@ video_generation_request:
     fields:
       mode:
         type: enum
-        allowed: ["I2VA", "FL2VA"]
+        allowed: ["I2VA", "FL2VA", "Ref2VA"]
       prompt:
         type: string
       alignment:

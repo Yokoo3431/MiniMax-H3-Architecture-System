@@ -136,6 +136,7 @@ class Ref2VAContractTests(unittest.TestCase):
         capability = ref2va_schema_capabilities(self.schema)
         self.assertTrue(capability["available"])
         self.assertEqual(capability["limits"], {"image": 9, "video": 3, "audio": 3})
+        self.assertEqual(capability["reference_image_size_options"], ["match", "max"])
         self.assertEqual(capability["outputs"], ["CONDITIONING", "LATENT"])
         self.assertTrue(capability["video_vae_input"])
         self.assertFalse(capability["video_vae_required"])
@@ -182,6 +183,7 @@ class Ref2VAContractTests(unittest.TestCase):
             "generation_parameters": {
                 "quality": "NATIVE_HIGH", "resolution": "1344x768",
                 "duration": 4.0, "fps": 24, "seed": 42,
+                "ref2va_image_size": "max",
             },
             "prompt_payload": {
                 "mode": "Ref2VA",
@@ -205,6 +207,10 @@ class Ref2VAContractTests(unittest.TestCase):
         self.assertEqual([item["role"] for item in
                           prepared["ref2va_plan"]["bindings"]],
                          ["site_reference"])
+        self.assertEqual(ref_node["inputs"]["ref_image_size"], "max")
+        self.assertEqual(prepared["ref2va_plan"]["reference_image_size"], "max")
+        self.assertEqual(prepared["ref2va_plan"]["bindings"][0][
+            "requested_fidelity"], "max")
 
     def test_reference_plan_is_ordered_and_uses_flat_dynamic_api_input_keys(self):
         refs = [image_ref("site", "site_reference", "site"),
@@ -223,6 +229,17 @@ class Ref2VAContractTests(unittest.TestCase):
         self.assertEqual(bindings[0]["requested_fidelity"], "match")
         self.assertEqual(bindings[0]["runtime_compatibility"],
                          "experimental-h3-8190")
+        max_plan = build_ref2va_reference_plan(
+            refs, self.schema, project_id="study", runtime_id="experimental-h3-8190",
+            video_vae_available=True, reference_image_size="max")
+        self.assertEqual(max_plan["reference_image_size"], "max")
+        self.assertTrue(all(item["requested_fidelity"] == "max"
+                            for item in max_plan["bindings"]))
+        with self.assertRaisesRegex(ValueError, "REF2VA_IMAGE_SIZE_UNSUPPORTED"):
+            build_ref2va_reference_plan(
+                refs, self.schema, project_id="study",
+                runtime_id="experimental-h3-8190", video_vae_available=True,
+                reference_image_size="stretch")
         self.assertTrue(bindings[0]["validation_evidence"]["approved"])
         self.assertEqual(plan["reference_image_size"], "match")
 
@@ -312,6 +329,7 @@ class Ref2VAContractTests(unittest.TestCase):
         self.assertEqual(node["inputs"]["ref_images.ref_image_1"], ["9", 0])
         self.assertNotIn("ref_images", node["inputs"])
         self.assertEqual(result["3"]["inputs"]["unet_name"], REF2VA_MODEL)
+        self.assertEqual(node["inputs"]["ref_image_size"], "match")
         self.assertEqual(plan["graph"]["load_image_node_ids"], ["8", "9"])
         self.assertFalse(any(node.get("class_type") == "MiniMaxH3ImageToVideo"
                              for node in result.values()))
@@ -345,12 +363,13 @@ class Ref2VAContractTests(unittest.TestCase):
                 runtime_id="experimental-h3-8190")
         incompatible_size = json.loads(json.dumps(self.schema))
         incompatible_size["MiniMaxH3ReferenceToVideo"]["input"]["required"][
-            "ref_image_size"][1]["options"] = ["max"]
+            "ref_image_size"][1]["options"] = ["match"]
         with self.assertRaisesRegex(Ref2VAWorkflowError,
-                                    "REF2VA_IMAGE_SIZE_UNAVAILABLE"):
+                                    "REF2VA_IMAGE_SIZE_UNAVAILABLE:max"):
             compile_ref2va_workflow(
                 base_graph(), refs, incompatible_size, project_id="study",
-                runtime_id="experimental-h3-8190")
+                runtime_id="experimental-h3-8190",
+                reference_image_size="max")
 
     def test_compiler_requires_live_video_vae_loader_choice(self):
         with self.assertRaisesRegex(Ref2VAWorkflowError, "REF2VA_VIDEO_VAE_UNAVAILABLE"):
@@ -679,11 +698,14 @@ class PromptIntegrationTests(unittest.TestCase):
 
                 def prepare(self, request):
                     roles = [item["role"] for item in request.reference_assets]
+                    image_size = request.generation_parameters[
+                        "ref2va_image_size"]
                     bindings = [{
                         "asset_id": str(item["asset_id"]), "role": item["role"],
                         "native_input": f"ref_images.ref_image_{ordinal}",
                         "prompt_tag": f"<Picture {ordinal + 1}>",
                         "ordinal": ordinal + 1,
+                        "requested_fidelity": image_size,
                     } for ordinal, item in enumerate(request.reference_assets)]
                     self.assert_roles = roles
                     image_inputs = {
@@ -693,7 +715,8 @@ class PromptIntegrationTests(unittest.TestCase):
                     return {
                         "translated_payload": {
                             "5": {"class_type": "MiniMaxH3ReferenceToVideo",
-                                  "inputs": image_inputs},
+                                  "inputs": {**image_inputs,
+                                             "ref_image_size": image_size}},
                             "15": {"class_type": "SaveVideo", "inputs": {
                                 "filename_prefix": "video/04_Drone_Aerial_C2B_42",
                                 "video": ["5", 0]}},
@@ -706,7 +729,7 @@ class PromptIntegrationTests(unittest.TestCase):
                             "limits": {"image": 9, "video": 3, "audio": 3},
                             "counts": {"image": len(bindings), "video": 0,
                                        "audio": 0},
-                            "reference_image_size": "match",
+                            "reference_image_size": image_size,
                             "required_vaes": {"video": True, "audio": False},
                             "bindings": bindings,
                         },
@@ -724,7 +747,8 @@ class PromptIntegrationTests(unittest.TestCase):
             result = jobs.submit_job(
                 project_id, seed=42, risk_reviewed=True,
                 generation_parameters={"quality": "NATIVE_HIGH", "duration": 4.0,
-                                       "fps": 24, "seed": 42},
+                                       "fps": 24, "seed": 42,
+                                       "ref2va_image_size": "max"},
                 runtime_target="experimental", runtime_id="experimental-h3-8190",
                 execution_purpose="A6_REF2VA_VALIDATION", dry_run=True)
 
@@ -733,6 +757,10 @@ class PromptIntegrationTests(unittest.TestCase):
                              "A6_REF2VA_EXPERIMENTAL_PREFLIGHT")
             self.assertEqual(result["execution_purpose"], "A6_REF2VA_VALIDATION")
             self.assertEqual(result["ref2va_count"], 1)
+            self.assertEqual(result["reference_execution_plan"][
+                "reference_image_size"], "max")
+            self.assertEqual(result["reference_execution_plan"]["bindings"][0][
+                "requested_fidelity"], "max")
             self.assertEqual(result["runtime_capability"]["node"],
                              "MiniMaxH3ReferenceToVideo")
             self.assertEqual(result["runtime_capability"]["status"], "AVAILABLE")
@@ -751,6 +779,8 @@ class PromptIntegrationTests(unittest.TestCase):
                              "A6_REF2VA_EXPERIMENTAL_PREFLIGHT")
             self.assertEqual(record["reference_execution_plan"],
                              result["reference_execution_plan"])
+            self.assertEqual(record["generation_parameters"][
+                "ref2va_image_size"], "max")
             self.assertEqual(record["guide_count"], 0)
 
     def test_missing_ref2va_checkpoint_fails_before_job_or_prompt_submission(self):
