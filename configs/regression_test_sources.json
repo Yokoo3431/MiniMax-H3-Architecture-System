@@ -19,7 +19,7 @@
     {
       "path": "tests/test_a5_p36_experimental_preflight.py",
       "tracked_status": "tracked",
-      "sha256": "7AE6FD3619ACB4D9413D396DDEF528BB385CA124A2271A037504B1CEDF840893",
+      "sha256": "949795E704322A802F7F8DCAED72877FB0A741F0E31AFCB40AB2E09A8F5AFF23",
       "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
@@ -327,8 +327,8 @@
     {
       "path": "tests/test_multiframe_guides.py",
       "tracked_status": "tracked",
-      "sha256": "DC152FF3AD39FBA1659A632E8E3EAE301C7A2CF6FEB5305275198D5ED9074CDB",
-      "discovered_test_count": 14,
+      "sha256": "C1D95BA552FF2070E02BFDB9C0D294E28738F89AFF5EBA9B8162785E9B319E29",
+      "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
     },
     {

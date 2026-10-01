@@ -390,6 +390,13 @@ class ExperimentalPreflightTests(unittest.TestCase):
         self.assertEqual(record["state"], "DRY_RUN")
         self.assertEqual(record["prompt_id"], None)
         self.assertEqual(record["runtime_identity"], result["runtime_identity"])
+        self.assertEqual(record["guide_prompt_compilation"]["compiler_version"],
+                         "a5.2-storyboard-timing-v1")
+        self.assertEqual(record["guide_prompt_compilation"]["guide_frame_indexes"],
+                         [36, 72])
+        self.assertEqual(record["execution_prompt_sha256"],
+                         record["guide_prompt_compilation"]["execution_prompt_sha256"])
+        self.assertEqual(len(record["execution_prompt_sha256"]), 64)
         serialized = record_path.read_text(encoding="utf-8")
         self.assertNotIn("做一个建筑外观主视角展示视频", serialized)
         self.assertNotIn(str(self.h.store.data_root), serialized)

@@ -54,7 +54,8 @@ from runtime.reference_contract import (
     reference_bindings, resolve_selected_references, selected_ref2va_roles,
 )
 from runtime.multiframe_guides import (
-    GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, resolve_guide_bindings,
+    GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, compile_timeline_guide_prompt,
+    resolve_guide_bindings,
 )
 from runtime.result_pipeline import (
     ResultIdentityError, classify_result_failure, expected_save_video_identity,
@@ -648,6 +649,13 @@ class JobAPI:
             except Exception as exc:  # noqa: BLE001 - do not create a misleading Job
                 raise ValueError(str(exc)) from exc
 
+        guide_prompt = (compile_timeline_guide_prompt(
+            str(prompt.get("prompt") or ""), guide_bindings, fps=NATIVE_H3_FPS)
+            if guide_bindings else None)
+        guide_prompt_metadata = ({key: value for key, value in guide_prompt.items()
+                                  if key != "prompt"}
+                                 if guide_prompt else None)
+
         now = self.clock()
         job_id = self.store.new_id("preflight" if dry_run else "job")
         job = {
@@ -684,6 +692,7 @@ class JobAPI:
                 "target_frame_count": int(params["frame_count"]),
                 "guide_backend": "MiniMaxH3AddGuide" if guide_bindings else "NONE",
                 "runtime_capability": guide_capability,
+                "guide_prompt_compilation": guide_prompt_metadata,
                 "runtime_identity": build_runtime_identity(
                     runtime_target, runtime_adapter, preflight_result),
                 "architecture_profile": profile_context["architecture_profile"],
@@ -751,6 +760,9 @@ class JobAPI:
                 "events": [],
             },
         }
+        if guide_prompt:
+            job["prompt_snapshot"]["execution_prompt"] = guide_prompt["prompt"]
+            job["prompt_snapshot"]["guide_prompt_compilation"] = guide_prompt_metadata
         history = self.store.load_jobs(project_id).values()
         job["estimated_time"] = estimate_generation_range(
             history, workflow_id=job["workflow"], duration=params["duration"],
@@ -762,7 +774,7 @@ class JobAPI:
             return self._persist_experimental_preflight(
                 project_id, project, prompt, approved, params, normalized_motion,
                 guide_bindings, job, runtime_adapter, preflight_result,
-                execution_purpose=execution_purpose)
+                execution_purpose=execution_purpose, guide_prompt=guide_prompt)
         jobs = self.store.load_jobs(project_id)
         jobs[job_id] = job
         self.store.save_jobs(project_id, jobs)
@@ -783,7 +795,8 @@ class JobAPI:
 
         if runtime_adapter:
             request = self._build_request(project_id, project, prompt, approved,
-                                          params, normalized_motion, guide_bindings)
+                                          params, normalized_motion, guide_bindings,
+                                          guide_prompt=guide_prompt)
             runtime_adapter.progress_callback = lambda event: self._record_progress(
                 project_id, job_id, event)
             runtime_adapter.submission_callback = lambda info: self._record_submission(
@@ -802,7 +815,8 @@ class JobAPI:
             approved_refs: List[dict], params: dict, camera_motion: str,
             guide_bindings: List[dict], job: dict, runtime_adapter,
             preflight_result: Optional[dict], *,
-            execution_purpose: Optional[str] = None) -> Dict[str, Any]:
+            execution_purpose: Optional[str] = None,
+            guide_prompt: Optional[dict] = None) -> Dict[str, Any]:
         """Compile and persist a path-free preflight snapshot, never a Job."""
         from runtime.adapters.production_workflow_binding import canonical_workflow_sha256
 
@@ -815,7 +829,7 @@ class JobAPI:
 
         request = self._build_request(
             project_id, project, prompt, approved_refs, params,
-            camera_motion, guide_bindings)
+            camera_motion, guide_bindings, guide_prompt=guide_prompt)
         # Mirror the deterministic input names used by the real staging path,
         # but do not copy any media into the experimental runtime during a dry run.
         stored_refs = self.store.load_references(project_id)
@@ -898,6 +912,12 @@ class JobAPI:
             "target_frame_count": int(params["frame_count"]),
             "native_generation_fps": NATIVE_H3_FPS,
             "prompt_sha256": str(prompt.get("prompt_hash") or ""),
+            "execution_prompt_sha256": str(
+                (guide_prompt or {}).get("execution_prompt_sha256") or
+                (guide_prompt or {}).get("source_prompt_sha256") or ""),
+            "guide_prompt_compilation": ({key: value for key, value in
+                                          guide_prompt.items() if key != "prompt"}
+                                         if guide_prompt else None),
             "reference_bindings": reference_bindings(
                 approved_refs, ref2va=ref2va_mode),
             "execution_workflow_sha256": workflow_sha,
@@ -985,6 +1005,8 @@ class JobAPI:
             "reference_execution_plan": reference_execution_plan,
             "guide_count": len(guide_bindings),
             "guide_bindings": guide_bindings,
+            "guide_prompt_compilation": (request.prompt_payload or {}).get(
+                "guide_prompt_compilation"),
             "prompt_hash": prompt_hash,
             "reference_filenames": [
                 str(item.get("path_or_ref") or item.get("filename") or "")
@@ -1462,10 +1484,18 @@ class JobAPI:
             current_refs = [current] if current else []
         prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id) or {}
         guide_bindings = self._restore_guide_bindings(project_id, job)
+        guide_prompt_metadata = prompt.get("guide_prompt_compilation")
+        persisted_guide_prompt = None
+        if isinstance(guide_prompt_metadata, dict):
+            execution_prompt = prompt.get("execution_prompt")
+            if isinstance(execution_prompt, str):
+                persisted_guide_prompt = {
+                    **guide_prompt_metadata, "prompt": execution_prompt,
+                }
         request = self._build_request(
             project_id, project, prompt, current_refs,
             dict(job.get("generation_parameters") or {}), job.get("camera_motion"),
-            guide_bindings)
+            guide_bindings, guide_prompt=persisted_guide_prompt)
         runtime_adapter = self._adapter_for_job(job)
         if runtime_adapter is None:
             raise RuntimeError("persisted runtime target is no longer configured")
@@ -1922,7 +1952,8 @@ class JobAPI:
     def _build_request(self, project_id: str, project: dict, prompt: dict,
                        approved_refs: List[dict], params: dict,
                        camera_motion: Optional[str],
-                       guide_bindings: Optional[List[dict]] = None) -> Any:
+                       guide_bindings: Optional[List[dict]] = None, *,
+                       guide_prompt: Optional[dict] = None) -> Any:
         from runtime.adapters.runtime_adapter import VideoGenerationRequest
         intent = self.store.load_intent(project_id) or {}
         refs = [{
@@ -1937,16 +1968,38 @@ class JobAPI:
             "source_identity": r.get("source_identity"),
             "requested_fidelity": r.get("requested_fidelity"),
         } for r in approved_refs]
+        guides = list(guide_bindings or [])
+        if guides:
+            execution_prompt = str(prompt.get("prompt") or "")
+            guide_prompt_metadata = None
+            if guide_prompt is not None:
+                expected_indexes = [item.get("resolved_frame_idx") for item in guides]
+                if guide_prompt.get("guide_frame_indexes") != expected_indexes:
+                    raise ValueError("GUIDE_PROMPT_FRAME_IDENTITY_MISMATCH")
+                source_digest = hashlib.sha256(
+                    str(prompt.get("prompt") or "").encode("utf-8")).hexdigest()
+                if source_digest != guide_prompt.get("source_prompt_sha256"):
+                    raise ValueError("GUIDE_PROMPT_SOURCE_HASH_MISMATCH")
+                execution_prompt = str(guide_prompt.get("prompt") or "")
+                execution_digest = hashlib.sha256(
+                    execution_prompt.encode("utf-8")).hexdigest()
+                if execution_digest != guide_prompt.get("execution_prompt_sha256"):
+                    raise ValueError("GUIDE_PROMPT_HASH_MISMATCH")
+                guide_prompt_metadata = {key: value for key, value in guide_prompt.items()
+                                         if key != "prompt"}
+        else:
+            execution_prompt = str(prompt.get("prompt") or "")
+            guide_prompt_metadata = None
         return VideoGenerationRequest(
             study_id=project_id,
             reference_assets=refs,
-            guide_frames=list(guide_bindings or []),
+            guide_frames=guides,
             workflow_id=prompt["workflow"],
             camera_motion=camera_motion or normalize_camera_motion(prompt["workflow"]),
             generation_parameters=params,
             prompt_payload={
                 "mode": prompt.get("mode", "I2VA"),
-                "prompt": prompt["prompt"],
+                "prompt": execution_prompt,
                 "alignment": prompt.get("alignment", ""),
                 "integrated_multimodal_description": prompt.get(
                     "integrated_multimodal_description", ""),
@@ -1955,6 +2008,7 @@ class JobAPI:
                 "prompt_hash": prompt["prompt_hash"],
                 "a4_profile": prompt.get("a4_profile") or {},
                 "reference_bindings": list(prompt.get("reference_bindings") or []),
+                "guide_prompt_compilation": guide_prompt_metadata,
             },
             output_spec={"container": "mp4", "codec": "h264", "fps": params["fps"],
                          "resolution": params.get("resolution", "1344x768"),

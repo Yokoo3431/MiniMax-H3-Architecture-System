@@ -18,6 +18,9 @@ from typing import Any, Mapping
 NATIVE_H3_FPS = 24
 GUIDE_ROLE = "timeline_guide"
 ROUNDING_POLICY = "microframe_normalized_decimal_half_up"
+GUIDE_PROMPT_COMPILER_VERSION = "a5.2-storyboard-timing-v1"
+GUIDE_PROMPT_MARKER = "Storyboard guide timing (A5.2):"
+GUIDE_PROMPT_END_MARKER = "End storyboard guide timing (A5.2)."
 SUPPORTED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 ADD_GUIDE_INPUTS = {"positive", "latent", "frame_idx", "vae", "image"}
 
@@ -65,6 +68,99 @@ def resolve_guide_time(time_seconds: Any, *, fps: int,
         raise GuideFrameError(
             "GUIDE_LAST_FRAME_COLLISION: final frame is reserved for the timeline boundary")
     return index
+
+
+def compile_timeline_guide_prompt(prompt: str, guides: list[Mapping[str, Any]], *,
+                                  fps: int = NATIVE_H3_FPS) -> dict[str, Any]:
+    """Add deterministic shot-timing language for native guide conditioning.
+
+    ``MiniMaxH3AddGuide`` attaches an image condition to a frame; it does not
+    describe the intended cut or camera path in the text prompt.  The additive
+    prompt contract makes each guide's intended cut time explicit while
+    preserving the architect-authored prompt verbatim.
+    """
+    source = str(prompt or "")
+    source_digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    if not guides:
+        return {
+            "prompt": source,
+            "compiler_version": None,
+            "source_prompt_sha256": source_digest,
+            "execution_prompt_sha256": source_digest,
+            "guide_frame_indexes": [],
+        }
+    if isinstance(fps, bool) or not isinstance(fps, int) or fps <= 0:
+        raise GuideFrameError("GUIDE_PROMPT_FPS_INVALID")
+    if not source.strip():
+        raise GuideFrameError("GUIDE_PROMPT_SOURCE_MISSING")
+
+    section_header = next((header for header in (
+        "integrated_multimodal_description:", "detailed_description:")
+        if header in source), None)
+    if section_header is None:
+        raise GuideFrameError("GUIDE_PROMPT_DESCRIPTION_SECTION_MISSING")
+    section_start = source.index(section_header)
+    section_end = source.find("\n\noverall_soundscape:", section_start)
+    if section_end < 0:
+        raise GuideFrameError("GUIDE_PROMPT_DESCRIPTION_SECTION_UNTERMINATED")
+
+    resolved: list[tuple[int, int, str]] = []
+    for position, guide in enumerate(guides, start=1):
+        if not isinstance(guide, Mapping):
+            raise GuideFrameError(f"GUIDE_PROMPT_ROW_INVALID:{position}")
+        ordinal = guide.get("ordinal", position)
+        frame_index = guide.get("resolved_frame_idx")
+        if isinstance(ordinal, bool) or ordinal != position:
+            raise GuideFrameError("GUIDE_PROMPT_ORDER_INVALID")
+        if (isinstance(frame_index, bool) or not isinstance(frame_index, int)
+                or frame_index <= 0):
+            raise GuideFrameError(f"GUIDE_PROMPT_FRAME_INVALID:{position}")
+        if resolved and frame_index <= resolved[-1][1]:
+            raise GuideFrameError("GUIDE_PROMPT_FRAME_ORDER_INVALID")
+        seconds = (Decimal(frame_index) / Decimal(fps)).quantize(
+            Decimal("0.001"), rounding=ROUND_HALF_UP)
+        resolved.append((position, frame_index, f"{seconds:.3f}"))
+
+    description = source[section_start:section_end]
+    # Recompiling an already compiled prompt is idempotent: replace only a
+    # complete compiler-owned suffix. A user-authored phrase that happens to
+    # equal the start marker is never truncated.
+    marker_at = description.rfind(GUIDE_PROMPT_MARKER)
+    end_at = description.rfind(GUIDE_PROMPT_END_MARKER)
+    if marker_at >= 0 and end_at >= marker_at and not description[
+            end_at + len(GUIDE_PROMPT_END_MARKER):].strip():
+        description = description[:marker_at].rstrip()
+
+    lines = [
+        GUIDE_PROMPT_MARKER,
+        "Treat these timestamps as intended storyboard shot boundaries. "
+        "Native image guidance anchors frames but does not guarantee exact "
+        "cuts or a continuous camera path.",
+        "Aim to hold the current composition until each listed boundary, then "
+        "switch to the image composition anchored at that frame. Avoid "
+        "revealing a later guide composition early.",
+        "Across shots preserve the same building identity, massing, roofline, "
+        "facade organization, materials, and site context; do not redesign "
+        "the architecture to reach a guide.",
+    ]
+    lines.extend(
+        f"Intended cut to timeline guide {ordinal} at {seconds} seconds "
+        f"(frame {frame_index})."
+        for ordinal, frame_index, seconds in resolved
+    )
+    lines.append(GUIDE_PROMPT_END_MARKER)
+    compiled_section = description + "\n\n" + "\n".join(lines)
+    compiled_prompt = source[:section_start] + compiled_section + source[section_end:]
+    if len(compiled_prompt) > 7000:
+        raise GuideFrameError("GUIDE_PROMPT_EXCEEDS_LIMIT")
+    return {
+        "prompt": compiled_prompt,
+        "compiler_version": GUIDE_PROMPT_COMPILER_VERSION,
+        "source_prompt_sha256": source_digest,
+        "execution_prompt_sha256": hashlib.sha256(
+            compiled_prompt.encode("utf-8")).hexdigest(),
+        "guide_frame_indexes": [frame_index for _, frame_index, _ in resolved],
+    }
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -315,7 +411,10 @@ def canonical_execution_sha256(payload: Mapping[str, Any]) -> str:
 
 
 __all__ = [
-    "ADD_GUIDE_INPUTS", "GUIDE_ROLE", "GuideFrameError", "NATIVE_H3_FPS",
-    "ROUNDING_POLICY", "canonical_execution_sha256", "compile_native_guides",
-    "guide_comfy_filename", "resolve_guide_bindings", "resolve_guide_time",
+    "ADD_GUIDE_INPUTS", "GUIDE_PROMPT_COMPILER_VERSION", "GUIDE_PROMPT_END_MARKER",
+    "GUIDE_PROMPT_MARKER",
+    "GUIDE_ROLE", "GuideFrameError", "NATIVE_H3_FPS", "ROUNDING_POLICY",
+    "canonical_execution_sha256", "compile_native_guides",
+    "compile_timeline_guide_prompt", "guide_comfy_filename",
+    "resolve_guide_bindings", "resolve_guide_time",
 ]

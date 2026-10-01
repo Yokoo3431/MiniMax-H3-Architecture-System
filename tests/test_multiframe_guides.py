@@ -23,7 +23,8 @@ from runtime.adapters.multiframe_guide_capability import capability_from_object_
 from runtime.adapters.production_workflow_binding import validate_production_payload
 from runtime.multiframe_guides import (
     GuideFrameError, canonical_execution_sha256, compile_native_guides,
-    guide_comfy_filename, resolve_guide_bindings, resolve_guide_time,
+    compile_timeline_guide_prompt, guide_comfy_filename,
+    resolve_guide_bindings, resolve_guide_time,
 )
 
 
@@ -117,6 +118,109 @@ class MultiFrameGuideTests(unittest.TestCase):
             resolve_guide_time(107 / 24, fps=24, target_frame_count=107)
         with self.assertRaisesRegex(GuideFrameError, "TIME_INVALID"):
             resolve_guide_time(-0.1, fps=24, target_frame_count=107)
+
+    def test_timeline_prompt_compilation_is_deterministic_idempotent_and_explicit(self):
+        source = (
+            "For the target video, <Picture 1> is fully referenced.\n\n"
+            "integrated_multimodal_description: A coastal architecture study.\n\n"
+            "overall_soundscape: Quiet wind.\n\nnon_diegetic_music: N/A")
+        guides = [
+            {"ordinal": 1, "resolved_frame_idx": 36},
+            {"ordinal": 2, "resolved_frame_idx": 72},
+        ]
+        compiled = compile_timeline_guide_prompt(source, guides, fps=24)
+        self.assertEqual(compiled["guide_frame_indexes"], [36, 72])
+        self.assertIn("Intended cut to timeline guide 1 at 1.500 seconds (frame 36).",
+                      compiled["prompt"])
+        self.assertIn("Intended cut to timeline guide 2 at 3.000 seconds (frame 72).",
+                      compiled["prompt"])
+        self.assertIn("does not guarantee exact cuts", compiled["prompt"])
+        self.assertIn("preserve the same building identity", compiled["prompt"])
+        self.assertEqual(compiled["source_prompt_sha256"],
+                         hashlib.sha256(source.encode("utf-8")).hexdigest())
+        self.assertEqual(compiled["execution_prompt_sha256"],
+                         hashlib.sha256(compiled["prompt"].encode("utf-8")).hexdigest())
+        self.assertEqual(compile_timeline_guide_prompt(
+            compiled["prompt"], guides, fps=24)["prompt"], compiled["prompt"])
+        self.assertEqual(compile_timeline_guide_prompt(source, [], fps=24)["prompt"],
+                         source)
+        self.assertEqual(compile_timeline_guide_prompt(source, [], fps=24)[
+            "execution_prompt_sha256"], hashlib.sha256(source.encode("utf-8")).hexdigest())
+        authored_marker = source.replace(
+            "A coastal architecture study.",
+            "A coastal architecture study. Storyboard guide timing (A5.2): is a literal label.")
+        preserved = compile_timeline_guide_prompt(authored_marker, guides, fps=24)
+        self.assertIn("Storyboard guide timing (A5.2): is a literal label.",
+                      preserved["prompt"])
+
+    def test_timeline_prompt_compilation_rejects_bad_order_schema_and_size(self):
+        source = (
+            "integrated_multimodal_description: Short description.\n\n"
+            "overall_soundscape: Quiet.\n\nnon_diegetic_music: N/A")
+        with self.assertRaisesRegex(GuideFrameError, "GUIDE_PROMPT_FRAME_ORDER_INVALID"):
+            compile_timeline_guide_prompt(source, [
+                {"ordinal": 1, "resolved_frame_idx": 72},
+                {"ordinal": 2, "resolved_frame_idx": 36},
+            ])
+        with self.assertRaisesRegex(GuideFrameError, "GUIDE_PROMPT_DESCRIPTION_SECTION_MISSING"):
+            compile_timeline_guide_prompt("A plain unstructured prompt.", [
+                {"ordinal": 1, "resolved_frame_idx": 36},
+            ])
+        with self.assertRaisesRegex(GuideFrameError, "GUIDE_PROMPT_EXCEEDS_LIMIT"):
+            compile_timeline_guide_prompt(
+                source.replace("Short description.", "x" * 7000), [
+                    {"ordinal": 1, "resolved_frame_idx": 36},
+                ])
+
+    def test_job_request_binds_compiled_prompt_but_preserves_source_hash(self):
+        source = (
+            "For the target video, <Picture 1> is fully referenced.\n\n"
+            "integrated_multimodal_description: Preserve the coastal building.\n\n"
+            "overall_soundscape: Quiet.\n\nnon_diegetic_music: N/A")
+        guides = [
+            {"ordinal": 1, "resolved_frame_idx": 36},
+            {"ordinal": 2, "resolved_frame_idx": 72},
+        ]
+        compiled = compile_timeline_guide_prompt(source, guides)
+        api = JobAPI.__new__(JobAPI)
+        api.store = SimpleNamespace(load_intent=lambda _project_id: {})
+        prompt = {
+            "workflow": "04_Drone_Aerial", "mode": "I2VA", "prompt": source,
+            "alignment": "", "integrated_multimodal_description": "Preserve the coastal building.",
+            "overall_soundscape": "Quiet.", "prompt_hash": "owner-source-hash",
+            "a4_profile": {}, "reference_bindings": [],
+        }
+        params = {
+            "width": 1344, "height": 768, "fps": 24, "duration": 4.0,
+            "resolved_duration_seconds": 4.4583333333, "frame_count": 107,
+            "resolution": "1344x768", "steps": 50, "sampler_mode": "euler",
+            "scheduler": "simple", "denoise": 1.0, "seed": 42,
+            "generation_speed": "standard", "acceleration": "off",
+            "delivery_fps": 24,
+        }
+        approved = [{
+            "id": "endpoint-ref", "role": "first_frame", "media_type": "image",
+            "state": "APPROVED", "stored_path": "endpoint.png",
+            "filename": "endpoint.png", "sha256": "a" * 64,
+        }]
+        request = api._build_request("synthetic-study", {}, prompt, approved,
+                                     params, None, guides, guide_prompt=compiled)
+        self.assertEqual(request.prompt_payload["prompt"], compiled["prompt"])
+        self.assertEqual(request.prompt_payload["prompt_hash"], "owner-source-hash")
+        self.assertEqual(request.prompt_payload["guide_prompt_compilation"][
+            "execution_prompt_sha256"], compiled["execution_prompt_sha256"])
+        with self.assertRaisesRegex(ValueError, "GUIDE_PROMPT_SOURCE_HASH_MISMATCH"):
+            api._build_request("synthetic-study", {}, prompt, approved,
+                params, None, guides,
+                guide_prompt={**compiled, "source_prompt_sha256": "0" * 64})
+        with self.assertRaisesRegex(ValueError, "GUIDE_PROMPT_HASH_MISMATCH"):
+            api._build_request("synthetic-study", {}, prompt, approved,
+                params, None, guides,
+                guide_prompt={**compiled, "execution_prompt_sha256": "0" * 64})
+        bound = bind_golden_workflow(request.to_dict(), "04_Drone_Aerial")
+        h3 = next(node for node in bound.values()
+                  if node["class_type"] == "MiniMaxH3ImageToVideo")
+        self.assertEqual(h3["inputs"]["prompt"], compiled["prompt"])
 
     def test_project_approval_and_upload_use_existing_reference_store(self):
         with tempfile.TemporaryDirectory() as directory:
