@@ -122,6 +122,16 @@ class Ref2VAContractTests(unittest.TestCase):
         )
         self.assertNotIn("当前 Study 参考图不会自动送入生成。", source)
 
+    def test_cpu_preflight_result_has_independent_live_region(self):
+        html = (ROOT / "apps/architect_video_studio/frontend/workspace.html").read_text(
+            encoding="utf-8")
+        source = (ROOT / "apps/architect_video_studio/frontend/js/workspace.js").read_text(
+            encoding="utf-8")
+        self.assertIn('id="preflight-result"', html)
+        self.assertIn('aria-live="polite"', html)
+        self.assertIn("resultNote.textContent = isA6", source)
+        self.assertNotIn("const note = document.getElementById('gate-note');\n  if (value('runtime-target')", source)
+
     def test_live_schema_contract_requires_fields_outputs_and_dynamic_limits(self):
         capability = ref2va_schema_capabilities(self.schema)
         self.assertTrue(capability["available"])

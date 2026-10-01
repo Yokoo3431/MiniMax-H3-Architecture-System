@@ -68,7 +68,7 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("job?.id", study_script)
         self.assertIn("if (progress == null) progressBar.style.removeProperty('width');", study_script)
         self.assertIn("function flowState(job = null)", study_script)
-        self.assertIn("button.setAttribute('aria-describedby', 'gate-note')", study_script)
+        self.assertIn("button.setAttribute('aria-describedby', 'gate-note preflight-result')", study_script)
         for state in ("QUEUED", "SUBMITTED", "RUNNING", "GENERATING", "RECONCILING", "COMPLETED", "FAILED", "CANCELLED", "SUBMISSION_LOST"):
             self.assertIn(state, jobs)
         self.assertIn("function friendlyError", self.read("js/api.js"))

@@ -872,7 +872,7 @@ function updateGate() {
     preflightButton.disabled = true;
   }
   button.disabled = !(approved && promptReady && risk && study.generate_allowed);
-  button.setAttribute('aria-describedby', 'gate-note');
+  button.setAttribute('aria-describedby', 'gate-note preflight-result');
   button.setAttribute('aria-disabled', String(button.disabled));
   const note = document.getElementById('gate-note');
   if (!study?.reference_uploaded) note.textContent = '请先添加参考图';
@@ -998,11 +998,13 @@ async function generate() {
 
 async function runExperimentalPreflight() {
   const button = document.getElementById('a5-preflight-btn');
-  const note = document.getElementById('gate-note');
+  const resultNote = document.getElementById('preflight-result');
   if (value('runtime-target') !== 'experimental') return;
   const isA6 = selectedA6RoleIds().length > 0;
   button.disabled = true;
   button.textContent = '正在进行 CPU 预检…';
+  resultNote.textContent = '正在进行 CPU 预检；不会提交 /prompt。';
+  resultNote.hidden = false;
   try {
     const rawSeed = value('param-seed').trim();
     const seed = rawSeed ? parseInt(rawSeed, 10) : 42;
@@ -1015,11 +1017,14 @@ async function runExperimentalPreflight() {
       execution_purpose: isA6
         ? 'A6_REF2VA_VALIDATION' : 'A5_EXPERIMENTAL_VALIDATION',
     });
-    note.textContent = isA6
+    resultNote.textContent = isA6
       ? `A6 CPU 预检通过 · ${result.ref2va_count} 个角色参考 · workflow ${result.workflow_sha256.slice(0, 12)}…；未提交 /prompt`
       : `A5 CPU 预检通过 · ${result.guide_count} guides · 帧 ${result.guide_frame_indexes.join(', ')} · workflow ${result.workflow_sha256.slice(0, 12)}…；未提交 /prompt`;
   } catch (e) {
-    showErr(friendlyError(e, '实验 CPU 预检未通过；未提交 /prompt。'));
+    const message = friendlyError(e, '实验 CPU 预检未通过；未提交 /prompt。');
+    resultNote.textContent = message;
+    resultNote.hidden = false;
+    showErr(message);
   } finally {
     button.textContent = '仅验证实验路由（不生成）';
     updateGate();

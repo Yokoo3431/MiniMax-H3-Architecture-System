@@ -33,8 +33,8 @@
     {
       "path": "tests/test_a6_ref2va_contract.py",
       "tracked_status": "tracked",
-      "sha256": "0CACF9A6832B3A3B241A6EED45E3AD76F8485456A94DD5A8CE28421429F9486A",
-      "discovered_test_count": 29,
+      "sha256": "FD57056A2123E05789C0A069D128759FC945A74D3E4DE6D2AE6B4FFCE4B06DD1",
+      "discovered_test_count": 30,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -747,7 +747,7 @@
     {
       "path": "tests/test_studio_ux2_p1.py",
       "tracked_status": "tracked",
-      "sha256": "97CDC597C3E1D3A8145DAB4118985530CDA715C13199AE1EE26589631E02822B",
+      "sha256": "614B2ACD13917C5FFE76578EE551908E3BC2512BAA2664E3D91F0ABD9BFAD842",
       "discovered_test_count": 9,
       "classification": "CORE_REGRESSION"
     },
