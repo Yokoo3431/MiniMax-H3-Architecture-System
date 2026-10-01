@@ -14,6 +14,7 @@ from unittest.mock import patch
 import zlib
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -96,7 +97,9 @@ def base_graph() -> dict:
             "vae_name": "minimax_h3_video_vae_fp16.safetensors"}},
         "5": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {
             "clip": ["2", 0], "vae": ["4", 0],
-            "prompt": "subject_definitions: <Picture 1> and <Picture 2>\n\n"
+            "prompt": "subject_definitions: <Picture 1> is the style reference "
+                      "(style_reference). <Picture 2> is the site context reference "
+                      "(site_reference).\n\n"
                       "summary: architecture\n\ndetailed_description: architecture",
             "width": 1344, "height": 768, "length": 107,
             "first_frame": ["1", 0],
@@ -109,6 +112,15 @@ def base_graph() -> dict:
 class Ref2VAContractTests(unittest.TestCase):
     def setUp(self):
         self.schema = node_info()
+
+    def test_reference_board_copy_distinguishes_selected_roles_from_study_library(self):
+        source = (ROOT / "apps/architect_video_studio/frontend/js/workspace.js").read_text(
+            encoding="utf-8")
+        self.assertIn(
+            "仅明确绑定并获批的 A6 角色图会进入本次 Ref2VA；Study 素材库中的其他图片不会自动加入。",
+            source,
+        )
+        self.assertNotIn("当前 Study 参考图不会自动送入生成。", source)
 
     def test_live_schema_contract_requires_fields_outputs_and_dynamic_limits(self):
         capability = ref2va_schema_capabilities(self.schema)
@@ -162,7 +174,9 @@ class Ref2VAContractTests(unittest.TestCase):
                 "duration": 4.0, "fps": 24, "seed": 42,
             },
             "prompt_payload": {
-                "mode": "Ref2VA", "prompt": "<Picture 1> site context",
+                "mode": "Ref2VA",
+                "prompt": "subject_definitions: <Picture 1> is the site context "
+                          "reference (site_reference).\n\nsummary: architecture",
                 "prompt_hash": "synthetic-prompt-hash",
             },
         }
@@ -292,6 +306,20 @@ class Ref2VAContractTests(unittest.TestCase):
         self.assertFalse(any(node.get("class_type") == "MiniMaxH3ImageToVideo"
                              for node in result.values()))
 
+    def test_compiler_rejects_picture_tags_declared_for_the_wrong_roles(self):
+        refs = [image_ref("style", "style_reference", "style"),
+                image_ref("site", "site_reference", "site")]
+        graph = base_graph()
+        graph["5"]["inputs"]["prompt"] = (
+            "subject_definitions: <Picture 1> is the site context reference "
+            "(site_reference). <Picture 2> is the style reference "
+            "(style_reference).\n\nsummary: architecture")
+        with self.assertRaisesRegex(
+                Ref2VAWorkflowError, "REF2VA_PROMPT_ROLE_BINDING_MISMATCH"):
+            compile_ref2va_workflow(
+                graph, refs, self.schema, project_id="study",
+                runtime_id="experimental-h3-8190")
+
     def test_compiler_fails_closed_without_checkpoint_or_prompt_tags(self):
         refs = [image_ref("site", "site_reference", "site")]
         with self.assertRaisesRegex(Ref2VAWorkflowError, "REF2VA_CHECKPOINT_UNAVAILABLE"):
@@ -350,6 +378,44 @@ class ReferenceBoardTests(unittest.TestCase):
     def encoded(color):
         return base64.b64encode(tiny_png(color)).decode("ascii")
 
+    def test_reference_board_explains_native_order_source_and_exclusions(self):
+        board = (ROOT / "apps" / "architect_video_studio" / "frontend"
+                 / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("Picture ${nativeOrdinal}", board)
+        self.assertIn("来源：当前 Study 素材库", board)
+        self.assertIn("首帧、末帧和时间线图不会自动转换角色。", board)
+        self.assertIn("同 Study、已批准且角色匹配", board)
+        self.assertIn("视频/音频参考导入尚未开放", board)
+
+    def test_a6_approved_roles_satisfy_intent_reference_gate_without_endpoint(self):
+        self.api.upload_and_approve(
+            self.project_id, "identity.png", "identity_reference",
+            self.encoded((0, 255, 0)))
+        self.api.upload_and_approve(
+            self.project_id, "site.png", "site_reference",
+            self.encoded((0, 0, 255)))
+
+        class DeterministicIntentAdapter:
+            @staticmethod
+            def classify_intent(_text):
+                return {
+                    "selected_workflow": "04_Drone_Aerial",
+                    "selected_video_task": "drone_aerial",
+                    "confidence": 0.99,
+                    "reason": "deterministic fixture",
+                    "requires_user_confirmation": False,
+                    "candidate_workflows": ["04_Drone_Aerial"],
+                }
+
+        intent = IntentAPI(
+            self.store, adapter=DeterministicIntentAdapter()).analyze_intent(
+                self.project_id, "保持建筑身份和场地关系。")
+        study = build_study_state(self.store, self.project_id)
+        self.assertEqual(intent["selected_workflow"], "04_Drone_Aerial")
+        self.assertTrue(study["reference_approved"])
+        self.assertEqual(study["reference_mode"], "Ref2VA")
+        self.assertEqual(study["current_state"], "PROMPT_REVIEW")
+
     def test_a6_approval_keeps_study_state_and_binds_only_after_approval(self):
         self.api.upload_and_approve(
             self.project_id, "first.png", "first_frame", self.encoded((255, 0, 0)))
@@ -401,13 +467,59 @@ class ReferenceBoardTests(unittest.TestCase):
                 self.api.upload_reference(
                 self.project_id, "motion.mp4", "motion_reference_video", "AAAA")
 
+    def test_a6_role_has_bounded_larger_upload_without_raising_endpoint_limit(self):
+        image = tiny_png((0, 255, 0))
+        encoded = base64.b64encode(image).decode("ascii")
+        with patch("apps.architect_video_studio.mock_api.reference_api._UPLOAD_LIMIT_BYTES",
+                   len(image) - 1), patch(
+                "apps.architect_video_studio.mock_api.reference_api._A6_IMAGE_UPLOAD_LIMIT_BYTES",
+                len(image)):
+            accepted = self.api.upload_reference(
+                self.project_id, "identity.png", "identity_reference", encoded)
+            self.assertEqual(accepted["role"], "identity_reference")
+            with self.assertRaisesRegex(ValueError, "REFERENCE_IMAGE_TOO_LARGE"):
+                self.api.upload_reference(
+                    self.project_id, "first.png", "first_frame", encoded)
+
     def test_oversized_a6_base64_is_rejected_before_decoding(self):
         with patch("apps.architect_video_studio.mock_api.reference_api._UPLOAD_LIMIT_BYTES", 3), \
+                patch("apps.architect_video_studio.mock_api.reference_api._A6_IMAGE_UPLOAD_LIMIT_BYTES", 3), \
                 patch("apps.architect_video_studio.mock_api.reference_api.base64.b64decode",
                       side_effect=AssertionError("oversized input must be rejected first")):
             with self.assertRaisesRegex(ValueError, "REFERENCE_IMAGE_TOO_LARGE"):
                 self.api.upload_reference(
                     self.project_id, "identity.png", "identity_reference", "AAAAA")
+
+    def test_server_applies_bounded_json_body_limits(self):
+        server = StudioServer(("127.0.0.1", 0), self.store,
+                              {"reference": self.api})
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch("apps.architect_video_studio.mock_api.server._JSON_REQUEST_LIMIT_BYTES", 16):
+                request = Request(
+                    f"http://127.0.0.1:{server.server_address[1]}"
+                    f"/api/projects/{self.project_id}/reference-board/site_reference",
+                    data=b"x" * 17,
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(request, timeout=3)
+                self.assertEqual(caught.exception.code, 413)
+                self.assertIn("REQUEST_BODY_TOO_LARGE",
+                              caught.exception.read().decode("utf-8"))
+            with patch("apps.architect_video_studio.mock_api.server._REFERENCE_UPLOAD_REQUEST_LIMIT_BYTES", 32):
+                request = Request(
+                    f"http://127.0.0.1:{server.server_address[1]}"
+                    "/api/projects/missing-project/references/upload-approve",
+                    data=b'{"x":1}' + b" " * 10,
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(request, timeout=3)
+                self.assertEqual(caught.exception.code, 404)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
 
     def test_reference_board_post_route_binds_only_requested_role(self):
         first = self.api.upload_and_approve(

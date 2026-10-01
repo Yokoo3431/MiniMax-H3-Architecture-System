@@ -330,7 +330,7 @@ function renderReferenceBoard() {
   const capability = document.getElementById('a6-runtime-capability');
   if (capability) {
     if (ref2va.status === 'READY' && routeEnabled) {
-      capability.textContent = '隔离实验运行时已报告 Ref2VA 与所需模型能力；A6 仍需显式选中实验运行时。当前 Study 参考图不会自动送入生成。';
+      capability.textContent = '隔离实验运行时已报告 Ref2VA 与所需模型能力；A6 仍需显式选中实验运行时。仅明确绑定并获批的 A6 角色图会进入本次 Ref2VA；Study 素材库中的其他图片不会自动加入。';
       capability.dataset.state = 'ready';
     } else if (ref2va.available) {
       capability.textContent = '检测到原生 Ref2VA 节点，但官方 Ref2VA 权重或 Video VAE 未就绪；生成保持关闭。';
@@ -339,6 +339,7 @@ function renderReferenceBoard() {
       capability.textContent = 'Ref2VA 实验能力当前不可用；角色绑定可保存为 Study 元数据，但不会静默转成提示词或普通 I2VA。';
       capability.dataset.state = 'unavailable';
     }
+    capability.textContent += ' 当前仅开放图片角色；视频/音频参考导入尚未开放。';
   }
   root.innerHTML = A6_IMAGE_ROLES.map(([role, label, help]) => {
     const currentId = String(selected[role] || '');
@@ -357,18 +358,28 @@ function renderReferenceBoard() {
       && (!usedIdsElsewhere.has(String(item.id)) || String(item.id) === currentId)
       && (!hashesUsedElsewhere.has(String(item.sha256).toLowerCase())
           || String(item.id) === currentId));
+    const selectedImageRoles = selectedA6RoleIds().map(([selectedRole]) => selectedRole);
+    const nativeOrdinal = selectedImageRoles.indexOf(role) + 1;
     const options = ['<option value="">选择本 Study 已审批图片</option>']
       .concat(candidates.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === currentId ? 'selected' : ''}>${esc(item.filename || item.id)}</option>`));
     const preview = current && refUrl(current)
       ? `<img class="a6-role-thumb" src="${esc(refUrl(current))}" alt="${esc(label)}当前图片">`
       : '<span class="guide-thumb-placeholder" aria-hidden="true">图</span>';
-    const state = current ? '已绑定 · 已审批' : '未绑定';
+    const state = current ? '已批准' : '待绑定';
+    const source = current
+      ? `来源：当前 Study 素材库 · ${current.filename || '已批准图片'}`
+      : '来源：当前 Study 素材库';
     const pendingName = pendingA6Files[role]?.name || '选择图片';
     return `<article class="a6-role-card" data-a6-role="${esc(role)}">
-      <div class="a6-role-head">${preview}<div><strong>${esc(label)}</strong><span class="muted small">${esc(state)} · ${esc(role)}</span></div></div>
+      <div class="a6-role-head">${preview}<div><strong>${esc(label)}</strong><span class="muted small">${esc(state)} · 图片 · ${esc(role)}</span></div>${current ? `<span class="badge state a6-role-order">Picture ${nativeOrdinal}</span>` : ''}</div>
       <p class="muted small">${esc(help)}</p>
+      <p class="muted small a6-role-source">${esc(source)}</p>
+      <p class="muted small">A6 角色图单张上限 48 MiB；首/末帧和时间线图仍为 20 MiB。</p>
       <label for="a6-existing-${esc(role)}">已批准资产</label>
       <select id="a6-existing-${esc(role)}" class="avs-select a6-asset-select" ${dayNight ? 'disabled' : ''}>${options.join('')}</select>
+      <p class="muted small a6-role-candidate-hint">${candidates.length
+        ? `可选 ${candidates.length} 张：同 Study、已批准、角色匹配且未与其他角色冲突。`
+        : '暂无可直接绑定项：这里只列出同 Study、已批准且角色匹配的图片；已被其他角色使用或内容重复的素材会排除。首帧、末帧和时间线图不会自动转换角色。'}</p>
       <div class="a6-role-actions">
         <button class="spectrum-Button btn small a6-bind" type="button" ${dayNight || !candidates.some((item) => String(item.id) !== currentId) ? 'disabled' : ''}>绑定所选</button>
         <input class="a6-file" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
@@ -475,8 +486,8 @@ async function removeA6Asset(role) {
 async function uploadA6Asset(role) {
   const file = pendingA6Files[role];
   if (!file) { showErr('请先选择一张图片'); return; }
-  if (file.size > 20 * 1024 * 1024) {
-    showErr('图片超过 20 MiB 上限，请缩小后再上传。'); return;
+  if (file.size > 48 * 1024 * 1024) {
+    showErr('A6 角色图片超过 48 MiB 上限，请选择更小的原图。'); return;
   }
   try {
     const dataUrl = await new Promise((resolve, reject) => {

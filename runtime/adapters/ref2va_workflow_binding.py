@@ -9,6 +9,7 @@ not modify any Golden workflow file.
 from __future__ import annotations
 
 import copy
+import re
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -171,11 +172,29 @@ def compile_ref2va_workflow(
     }
     unet_inputs["unet_name"] = checkpoint
 
-    missing_tags = [binding["prompt_tag"] for binding in plan["bindings"]
-                    if binding["prompt_tag"] not in prompt]
-    if missing_tags:
+    expected_declarations = [
+        (binding["prompt_tag"], binding["role"])
+        for binding in plan["bindings"]
+    ]
+    subject_definitions = prompt.split("\n\n", 1)[0]
+    declaration_pattern = re.compile(
+        r"(?P<tag><(?:Picture|Video|Audio)\s+[1-9][0-9]*>) is the "
+        r"[^()\n]+ \((?P<role>[a-z][a-z0-9_]*)\)\."
+    )
+    declarations = [
+        (match.group("tag"), match.group("role"))
+        for match in declaration_pattern.finditer(subject_definitions)
+    ]
+    header_tags = re.findall(
+        r"<(?:Picture|Video|Audio)\s+[1-9][0-9]*>", subject_definitions)
+    declared_tags = [tag for tag, _ in declarations]
+    expected_tags = [tag for tag, _ in expected_declarations]
+    if (not subject_definitions.startswith("subject_definitions:")
+            or header_tags != declared_tags or declared_tags != expected_tags):
         raise Ref2VAWorkflowError(
-            "REF2VA_PROMPT_TAG_BINDING_MISMATCH:" + ",".join(missing_tags))
+            "REF2VA_PROMPT_TAG_BINDING_MISMATCH")
+    if declarations != expected_declarations:
+        raise Ref2VAWorkflowError("REF2VA_PROMPT_ROLE_BINDING_MISMATCH")
     plan["graph"] = {
         "conditioning_node_id": old_id,
         "unet_node_id": unet_id,

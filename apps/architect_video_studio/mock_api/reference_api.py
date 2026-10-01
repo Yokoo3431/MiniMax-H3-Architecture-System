@@ -24,6 +24,12 @@ _REFERENCE_ROLES = (*ACTIVE_REFERENCE_ROLES, *REF2VA_ROLE_ORDER,
 _IMAGE_ROLES = {role for role, family in REF2VA_ROLE_MEDIA.items()
                 if family == "image"}
 _UPLOAD_LIMIT_BYTES = 20 * 1024 * 1024
+_A6_IMAGE_UPLOAD_LIMIT_BYTES = 48 * 1024 * 1024
+_A6_IMAGE_ROLES = {
+    role for role in REF2VA_ROLE_ORDER
+    if role not in ACTIVE_REFERENCE_ROLES
+    and REF2VA_ROLE_MEDIA.get(role) == "image"
+}
 
 
 class ReferenceAPI:
@@ -57,13 +63,20 @@ class ReferenceAPI:
         stored_path: Optional[Path] = None
         sha256 = None
         if data_base64:
-            max_encoded_chars = 4 * ((_UPLOAD_LIMIT_BYTES + 2) // 3)
+            upload_limit = (_A6_IMAGE_UPLOAD_LIMIT_BYTES
+                            if role in _A6_IMAGE_ROLES
+                            else _UPLOAD_LIMIT_BYTES)
+            max_encoded_chars = 4 * ((upload_limit + 2) // 3)
             if role in _IMAGE_ROLES and len(data_base64) > max_encoded_chars:
-                raise ValueError("REFERENCE_IMAGE_TOO_LARGE: maximum upload is 20 MiB")
+                raise ValueError(
+                    f"REFERENCE_IMAGE_TOO_LARGE: maximum upload is "
+                    f"{upload_limit // (1024 * 1024)} MiB")
             raw = base64.b64decode(data_base64, validate=True)
             if role in _IMAGE_ROLES:
-                if len(raw) > _UPLOAD_LIMIT_BYTES:
-                    raise ValueError("REFERENCE_IMAGE_TOO_LARGE: maximum upload is 20 MiB")
+                if len(raw) > upload_limit:
+                    raise ValueError(
+                        f"REFERENCE_IMAGE_TOO_LARGE: maximum upload is "
+                        f"{upload_limit // (1024 * 1024)} MiB")
                 if not self._looks_like_image(raw, filename):
                     raise ValueError("REFERENCE_IMAGE_INVALID: upload must be a supported image")
             sha256 = hashlib.sha256(raw).hexdigest().upper()

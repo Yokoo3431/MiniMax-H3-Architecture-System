@@ -25,19 +25,29 @@ class IntentAPI:
         project = self.store.load_project(project_id)
         # Study state is the canonical projection of Job activity.
         # SUBMISSION_LOST is terminal and must not keep the editor locked.
-        if build_study_state(self.store, project_id).get("active_job_id"):
+        study = build_study_state(self.store, project_id)
+        if study.get("active_job_id"):
             raise ValueError("当前任务正在生成，完成后才能修改意图")
         if project["state"] != "REFERENCE_APPROVED":
-            # Failed/completed Jobs do not poison the editable Study.  Rebuild
-            # the reference gate before analyzing the new current intent.
-            current_id = project.get("current_reference_asset_id")
-            current = self.store.load_references(project_id).get(current_id)
-            if not current or current.get("state") != "APPROVED":
-                raise ValueError(
-                    f"analyze_intent requires REFERENCE_APPROVED; project is {project['state']}"
-                )
-            project["state"] = "REFERENCE_APPROVED"
-            self.store.save_project(project)
+            # Ref2VA replaces the endpoint-reference requirement with its
+            # explicitly selected, approved content-role images.  Reuse the
+            # canonical Study projection instead of requiring a first_frame
+            # that is not part of this workflow contract.
+            if (study.get("reference_mode") == "Ref2VA"
+                    and study.get("reference_approved")):
+                project["state"] = "REFERENCE_APPROVED"
+                self.store.save_project(project)
+            else:
+                # Failed/completed Jobs do not poison the editable Study.
+                # Rebuild the legacy endpoint gate before analyzing intent.
+                current_id = project.get("current_reference_asset_id")
+                current = self.store.load_references(project_id).get(current_id)
+                if not current or current.get("state") != "APPROVED":
+                    raise ValueError(
+                        f"analyze_intent requires REFERENCE_APPROVED; project is {project['state']}"
+                    )
+                project["state"] = "REFERENCE_APPROVED"
+                self.store.save_project(project)
         if not (natural_language or "").strip():
             raise ValueError("natural_language is required")
 

@@ -18,6 +18,9 @@ from urllib.parse import parse_qs, urlparse
 from ._paths import FRONTEND_DIR
 from .store import StudioStore
 
+_JSON_REQUEST_LIMIT_BYTES = 2 * 1024 * 1024
+_REFERENCE_UPLOAD_REQUEST_LIMIT_BYTES = 65 * 1024 * 1024
+
 
 class StudioServer(ThreadingHTTPServer):
     daemon_threads = True
@@ -138,6 +141,13 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0:
                 return {}
+            path = urlparse(self.path).path
+            upload_route = re.fullmatch(
+                r"/api/projects/[^/]+/references(?:/upload-approve)?", path)
+            limit = (_REFERENCE_UPLOAD_REQUEST_LIMIT_BYTES if upload_route
+                     else _JSON_REQUEST_LIMIT_BYTES)
+            if length > limit:
+                raise _RequestBodyTooLarge
             raw = self.rfile.read(length)
             return json.loads(raw.decode("utf-8") or "{}")
 
@@ -155,6 +165,9 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     self._route_api(method, path, self._read_json() if method in ("POST", "PATCH", "DELETE") else {}, parsed.query)
                 else:
                     self._route_static(path)
+            except _RequestBodyTooLarge:
+                self._fail(HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                           "REQUEST_BODY_TOO_LARGE")
             except KeyError as exc:
                 self._fail(HTTPStatus.NOT_FOUND, str(exc))
             except ValueError as exc:
@@ -481,6 +494,10 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             raise KeyError(f"unknown api route: {method} {path}")
 
     return Handler
+
+
+class _RequestBodyTooLarge(Exception):
+    """Raised before reading an over-limit JSON request body."""
 
 
 def make_server(addr: Tuple[str, int], data_root: Path,

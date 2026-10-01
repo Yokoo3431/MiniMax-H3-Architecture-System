@@ -179,9 +179,11 @@ def live_runtime_executable_matches(expected_executable: str | Path) -> bool:
         "$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $row.OwningProcess); "
         "$matched = $false; "
         "for ($i = 0; $i -lt 5 -and $p; $i++) { "
-        "$line = [string]$p.CommandLine; "
-        "if ($line.IndexOf($expected, [StringComparison]::OrdinalIgnoreCase) -ge 0 "
-        "-and $line -match 'main\\.py' -and $line -match '8190') { $matched = $true; break }; "
+        "$line = [string]$p.CommandLine; $exe = [string]$p.ExecutablePath; "
+        "if ($exe -and $exe.Equals($expected, [StringComparison]::OrdinalIgnoreCase) "
+        "-and $line.Contains('main.py') "
+        "-and ($line.Contains('--port 8190') -or $line.Contains('--port=8190'))) "
+        "{ $matched = $true; break }; "
         "$parentId = [int]$p.ParentProcessId; "
         "if (-not $parentId) { break }; "
         "$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $parentId) "
@@ -193,7 +195,7 @@ def live_runtime_executable_matches(expected_executable: str | Path) -> bool:
     try:
         result = subprocess.run(
             [powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
-             "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
+             "-EncodedCommand", encoded],
             capture_output=True, text=True, timeout=5, check=False,
         )
     except (OSError, subprocess.SubprocessError):

@@ -204,22 +204,38 @@ class ExperimentalRegistryTests(unittest.TestCase):
     def test_live_listener_executable_must_match_pinned_python(self):
         expected = Path("C:/A5Runtime/.venv/Scripts/python.exe")
         matching = SimpleNamespace(returncode=0, stdout="MATCH", stderr="")
+        wrong_executable = SimpleNamespace(
+            returncode=1, stdout="NO_MATCH", stderr="")
+
+        def run_and_check_script(*args, **kwargs):
+            encoded = args[0][-1]
+            script = base64.b64decode(encoded).decode("utf-16le")
+            self.assertIn("$p.ExecutablePath", script)
+            self.assertIn("$exe.Equals($expected", script)
+            self.assertIn("Get-NetTCPConnection -LocalPort 8190", script)
+            self.assertIn("--port 8190", script)
+            return matching
+
         with patch("runtime.adapters.experimental_runtime_registry.os.name", "nt"), \
                 patch("runtime.adapters.experimental_runtime_registry.Path.is_file",
                       return_value=True), \
                 patch("runtime.adapters.experimental_runtime_registry.os.path.isfile",
                       return_value=True), \
+                patch("runtime.adapters.experimental_runtime_registry.shutil.which",
+                      return_value="C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"), \
                 patch("runtime.adapters.experimental_runtime_registry.subprocess.run",
-                      return_value=matching):
+                      side_effect=run_and_check_script):
             self.assertTrue(live_runtime_executable_matches(expected))
-        wrong = SimpleNamespace(returncode=0, stdout="NO_MATCH", stderr="")
+
         with patch("runtime.adapters.experimental_runtime_registry.os.name", "nt"), \
                 patch("runtime.adapters.experimental_runtime_registry.Path.is_file",
                       return_value=True), \
                 patch("runtime.adapters.experimental_runtime_registry.os.path.isfile",
                       return_value=True), \
+                patch("runtime.adapters.experimental_runtime_registry.shutil.which",
+                      return_value="C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"), \
                 patch("runtime.adapters.experimental_runtime_registry.subprocess.run",
-                      return_value=wrong):
+                      return_value=wrong_executable):
             self.assertFalse(live_runtime_executable_matches(expected))
 
     def test_registry_matches_pinned_runtime_without_exposing_paths(self):
@@ -264,11 +280,7 @@ class ExperimentalRegistryTests(unittest.TestCase):
             distributions = [SimpleNamespace(
                 metadata={"Name": package}, version=version)
                 for package, version in EXPECTED_PACKAGES.items()]
-            with patch("runtime.adapters.experimental_runtime_registry.shutil.which",
-                       return_value=None), \
-                    patch("runtime.adapters.experimental_runtime_registry.subprocess.run",
-                          side_effect=AssertionError("registry inspection must not spawn git")), \
-                    patch("runtime.adapters.experimental_runtime_registry.importlib.metadata.distributions",
+            with patch("runtime.adapters.experimental_runtime_registry.importlib.metadata.distributions",
                           return_value=distributions):
                 result = inspect_experimental_runtime_registry(
                     root, registry_path=registry_file,

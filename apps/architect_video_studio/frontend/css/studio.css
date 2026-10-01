@@ -710,6 +710,8 @@ pre.prompt {
 .a6-role-head { display:flex; align-items:center; gap:9px; min-width:0; }
 .a6-role-head > div { display:grid; gap:3px; min-width:0; }
 .a6-role-head strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.a6-role-order { margin-left:auto; flex:none; white-space:nowrap; }
+.a6-role-source, .a6-role-candidate-hint { overflow-wrap:anywhere; }
 .a6-role-thumb { width:52px; height:42px; object-fit:cover; border-radius:4px; }
 .a6-role-actions { display:flex; flex-wrap:wrap; align-items:center; gap:5px; }
 .a6-role-actions .btn { min-height:32px; }
