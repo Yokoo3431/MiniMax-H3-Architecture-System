@@ -480,6 +480,15 @@ class JobAPI:
                 "请等待服务启动或前往环境设置/修复。"
             )
         previous_project_state = project["state"]
+        if dry_run and project["state"] == "COMPLETED":
+            # A completed Study is reusable, but preflight must model the same
+            # fresh confirmation gate as a real new-generation request. Keep
+            # this transition in-memory only: a dry run must not mutate Study
+            # state or create a Job.
+            machine = ProjectStateMachine(project["state"])
+            machine.transition("start_new_generation", actor="architect",
+                               reason="preflight another generation in completed Study")
+            project["state"] = machine.state
         if dry_run and project["state"] != "USER_CONFIRM":
             raise ValueError(
                 f"preflight requires USER_CONFIRM; project is {project['state']}")
@@ -883,6 +892,44 @@ class JobAPI:
         workflow_sha = canonical_workflow_sha256(payload)
         if workflow_sha != snapshot.get("execution_workflow_sha256"):
             raise ValueError("PREFLIGHT_WORKFLOW_SHA_MISMATCH")
+        try:
+            bound_execution_parameters = actual_execution_parameters(
+                payload, str(request.workflow_id), job["execution_trace"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("PREFLIGHT_EXECUTION_TRACE_INVALID") from exc
+        expected_execution = job["execution_trace"].get(
+            "final_execution_parameters") or {}
+        expected_trace_values = {
+            "quality_profile": job["execution_trace"].get("quality_profile"),
+            "architecture_profile": job["execution_trace"].get(
+                "architecture_profile"),
+            "resolution": expected_execution.get("resolution"),
+            "width": expected_execution.get("width"),
+            "height": expected_execution.get("height"),
+            "requested_duration_seconds": expected_execution.get(
+                "requested_duration_seconds"),
+            "fps": expected_execution.get("fps"),
+            "frame_count": expected_execution.get("frame_count"),
+            "latent_length": expected_execution.get("latent_length"),
+            "seed": expected_execution.get("seed"),
+            "steps": expected_execution.get("steps"),
+            "sampler": expected_execution.get("sampler_mode"),
+            "scheduler": expected_execution.get("scheduler"),
+            "denoise": expected_execution.get("denoise"),
+            "acceleration": expected_execution.get("acceleration"),
+        }
+        for name, expected in expected_trace_values.items():
+            actual = bound_execution_parameters.get(name)
+            if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+                matches = (actual is not None and math.isclose(
+                    float(actual), float(expected), rel_tol=0.0, abs_tol=1e-6))
+            else:
+                matches = actual == expected
+            if not matches:
+                raise ValueError(f"PREFLIGHT_EXECUTION_PARAMETER_MISMATCH:{name}")
+        if (ref2va_mode and bound_execution_parameters.get("reference_count")
+                != len(approved_refs)):
+            raise ValueError("PREFLIGHT_EXECUTION_REFERENCE_COUNT_MISMATCH")
         expected_output = expected_save_video_identity(
             payload, job["id"], workflow_sha)
         runtime_identity = build_runtime_identity(
@@ -944,6 +991,7 @@ class JobAPI:
             "reference_bindings": reference_bindings(
                 approved_refs, ref2va=ref2va_mode),
             "generation_parameters": dict(params),
+            "bound_execution_parameters": bound_execution_parameters,
             "execution_workflow_sha256": workflow_sha,
             "workflow_node_count": len(payload),
             "workflow_node_types": node_types,
@@ -965,6 +1013,7 @@ class JobAPI:
             "guide_frame_indexes": [row["resolved_frame_idx"] for row in guide_rows],
             "ref2va_count": len(ref2va_bindings),
             "reference_execution_plan": snapshot.get("reference_execution_plan"),
+            "bound_execution_parameters": bound_execution_parameters,
             "target_frame_count": int(params["frame_count"]),
             "native_generation_fps": NATIVE_H3_FPS,
             "workflow_sha256": workflow_sha,

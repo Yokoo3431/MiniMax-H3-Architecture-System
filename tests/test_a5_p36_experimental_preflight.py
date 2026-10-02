@@ -112,17 +112,36 @@ class FakeExperimentalAdapter:
 
     def prepare(self, request):
         self.prepare_calls += 1
+        params = request.generation_parameters
         payload = {
             "1": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {
-                "length": int(request.generation_parameters["frame_count"])}},
+                "width": int(params["width"]),
+                "height": int(params["height"]),
+                "length": int(params["frame_count"])}},
+            "1a": {"class_type": "RandomNoise", "inputs": {
+                "noise_seed": int(params["seed"])}},
+            "1b": {"class_type": "KSamplerSelect", "inputs": {
+                "sampler_name": str(params["sampler_mode"])}},
+            "1c": {"class_type": "BasicScheduler", "inputs": {
+                "steps": int(params["steps"]),
+                "scheduler": "simple", "denoise": 1.0}},
+            "1d": {"class_type": "CreateVideo", "inputs": {
+                "fps": float(params["fps"])}},
             "2": {"class_type": "BasicGuider", "inputs": {"conditioning": ["1", 0]}},
             "3": {"class_type": "SaveVideo", "inputs": {
                 "filename_prefix": "video/04_Drone_Aerial_42",
                 "format": "auto", "codec": "auto", "video": ["1", 0]}},
         }
         for offset, guide in enumerate(request.guide_frames, start=4):
+            image_node = str(100 + offset)
+            payload[image_node] = {"class_type": "LoadImage", "inputs": {
+                "image": f"guide-{offset}.png"}}
             payload[str(offset)] = {"class_type": "MiniMaxH3AddGuide", "inputs": {
-                "frame_idx": guide["resolved_frame_idx"]}}
+                "frame_idx": guide["resolved_frame_idx"],
+                "image": [image_node, 0]}}
+        for offset, reference in enumerate(request.reference_assets, start=20):
+            payload[str(offset)] = {"class_type": "LoadImage", "inputs": {
+                "image": reference["filename"]}}
         return {"translated_payload": payload, "guide_capability": {
             "node": "MiniMaxH3AddGuide", "available": True,
             "status": "AVAILABLE", "port": 8190,
@@ -386,6 +405,7 @@ class ExperimentalPreflightTests(unittest.TestCase):
         self.assertEqual(result["runtime_identity"]["comfyui_git_sha"], EXPECTED_GIT_SHA)
         self.assertEqual(result["guide_count"], 2)
         self.assertEqual(result["guide_frame_indexes"], [36, 72])
+        self.assertEqual(result["bound_execution_parameters"]["reference_count"], 3)
         self.assertEqual(len(result["workflow_sha256"]), 64)
         self.assertIn(result["id"], result["expected_output_prefix"])
         self.assertEqual(result["submission_state"], "NOT_PERFORMED")

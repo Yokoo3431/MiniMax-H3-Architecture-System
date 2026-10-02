@@ -32,6 +32,7 @@ from runtime.adapters.ref2va_workflow_binding import (  # noqa: E402
     REF2VA_MODEL, Ref2VAWorkflowError, compile_ref2va_workflow,
 )
 from runtime.adapters.native_runtime_adapter import NativeRuntimeAdapter  # noqa: E402
+from runtime.a4_profiles import actual_execution_parameters  # noqa: E402
 from runtime.h3_prompt_engine import OfflineH3Compiler, PromptReasoningRequest  # noqa: E402
 from runtime.reference_contract import (  # noqa: E402
     build_ref2va_reference_plan, reference_bindings,
@@ -144,6 +145,38 @@ class Ref2VAContractTests(unittest.TestCase):
         broken = json.loads(json.dumps(self.schema))
         del broken["MiniMaxH3ReferenceToVideo"]["input"]["required"]["ref_image_size"]
         self.assertFalse(ref2va_schema_capabilities(broken)["available"])
+
+    def test_a6_ref2va_node_produces_complete_actual_execution_trace(self):
+        payload = {
+            "1": {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {
+                "width": 832, "height": 480, "length": 107,
+                "ref_image_size": "max"}},
+            "2": {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}},
+            "3": {"class_type": "KSamplerSelect", "inputs": {
+                "sampler_name": "res_multistep"}},
+            "4": {"class_type": "BasicScheduler", "inputs": {
+                "steps": 21, "scheduler": "simple", "denoise": 1.0}},
+            "5": {"class_type": "CreateVideo", "inputs": {"fps": 24}},
+            "6": {"class_type": "LoadImage", "inputs": {"image": "a.png"}},
+            "7": {"class_type": "LoadImage", "inputs": {"image": "b.png"}},
+        }
+        profile = {
+            "quality_profile": "PREVIEW",
+            "architecture_profile": "drone_aerial",
+            "final_execution_parameters": {
+                "resolution": "832x480", "width": 832, "height": 480,
+                "requested_duration_seconds": 4.0, "fps": 24,
+                "frame_count": 107, "latent_length": 107, "seed": 42,
+                "steps": 21, "sampler_mode": "res_multistep",
+                "scheduler": "simple", "denoise": 1.0,
+                "acceleration": "off",
+            },
+        }
+        actual = actual_execution_parameters(payload, "04_Drone_Aerial", profile)
+        self.assertEqual(actual["resolution"], "832x480")
+        self.assertEqual(actual["frame_count"], 107)
+        self.assertAlmostEqual(actual["duration_seconds"], 107 / 24, places=6)
+        self.assertEqual(actual["reference_count"], 2)
 
     def test_schema_reports_vae_when_required_by_older_core(self):
         schema = node_info()
@@ -698,6 +731,7 @@ class PromptIntegrationTests(unittest.TestCase):
 
                 def prepare(self, request):
                     roles = [item["role"] for item in request.reference_assets]
+                    params = request.generation_parameters
                     image_size = request.generation_parameters[
                         "ref2va_image_size"]
                     bindings = [{
@@ -712,11 +746,30 @@ class PromptIntegrationTests(unittest.TestCase):
                         f"ref_images.ref_image_{ordinal}": [str(8 + ordinal), 0]
                         for ordinal, _ in enumerate(bindings)
                     }
+                    image_nodes = {
+                        str(8 + ordinal): {"class_type": "LoadImage", "inputs": {
+                            "image": f"reference-{ordinal}.png"}}
+                        for ordinal, _ in enumerate(bindings)
+                    }
                     return {
                         "translated_payload": {
                             "5": {"class_type": "MiniMaxH3ReferenceToVideo",
                                   "inputs": {**image_inputs,
+                                             "width": params["width"],
+                                             "height": params["height"],
+                                             "length": params["frame_count"],
                                              "ref_image_size": image_size}},
+                            **image_nodes,
+                            "10": {"class_type": "RandomNoise", "inputs": {
+                                "noise_seed": params["seed"]}},
+                            "11": {"class_type": "KSamplerSelect", "inputs": {
+                                "sampler_name": params["sampler_mode"]}},
+                            "12": {"class_type": "BasicScheduler", "inputs": {
+                                "steps": params["steps"],
+                                "scheduler": params.get("scheduler", "simple"),
+                                "denoise": params.get("denoise", 1.0)}},
+                            "13": {"class_type": "CreateVideo", "inputs": {
+                                "fps": params["fps"]}},
                             "15": {"class_type": "SaveVideo", "inputs": {
                                 "filename_prefix": "video/04_Drone_Aerial_C2B_42",
                                 "video": ["5", 0]}},
@@ -759,6 +812,9 @@ class PromptIntegrationTests(unittest.TestCase):
             self.assertEqual(result["ref2va_count"], 1)
             self.assertEqual(result["reference_execution_plan"][
                 "reference_image_size"], "max")
+            self.assertEqual(result["bound_execution_parameters"]["sampler"],
+                             "euler")
+            self.assertEqual(result["bound_execution_parameters"]["reference_count"], 1)
             self.assertEqual(result["reference_execution_plan"]["bindings"][0][
                 "requested_fidelity"], "max")
             self.assertEqual(result["runtime_capability"]["node"],
@@ -782,6 +838,30 @@ class PromptIntegrationTests(unittest.TestCase):
             self.assertEqual(record["generation_parameters"][
                 "ref2va_image_size"], "max")
             self.assertEqual(record["guide_count"], 0)
+
+            # A completed Study is reusable for another controlled arm. The
+            # dry-run models the fresh confirmation gate without persisting a
+            # Study transition or adding a Job.
+            completed_project = store.load_project(project_id)
+            completed_project["state"] = "COMPLETED"
+            store.save_project(completed_project)
+            jobs_before_completed_preflight = store.load_jobs(project_id)
+            completed_result = jobs.submit_job(
+                project_id, seed=42, risk_reviewed=True,
+                generation_parameters={"quality": "NATIVE_HIGH", "duration": 4.0,
+                                       "fps": 24, "seed": 42,
+                                       "ref2va_image_size": "max"},
+                runtime_target="experimental", runtime_id="experimental-h3-8190",
+                execution_purpose="A6_REF2VA_VALIDATION", dry_run=True)
+            self.assertEqual(completed_result["state"], "DRY_RUN")
+            self.assertEqual(completed_result["reference_execution_plan"][
+                "reference_image_size"], "max")
+            self.assertFalse(completed_result["submission_attempted"])
+            self.assertIsNone(completed_result["prompt_id"])
+            self.assertEqual(store.load_project(project_id)["state"], "COMPLETED")
+            self.assertEqual(store.load_jobs(project_id),
+                             jobs_before_completed_preflight)
+            self.assertEqual(runtime.prompt_calls, 0)
 
     def test_missing_ref2va_checkpoint_fails_before_job_or_prompt_submission(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -560,7 +560,14 @@ def actual_execution_parameters(payload: Mapping[str, Any], workflow_id: str,
         value = matches[0].get("inputs") or {}
         return value if isinstance(value, Mapping) else {}
 
-    h3 = inputs("MiniMaxH3ImageToVideo")
+    h3_node_types = [node_type for node_type in (
+        "MiniMaxH3ImageToVideo", "MiniMaxH3ReferenceToVideo")
+        if by_type.get(node_type)]
+    if len(h3_node_types) != 1:
+        raise ValueError(
+            "expected one MiniMax H3 generation node, found "
+            f"{len(h3_node_types)} supported nodes")
+    h3 = inputs(h3_node_types[0])
     noise = inputs("RandomNoise")
     sampler = inputs("KSamplerSelect")
     scheduler = inputs("BasicScheduler")
