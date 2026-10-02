@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import socketserver
 import tempfile
 import threading
 import unittest
@@ -32,6 +33,27 @@ from runtime.result_pipeline import (  # noqa: E402
     ResultIdentityError, classify_result_failure, expected_save_video_identity,
     sanitize_result_error, select_history_video,
 )
+
+
+class TestExpectedHttpDisconnectHandling(unittest.TestCase):
+    def test_client_disconnect_does_not_emit_server_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            server = StudioServer(("127.0.0.1", 0), StudioStore(Path(temp)), {})
+            try:
+                with patch("socketserver.BaseServer.handle_error") as fallback:
+                    try:
+                        raise ConnectionAbortedError("client closed response")
+                    except ConnectionAbortedError:
+                        server.handle_error(None, ("127.0.0.1", 1))
+                    fallback.assert_not_called()
+
+                    try:
+                        raise ValueError("unexpected server error")
+                    except ValueError:
+                        server.handle_error(None, ("127.0.0.1", 1))
+                    fallback.assert_called_once()
+            finally:
+                server.server_close()
 
 
 class RecoveryAdapter:

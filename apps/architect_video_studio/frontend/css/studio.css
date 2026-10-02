@@ -1054,6 +1054,60 @@ input[type=text], select, textarea { padding: 5px 8px; }
   border: 1px solid #3b4643;
   box-shadow: 0 12px 28px rgba(0,0,0,.22);
 }
+
+/* A7 Director: compact production timeline, intentionally not a full editor. */
+.director-panel { margin: 0 0 16px; padding: 0; overflow: hidden; border-color: #3b4b55; }
+.director-summary { display:flex; align-items:center; gap:16px; padding:14px 18px; cursor:pointer; list-style:none; }
+.director-summary::-webkit-details-marker { display:none; }
+.director-summary > span:first-child { display:flex; flex-direction:column; gap:3px; }
+.director-summary strong { font-size:15px; letter-spacing:.01em; }
+.director-summary .eyebrow { color:#9fb8c3; }
+.director-summary .badge { margin-left:auto; }
+.director-workbench { padding:0 16px 16px; border-top:1px solid var(--line); }
+.director-note { margin:12px 0; }
+.director-toolbar { display:flex; align-items:end; gap:10px; flex-wrap:wrap; padding-bottom:12px; }
+.director-sequence-title { display:grid; gap:4px; min-width:min(320px,100%); font-size:12px; color:var(--muted); }
+.director-sequence-title input { min-height:34px; }
+.director-shot-list { display:grid; gap:10px; }
+.director-shot { border:1px solid #34444d; border-radius:7px; background:linear-gradient(120deg,rgba(41,58,66,.44),rgba(25,31,35,.72)); padding:12px; }
+.director-shot.is-executed { border-left:3px solid #6da58b; }
+.director-shot-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.director-shot-index { color:#95adba; font:600 12px/1 ui-monospace,Consolas,monospace; letter-spacing:.08em; }
+.director-shot-heading { display:grid; gap:3px; min-width:155px; }
+.director-shot-heading strong { font-size:13px; }
+.director-shot-actions { display:flex; gap:4px; margin-left:auto; }
+.director-shot-actions .btn { min-width:30px; padding-inline:7px; }
+.director-shot-grid { display:grid; grid-template-columns:repeat(4,minmax(130px,1fr)); gap:9px; }
+.director-shot-grid label,.director-retake-row label { display:grid; align-content:start; gap:4px; color:var(--muted); font-size:11px; }
+.director-shot-grid .wide { grid-column:span 2; }
+.director-shot-grid textarea { resize:vertical; min-height:58px; }
+.director-shot-grid input,.director-shot-grid select,.director-retake-row input,.director-retake-row select { width:100%; min-width:0; min-height:32px; }
+.director-binding-line { display:flex; gap:7px 14px; flex-wrap:wrap; margin-top:10px; color:#9cadb5; font-size:11px; }
+.director-binding-line span+span::before { content:'·'; margin-right:14px; color:#d47a45; }
+.director-result { display:block; width:min(360px,100%); max-height:200px; margin-top:10px; background:#101416; border-radius:5px; }
+.director-retake-row { display:grid; grid-template-columns:minmax(150px,220px) minmax(220px,1fr) auto; align-items:end; gap:9px; margin-top:12px; padding-top:10px; border-top:1px solid #33434b; }
+.director-empty { padding:18px 12px; border:1px dashed #52636b; border-radius:6px; text-align:center; }
+.director-footer { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+.director-runtime-note { color:#9aaeb7; font-size:11px; }
+.director-shot-grid [data-field="runtime_requirement"] { border-color:#53666d; }
+.director-shot-grid [data-field="runtime_requirement"]:focus { border-color:#d18a52; }
+.director-actions { display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin-top:8px; }
+.director-actions select { min-width:220px; }
+.director-compile-preview { max-height:220px; overflow:auto; white-space:pre-wrap; margin:10px 0 0; padding:12px; border:1px solid #3a4d56; border-radius:5px; background:#12181b; color:#d9e1e3; font:12px/1.5 ui-monospace,Consolas,monospace; }
+.director-status { min-height:18px; margin-top:6px; }
+@media (max-width:900px) {
+  .director-shot-grid { grid-template-columns:repeat(2,minmax(120px,1fr)); }
+  .director-retake-row { grid-template-columns:1fr 1fr; }
+  .director-retake-row button { grid-column:1/-1; justify-self:end; }
+}
+@media (max-width:560px) {
+  .director-shot-grid { grid-template-columns:1fr; }
+  .director-shot-grid .wide { grid-column:auto; }
+  .director-retake-row { grid-template-columns:1fr; }
+  .director-retake-row button { grid-column:auto; justify-self:stretch; }
+  .director-actions { justify-content:stretch; }
+  .director-actions > * { flex:1 1 100%; }
+}
 .app-study .reference-panel,
 .app-study .generation-panel { background: #252c2b; padding: 8px; }
 .app-study .reference-panel { border-right: 1px solid #3a4542; }

@@ -18,6 +18,24 @@ from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
 
 
 class TestEnvironmentStateUnification(unittest.TestCase):
+    def test_environment_diagnostic_log_has_bounded_rotation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            service = object.__new__(EnvironmentService)
+            service.store = SimpleNamespace(data_root=Path(temp) / "a" / "b")
+            with mock.patch(
+                    "apps.architect_video_studio.mock_api.environment_service._ENV_LOG_MAX_BYTES",
+                    700), mock.patch(
+                    "apps.architect_video_studio.mock_api.environment_service._ENV_LOG_BACKUP_COUNT",
+                    2):
+                for _ in range(12):
+                    service._env_log("TEST", "bounded diagnostic", detail="x" * 200)
+
+            log_dir = Path(temp) / "Logs"
+            logs = list(log_dir.glob("environment.log*"))
+            self.assertLessEqual(len(logs), 3)
+            self.assertGreaterEqual(len(logs), 2)
+            self.assertLess(sum(path.stat().st_size for path in logs), 3000)
+
     def test_pages_receive_one_normalized_state_with_provenance_sources(self):
         with tempfile.TemporaryDirectory() as temp:
             service = EnvironmentService(StudioStore(Path(temp) / "studio"))

@@ -21,7 +21,7 @@ import os
 import inspect
 import math
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -410,12 +410,14 @@ class JobAPI:
                                       runtime_id: Optional[str],
                                       execution_purpose: Optional[str],
                                       requires_guides: bool,
+                                      director_execution: Optional[Mapping[str, Any]] = None,
                                       requires_ref2va: bool = False) -> None:
         if runtime_target != "experimental":
             if runtime_id not in (None, "", "production-h3-8189"):
                 raise ValueError("RUNTIME_IDENTITY_MISMATCH: production runtime ID rejected")
             if execution_purpose in {"A5_EXPERIMENTAL_VALIDATION",
-                                     "A6_REF2VA_VALIDATION"}:
+                                     "A6_REF2VA_VALIDATION",
+                                     "A7_DIRECTOR_VALIDATION"}:
                 raise ValueError("EXPERIMENTAL_PURPOSE_TARGET_MISMATCH")
             if requires_ref2va:
                 raise ValueError("REF2VA_EXPERIMENTAL_RUNTIME_REQUIRED")
@@ -430,6 +432,13 @@ class JobAPI:
                 raise ValueError("REF2VA_WITH_ADDGUIDE_UNVALIDATED")
             if execution_purpose != "A6_REF2VA_VALIDATION":
                 raise ValueError("EXPERIMENTAL_JOB_NOT_AUTHORIZED: explicit A6 purpose required")
+        elif director_execution is not None:
+            if execution_purpose != "A7_DIRECTOR_VALIDATION":
+                raise ValueError(
+                    "EXPERIMENTAL_JOB_NOT_AUTHORIZED: explicit A7 Director purpose required")
+            if not requires_guides:
+                raise ValueError(
+                    "A7_EXPERIMENTAL_GUIDE_JOB_REQUIRED: experimental Director route requires selected guides")
         elif execution_purpose != "A5_EXPERIMENTAL_VALIDATION":
             raise ValueError("EXPERIMENTAL_JOB_NOT_AUTHORIZED: explicit A5 validation purpose required")
         elif not requires_guides:
@@ -457,6 +466,7 @@ class JobAPI:
                    runtime_target: str = "production",
                    runtime_id: Optional[str] = None,
                    execution_purpose: Optional[str] = None,
+                   director_execution: Optional[Dict[str, Any]] = None,
                    dry_run: bool = False) -> Dict[str, Any]:
         if runtime_target not in {"production", "experimental"}:
             raise ValueError("RUNTIME_TARGET_INVALID: choose production or experimental")
@@ -470,6 +480,7 @@ class JobAPI:
             runtime_target, runtime_adapter, runtime_id=runtime_id,
             execution_purpose=execution_purpose,
             requires_guides=bool(project.get("guide_frames")),
+            director_execution=director_execution,
             requires_ref2va=requires_ref2va)
         if project.get("guide_frames") and runtime_target != "experimental":
             raise ValueError(
@@ -681,6 +692,20 @@ class JobAPI:
             except Exception as exc:  # noqa: BLE001 - do not create a misleading Job
                 raise ValueError(str(exc)) from exc
 
+        director_compilation = None
+        if director_execution is not None:
+            from .director_api import DirectorAPI
+            director_compilation = DirectorAPI(
+                self.store, output_api=self.output_api).prepare_for_job(
+                    project_id, director_execution, prompt, params,
+                    runtime_target=runtime_target, project=project,
+                    references=refs_by_id)
+            prompt = director_compilation["prompt"]
+            params = director_compilation["generation_parameters"]
+            if int(params.get("frame_count", 0)) != int(profile_context[
+                    "final_execution_parameters"].get("frame_count", 0)):
+                raise ValueError("DIRECTOR_FRAME_COUNT_BINDING_MISMATCH")
+
         guide_prompt = (compile_timeline_guide_prompt(
             str(prompt.get("prompt") or ""), guide_bindings, fps=NATIVE_H3_FPS)
             if guide_bindings else None)
@@ -725,6 +750,8 @@ class JobAPI:
                 "guide_backend": "MiniMaxH3AddGuide" if guide_bindings else "NONE",
                 "runtime_capability": guide_capability,
                 "guide_prompt_compilation": guide_prompt_metadata,
+                "director_execution": (director_compilation.get("provenance")
+                                       if director_compilation else None),
                 "runtime_identity": build_runtime_identity(
                     runtime_target, runtime_adapter, preflight_result),
                 "architecture_profile": profile_context["architecture_profile"],
@@ -762,6 +789,8 @@ class JobAPI:
                 "resolved_frame_idx", "ordinal", "content_sha256",
                 "source_identity", "approval_evidence")}
                 for guide in guide_bindings],
+            "director_execution": (director_compilation.get("provenance")
+                                   if director_compilation else None),
             "reference_assets_snapshot": [
                 {**binding, "filename": str(ref.get("filename") or "")}
                 for binding, ref in zip(selected_bindings, approved)
@@ -810,6 +839,19 @@ class JobAPI:
         jobs = self.store.load_jobs(project_id)
         jobs[job_id] = job
         self.store.save_jobs(project_id, jobs)
+        if director_compilation:
+            from .director_api import DirectorAPI
+            DirectorAPI(self.store, output_api=self.output_api).mark_job(
+                project_id,
+                director_compilation["provenance"]["sequence_id"],
+                director_compilation["provenance"]["shot_id"],
+                job_id,
+                generation_settings={
+                    "quality": profile_context["quality_profile"],
+                    "fps": NATIVE_H3_FPS,
+                    "seed": int(seed),
+                },
+            )
 
         machine = ProjectStateMachine(project["state"])
         machine.transition("confirm_generate", actor="architect",
@@ -951,8 +993,11 @@ class JobAPI:
             "ordinal", "content_sha256", "source_identity", "approval_evidence")}
             for guide in guide_bindings]
         ref2va_bindings = list((ref2va_plan or {}).get("bindings") or [])
+        director_execution = job.get("director_execution") or {}
+        is_a7_director = bool(director_execution)
         expected_purpose = (
-            "A6_REF2VA_VALIDATION" if ref2va_mode
+            "A7_DIRECTOR_VALIDATION" if is_a7_director
+            else "A6_REF2VA_VALIDATION" if ref2va_mode
             else "A5_EXPERIMENTAL_VALIDATION")
         if execution_purpose != expected_purpose:
             raise ValueError("EXPERIMENTAL_PREFLIGHT_PURPOSE_MISMATCH")
@@ -960,14 +1005,23 @@ class JobAPI:
             {"node": "MiniMaxH3ReferenceToVideo", "available": True,
              "status": "AVAILABLE", "runtime_id": runtime_identity["runtime_id"]}
             if ref2va_mode else prepared.get("guide_capability"))
+        if is_a7_director:
+            runtime_capability = {
+                **dict(runtime_capability or {}),
+                "director_validation": True,
+                "sequence_id": director_execution.get("sequence_id"),
+                "shot_id": director_execution.get("shot_id"),
+            }
         node_types: Dict[str, int] = {}
         for node in payload.values():
             node_type = str(node.get("class_type") or "unknown")
             node_types[node_type] = node_types.get(node_type, 0) + 1
         record = {
             "schema_version": 1,
-            "snapshot_type": ("A6_REF2VA_EXPERIMENTAL_PREFLIGHT" if ref2va_mode
-                               else "A5_EXPERIMENTAL_PREFLIGHT"),
+            "snapshot_type": (
+                "A7_DIRECTOR_EXPERIMENTAL_PREFLIGHT" if is_a7_director
+                else "A6_REF2VA_EXPERIMENTAL_PREFLIGHT" if ref2va_mode
+                else "A5_EXPERIMENTAL_PREFLIGHT"),
             "id": job["id"],
             "project_id": project_id,
             "state": "DRY_RUN",
@@ -990,6 +1044,7 @@ class JobAPI:
                                          if guide_prompt else None),
             "reference_bindings": reference_bindings(
                 approved_refs, ref2va=ref2va_mode),
+            "director_execution": director_execution or None,
             "generation_parameters": dict(params),
             "bound_execution_parameters": bound_execution_parameters,
             "execution_workflow_sha256": workflow_sha,
@@ -1019,6 +1074,7 @@ class JobAPI:
             "workflow_sha256": workflow_sha,
             "workflow_node_count": len(payload),
             "runtime_capability": runtime_capability,
+            "director_execution": director_execution or None,
             "expected_output_prefix": expected_output.get("filename_prefix"),
             "output_root_fingerprint": runtime_identity.get("output_root_fingerprint"),
             "prompt_id": None, "submission_attempted": False,
@@ -1442,7 +1498,10 @@ class JobAPI:
                 job["user_message"] = "生成中 · 正在同步进度"
                 if "SAMPLING" not in job.get("stages", []):
                     job.setdefault("stages", []).append("SAMPLING")
-            self._save_job(project_id, job)
+            self._save_job(
+                project_id, job,
+                allow_reconciled_reactivation=(status == "RUNNING"),
+            )
             if start_observer and status == "RUNNING":
                 self._start_reattach_observer(
                     project_id, job_id, job["prompt_id"], job.get("client_id"))
@@ -1504,6 +1563,26 @@ class JobAPI:
             self._mark_reconciling(project_id_found, job, exc)
         except Exception as exc:  # noqa: BLE001 - observer boundary
             project, job = self.store.find_job(job_id)
+            # A progress callback, persistence write, or transport adapter can
+            # fail while Comfy is still executing. Once prompt_id is durable,
+            # only exact queue/history reconciliation may decide terminal
+            # truth; an observer exception alone must not fail the Job.
+            if job.get("prompt_id") and job.get("submission_state") in (
+                    "ACKNOWLEDGED", "SUBMISSION_UNKNOWN", "RECONCILING"):
+                try:
+                    self.reconcile_job(job_id, start_observer=False)
+                except Exception as observation_exc:  # noqa: BLE001
+                    try:
+                        project, latest = self.store.find_job(job_id)
+                        self._mark_reconciling(
+                            project, latest, observation_exc,
+                            code="COMFY_OBSERVATION_ERROR",
+                        )
+                    except Exception:
+                        # Preserve durable prompt identity even if the store is
+                        # temporarily unable to publish another snapshot.
+                        pass
+                return
             category, friendly = _classify_failure(exc)
             job["state"] = "FAILED"
             job["failure_code"] = category
@@ -2736,8 +2815,34 @@ class JobAPI:
         job["active"] = False
         job["is_active"] = False
 
+    @staticmethod
+    def _is_confirmed_reconciled_reactivation(existing: Dict[str, Any],
+                                              incoming: Dict[str, Any]) -> bool:
+        """Allow only exact, strong-identity queue evidence to clear a false failure."""
+        active_states = {
+            "RECONCILING", "LOADING_MODEL", "SAMPLING", "DECODING", "EXPORTING",
+        }
+        return bool(
+            existing.get("state") in ("FAILED", "GPU_FAILED")
+            and existing.get("runtime") == "native"
+            and incoming.get("runtime") == "native"
+            and existing.get("submission_state") in (
+                "SUBMISSION_UNKNOWN", "RECONCILING",
+            )
+            and incoming.get("submission_state") == "ACKNOWLEDGED"
+            and incoming.get("state") in active_states
+            and existing.get("prompt_id")
+            and existing.get("prompt_id") == incoming.get("prompt_id")
+            and existing.get("execution_workflow_sha256")
+            and existing.get("execution_workflow_sha256")
+            == incoming.get("execution_workflow_sha256")
+            and existing.get("runtime_target") == incoming.get("runtime_target")
+            and existing.get("runtime_id") == incoming.get("runtime_id")
+        )
+
     def _save_job(self, project_id: str, job: Dict[str, Any], *,
-                  preserve_result_pipeline: bool = False) -> None:
+                  preserve_result_pipeline: bool = False,
+                  allow_reconciled_reactivation: bool = False) -> None:
         # Serialize the complete load/check/replace transaction. Atomic file
         # replacement prevents torn JSON, while this lock prevents a worker
         # that loaded an older snapshot from losing a concurrent cancellation.
@@ -2753,7 +2858,12 @@ class JobAPI:
             if (existing and is_job_terminal(existing)
                     and not is_job_terminal(job)):
                 # A late worker callback must not resurrect a terminal Job.
-                return
+                # Exception: strong queue/history evidence for the same
+                # acknowledged execution may reverse an observer-only false
+                # failure; cancellation and completed Jobs remain immutable.
+                if not (allow_reconciled_reactivation
+                        and self._is_confirmed_reconciled_reactivation(existing, job)):
+                    return
             if preserve_result_pipeline:
                 existing_pipeline = dict((existing or {}).get("result_pipeline") or {})
                 incoming_pipeline = dict(job.get("result_pipeline") or {})

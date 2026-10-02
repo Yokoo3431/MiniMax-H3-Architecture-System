@@ -148,6 +148,69 @@ class TestReconciliation(unittest.TestCase):
         self.assertEqual(result["prompt_id"], "current-high-prompt")
         self.assertEqual(result["source"], "queue")
 
+    def test_observer_permission_error_reconciles_exact_running_prompt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = StudioStore(Path(temp))
+            store.save_jobs("p", {"job-1": {
+                "id": "job-1", "project_id": "p", "runtime": "native",
+                "runtime_target": "experimental", "runtime_id": "experimental-h3-8190",
+                "state": "FAILED", "lifecycle_state": "FAILED",
+                "submission_state": "RECONCILING", "failure_code": "COMFYUI_ERROR",
+                "prompt_id": "prompt-1", "execution_workflow_sha256": "sha-1",
+                "stages": ["PREPARING"], "cancelled": False,
+            }})
+
+            class _Client:
+                def __init__(self):
+                    self.calls = 0
+
+                def reconcile_prompt(self, **identity):
+                    self.calls += 1
+                    self.assert_identity = identity
+                    return {"status": "RUNNING", "prompt_id": "prompt-1",
+                            "source": "queue", "entry": {}}
+
+            class _Runtime:
+                def __init__(self):
+                    self.client = _Client()
+                    self.generate_calls = 0
+
+                def poll(self, *_args, **_kwargs):
+                    raise PermissionError(13, "observer persistence denied")
+
+                def generate(self, *_args, **_kwargs):
+                    self.generate_calls += 1
+                    raise AssertionError("observer recovery must not submit generation")
+
+            runtime = _Runtime()
+            api = JobAPI(store, experimental_runtime_adapter=runtime)
+            api._reattach_job("p", "job-1", "prompt-1")
+
+            job = store.load_jobs("p")["job-1"]
+            self.assertEqual(runtime.client.calls, 1)
+            self.assertEqual(runtime.client.assert_identity["prompt_id"], "prompt-1")
+            self.assertEqual(job["state"], "SAMPLING")
+            self.assertEqual(job["submission_state"], "ACKNOWLEDGED")
+            self.assertEqual(job["last_observation"]["status"], "RUNNING")
+            self.assertEqual(job["execution_workflow_sha256"], "sha-1")
+            self.assertEqual(runtime.generate_calls, 0)
+
+    def test_terminal_reactivation_requires_same_prompt_and_workflow_identity(self):
+        failed = {
+            "state": "FAILED", "runtime": "native",
+            "runtime_target": "experimental", "runtime_id": "experimental-h3-8190",
+            "submission_state": "RECONCILING", "prompt_id": "prompt-1",
+            "execution_workflow_sha256": "sha-1",
+        }
+        running = {
+            **failed, "state": "SAMPLING", "submission_state": "ACKNOWLEDGED",
+        }
+        self.assertTrue(JobAPI._is_confirmed_reconciled_reactivation(failed, running))
+        self.assertFalse(JobAPI._is_confirmed_reconciled_reactivation(
+            failed, {**running, "prompt_id": "different-prompt"}))
+        self.assertFalse(JobAPI._is_confirmed_reconciled_reactivation(
+            failed, {**running, "execution_workflow_sha256": "different-sha"}))
+
 
 class TestA42SubmissionBoundary(unittest.TestCase):
     def test_post_boundary_exception_remains_unknown_and_is_not_retried(self):

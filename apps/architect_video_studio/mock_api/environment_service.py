@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -35,6 +36,23 @@ from runtime.h3_model_root import (
     validate_h3_model_contract,
     write_comfy_model_paths_config,
 )
+
+_ENV_LOG_MAX_BYTES = 8 * 1024 * 1024
+_ENV_LOG_BACKUP_COUNT = 3
+_ENV_LOG_LOCK = threading.Lock()
+
+
+def _rotate_environment_log(path: Path) -> None:
+    """Keep environment diagnostics bounded without affecting probe results."""
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    for index in range(_ENV_LOG_BACKUP_COUNT, 0, -1):
+        destination = Path(f"{path}.{index}")
+        source = path if index == 1 else Path(f"{path}.{index - 1}")
+        if destination.exists():
+            destination.unlink()
+        if source.exists():
+            source.replace(destination)
 from runtime.support_layer import load_release_runtime_manifest
 from .workflow_handoff import build_ui_workflow
 
@@ -190,8 +208,14 @@ class EnvironmentService:
                 for key, value in fields.items() if value not in (None, "")
             )
             line = f"[{datetime.now(timezone.utc).isoformat()}] {marker} {message}{suffix}\n"
-            with (log_dir / "environment.log").open("a", encoding="utf-8") as stream:
-                stream.write(line)
+            log_path = log_dir / "environment.log"
+            encoded = line.encode("utf-8")
+            with _ENV_LOG_LOCK:
+                if (log_path.exists()
+                        and log_path.stat().st_size + len(encoded) > _ENV_LOG_MAX_BYTES):
+                    _rotate_environment_log(log_path)
+                with log_path.open("ab") as stream:
+                    stream.write(encoded)
         except (OSError, TypeError, ValueError):
             return
 

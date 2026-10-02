@@ -45,6 +45,37 @@
       <button class="spectrum-Button btn ghost" id="rename-study-btn" type="button">重命名 Study</button>
     </section>
 
+    <details class="panel director-panel" id="director-panel">
+      <summary class="director-summary">
+        <span><span class="eyebrow">A7 · DIRECTOR</span><strong>建筑分镜与重拍</strong></span>
+        <span id="director-summary-state" class="badge state">未创建序列</span>
+      </summary>
+      <div class="director-workbench">
+        <p class="muted small director-note">镜头按单独 H3 Job 编译；摄像机词汇是提示词意图，不是几何控制信号。长片剪辑留待 A9。</p>
+        <div class="director-toolbar">
+          <label class="director-sequence-title">序列名称 <input id="director-title" class="avs-control" type="text" maxlength="120" value="建筑分镜"></label>
+          <span id="director-revision" class="muted small">本地草稿</span>
+          <span class="spacer"></span>
+          <button class="spectrum-Button btn" id="director-create-btn" type="button">创建分镜序列</button>
+          <button class="spectrum-Button btn" id="director-add-shot-btn" type="button" hidden>＋ 添加镜头</button>
+          <button class="spectrum-Button btn ghost" id="director-save-btn" type="button" hidden>保存分镜</button>
+        </div>
+        <div id="director-shot-list" class="director-shot-list" aria-live="polite"></div>
+        <div id="director-empty" class="director-empty muted small">创建序列后添加建筑镜头；现有 Job 与结果只读保留。</div>
+        <div class="director-footer" id="director-footer" hidden>
+          <div class="director-runtime-note">相机意图：仅作为 H3 文本条件 · 原生帧数按 17k+5 解析 · 每镜头一条独立任务</div>
+          <div class="director-actions">
+            <select id="director-shot-select" class="avs-select" aria-label="预览或生成的镜头"></select>
+            <button class="spectrum-Button btn ghost" id="director-compile-btn" type="button">编译预览</button>
+            <button class="spectrum-Button btn ghost" id="director-preflight-btn" type="button">仅预检（不生成）</button>
+            <button class="spectrum-Button btn primary" id="director-generate-btn" type="button">生成所选镜头</button>
+          </div>
+          <pre id="director-compile-preview" class="director-compile-preview" hidden></pre>
+          <div id="director-status" class="muted small" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+    </details>
+
     <section class="studio-layout">
 
       <aside class="reference-panel ux2-reference-drawer" aria-label="参考图">

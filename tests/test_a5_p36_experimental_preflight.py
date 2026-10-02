@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from apps.architect_video_studio.mock_api.intent_api import IntentAPI  # noqa: E402
+from apps.architect_video_studio.mock_api.director_api import DirectorAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.job_api import JobAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.output_api import OutputAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.project_api import ProjectAPI  # noqa: E402
@@ -439,6 +440,57 @@ class ExperimentalPreflightTests(unittest.TestCase):
             self.h.dry_run(runtime_id=None)
         with self.assertRaisesRegex(ValueError, "EXPERIMENTAL_JOB_NOT_AUTHORIZED"):
             self.h.dry_run(execution_purpose="PRODUCTION")
+        self.assertEqual(self.h.adapter.client.prompt_calls, 0)
+        self.assertEqual(self.h.store.load_jobs(self.h.project_id), {})
+
+    def test_a7_director_preflight_is_explicit_and_never_submits(self):
+        director = DirectorAPI(self.h.store)
+        sequence = director.create(self.h.project_id)["sequence"]
+        shot = sequence["shots"][0]
+        shot["action_intent"] = "展示建筑与海岸场地关系。"
+        shot["runtime_requirement"] = "experimental"
+        sequence = director.save(self.h.project_id, {
+            "expected_revision": sequence["revision"], "sequence": sequence,
+        })["sequence"]
+        shot = sequence["shots"][0]
+        result = self.h.jobs.submit_job(
+            self.h.project_id, seed=42, risk_reviewed=True,
+            generation_parameters={"quality": "NATIVE_HIGH", "duration": 4.0,
+                                   "fps": 24, "seed": 42},
+            runtime_target="experimental", runtime_id=EXPECTED_RUNTIME_ID,
+            execution_purpose="A7_DIRECTOR_VALIDATION",
+            director_execution={"sequence_id": sequence["sequence_id"],
+                                "sequence_revision": sequence["revision"],
+                                "shot_id": shot["shot_id"]},
+            dry_run=True)
+        self.assertEqual(result["state"], "DRY_RUN")
+        self.assertEqual(result["snapshot_type"],
+                         "A7_DIRECTOR_EXPERIMENTAL_PREFLIGHT")
+        self.assertEqual(result["execution_purpose"], "A7_DIRECTOR_VALIDATION")
+        self.assertEqual(result["runtime_identity"]["runtime_id"], EXPECTED_RUNTIME_ID)
+        self.assertEqual(result["guide_frame_indexes"], [36, 72])
+        self.assertEqual(result["director_execution"]["shot_id"], shot["shot_id"])
+        self.assertEqual(len(result["workflow_sha256"]), 64)
+        self.assertIn(result["id"], result["expected_output_prefix"])
+        self.assertFalse(result["submission_attempted"])
+        self.assertEqual(result["submission_state"], "NOT_PERFORMED")
+        self.assertEqual(self.h.adapter.client.prompt_calls, 0)
+        self.assertEqual(self.h.adapter.generate_calls, 0)
+        self.assertEqual(self.h.store.load_jobs(self.h.project_id), {})
+        saved_sequence = director.get(self.h.project_id)["sequence"]
+        self.assertIsNone(saved_sequence["shots"][0]["last_job_id"])
+
+    def test_a7_experimental_target_rejects_missing_director_authorization(self):
+        with self.assertRaisesRegex(ValueError, "EXPERIMENTAL_JOB_NOT_AUTHORIZED"):
+            self.h.dry_run(execution_purpose="A7_DIRECTOR_VALIDATION")
+        with self.assertRaisesRegex(ValueError, "EXPERIMENTAL_PURPOSE_TARGET_MISMATCH"):
+            self.h.jobs.submit_job(
+                self.h.project_id, risk_reviewed=True,
+                runtime_target="production", runtime_id="production-h3-8189",
+                execution_purpose="A7_DIRECTOR_VALIDATION",
+                director_execution={"sequence_id": "sequence-fixture",
+                                    "shot_id": "shot-fixture"},
+                dry_run=True)
         self.assertEqual(self.h.adapter.client.prompt_calls, 0)
         self.assertEqual(self.h.store.load_jobs(self.h.project_id), {})
 

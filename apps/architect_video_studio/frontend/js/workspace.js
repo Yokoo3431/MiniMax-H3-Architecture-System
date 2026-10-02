@@ -27,6 +27,10 @@ let promptRequestSerial = 0;
 let providerCatalog = [];
 let latestJob = null;
 let capabilities = null;
+let director = null;
+let directorJobs = [];
+let directorRequestBusy = false;
+let selectedDirectorShotId = null;
 
 const VIDEO_TYPES = [
   ['01_Exterior_Hero', 'Exterior Hero'],
@@ -110,10 +114,11 @@ async function refreshStudy() {
 }
 
 async function loadAll() {
-  const [detail, c, system, guides] = await Promise.all([
+  const [detail, c, system, guides, directorState] = await Promise.all([
     get(`/api/projects/${projectId}`), get('/api/catalog'),
     get('/api/capabilities').catch(() => null),
     get(`/api/projects/${projectId}/guide-frames`).catch(() => ({guide_frames: [], capabilities: null})),
+    get(`/api/projects/${projectId}/director`).catch(() => ({sequence: null})),
   ]);
   capabilities = system?.a4_profiles || null;
   project = detail.project || detail; catalog = c;
@@ -121,11 +126,12 @@ async function loadAll() {
   refs = detail.references || [];
   guideFrames = guides?.guide_frames || [];
   guideCapabilities = guides?.capabilities || null;
+  director = directorState?.sequence || null;
   intent = detail.intent || null;
   prompt = detail.prompt || null;
   if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
   await loadProviderCatalog();
-  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderGuideFrames(); renderPrompt(); renderOutputDirectory(); updateGate(); refreshEstimate();
+  renderHeader(); renderVideoTypes(); renderParams(); renderRefs(); renderGuideFrames(); renderPrompt(); renderOutputDirectory(); renderDirector(); updateGate(); refreshEstimate();
   refreshGuideResolution();
   if (study?.reference_approved
       && document.getElementById('intent-text').value.trim()
@@ -211,6 +217,362 @@ function renderVideoTypes() {
     `<option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
   document.getElementById('video-type-help').textContent = TYPE_HELP[selected];
   renderArchitectureFidelity();
+}
+
+function directorShotById(shotId) {
+  return director?.shots?.find((shot) => shot.shot_id === shotId) || null;
+}
+
+function resolvedShotFrameCount(seconds) {
+  const requested = Math.ceil(Number(seconds) * 24 - 1e-9);
+  let frames = requested + ((5 - requested) % 17 + 17) % 17;
+  while (frames / 24 < Number(seconds)) frames += 17;
+  return frames;
+}
+
+function newDirectorShot(title = '新镜头') {
+  const shotId = `shot-${(globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`).replaceAll('-', '').slice(0, 16)}`;
+  return {
+    shot_id: shotId, ordinal: director?.shots?.length || 0, title,
+    duration_seconds: 4, camera_intent: 'static',
+    camera_intent_type: 'PROMPT_CAMERA_INTENT',
+    composition_intent: '',
+    preservation_intent: '保持建筑主体、体量、轮廓与场地关系稳定，不新增或重构建筑元素。',
+    action_intent: '', reference_asset_ids: (prompt?.reference_bindings || []).map((item) => item.asset_id),
+    guide_asset_ids: (project?.guide_frames || []).map((item) => item.guide_id),
+    audio_intent: '', generation_settings: {quality: 'NATIVE_HIGH', fps: 24},
+    runtime_requirement: 'production', prompt_fragment: '', compiled_fragment: '',
+    lineage: null, last_job_id: null,
+  };
+}
+
+function renderDirector() {
+  const sequence = director;
+  const summary = document.getElementById('director-summary-state');
+  const createButton = document.getElementById('director-create-btn');
+  const addButton = document.getElementById('director-add-shot-btn');
+  const saveButton = document.getElementById('director-save-btn');
+  const shotList = document.getElementById('director-shot-list');
+  const empty = document.getElementById('director-empty');
+  const footer = document.getElementById('director-footer');
+  const title = document.getElementById('director-title');
+  const revision = document.getElementById('director-revision');
+  const select = document.getElementById('director-shot-select');
+  if (!summary || !shotList) return;
+  const shots = sequence?.shots || [];
+  summary.textContent = sequence ? `${shots.length} 镜头 · R${sequence.revision}` : '未创建序列';
+  createButton.hidden = !!sequence;
+  addButton.hidden = !sequence;
+  saveButton.hidden = !sequence;
+  footer.hidden = !sequence;
+  empty.hidden = !!sequence && shots.length > 0;
+  title.disabled = !sequence;
+  if (!sequence) {
+    shotList.innerHTML = '';
+    revision.textContent = 'Studio 独立保存；不会改写现有 Prompt/Job';
+    select.innerHTML = '';
+    return;
+  }
+  title.value = sequence.title || '建筑分镜';
+  revision.textContent = `序列修订 R${sequence.revision} · ${shots.length} 个独立镜头 Job`;
+  const cameraOptions = [
+    ['static', '固定镜头'], ['slow_push', '缓慢推进'], ['pull_back', '缓慢拉远'],
+    ['orbit', '环绕'], ['pan', '水平摇镜'], ['tilt', '垂直摇镜'],
+    ['crane_elevate', '升降揭示'], ['descending_aerial', '下降航拍'],
+    ['dolly_lateral', '横向移动'], ['approach', '接近建筑'], ['reveal', '逐步揭示'],
+    ['controlled_drone', '平稳无人机镜头'],
+  ];
+  let timelineOffset = 0;
+  const cards = shots.map((shot, index) => {
+    const job = directorJobs.find((item) => item.id === shot.last_job_id);
+    const duration = Number(shot.duration_seconds || 4);
+    const frames = resolvedShotFrameCount(duration);
+    const effective = frames / 24;
+    const locked = !!shot.last_job_id;
+    const refCount = (shot.reference_asset_ids || []).length;
+    const guideCount = (shot.guide_asset_ids || []).length;
+    const video = job?.state === 'COMPLETED'
+      ? `<video class="director-result" controls preload="metadata" src="/api/jobs/${encodeURIComponent(job.id)}/media" aria-label="${esc(shot.title)} 结果"></video>`
+      : '';
+    const cameraSelect = cameraOptions.map(([id, label]) =>
+      `<option value="${id}" ${shot.camera_intent === id ? 'selected' : ''}>${label}</option>`).join('');
+    const runtimeState = guideCapabilities?.experimental?.available === true
+      && guideCapabilities?.experimental_job_route_enabled === true
+      ? '已就绪' : '当前不可用';
+    const runtimeSelect = `<select class="avs-select" data-field="runtime_requirement" ${locked ? 'disabled' : ''}>
+      <option value="production" ${shot.runtime_requirement === 'production' ? 'selected' : ''} ${guideCount ? 'disabled' : ''}>生产 8189${guideCount ? '（含 guide 时不可用）' : ''}</option>
+      <option value="experimental" ${shot.runtime_requirement === 'experimental' ? 'selected' : ''}>隔离实验 8190（${runtimeState}）</option>
+    </select>`;
+    const status = job ? `${esc(job.state)} · Job ${esc(job.id)}`
+      : locked ? `Job ${esc(shot.last_job_id)} · 正在索引` : shot.lineage ? '待提交的定向重拍' : '草稿';
+    const retake = job?.state === 'COMPLETED'
+      ? `<div class="director-retake-row">
+          <label>重拍镜头意图 <select class="avs-select" data-retake-camera="${esc(shot.shot_id)}">${cameraOptions.map(([id, label]) => `<option value="${id}" ${id === shot.camera_intent ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+          <label>重拍原因 <input class="avs-control" data-retake-reason="${esc(shot.shot_id)}" value="保持建筑与参考不变，仅调整镜头意图"></label>
+          <button class="spectrum-Button btn ghost director-retake" data-shot-id="${esc(shot.shot_id)}" type="button">创建新 Job 重拍</button>
+        </div>` : '';
+    const rendered = `<article class="director-shot ${locked ? 'is-executed' : ''}" data-shot-id="${esc(shot.shot_id)}">
+      <header class="director-shot-head">
+        <span class="director-shot-index">${String(index + 1).padStart(2, '0')}</span>
+        <div class="director-shot-heading"><strong>${esc(shot.title || `镜头 ${index + 1}`)}</strong><span class="muted small">序列位置 ${timelineOffset.toFixed(2)}s · ${effective.toFixed(3)}s 实际长度 · ${frames} 帧</span></div>
+        <span class="badge state">${status}</span>
+        <div class="director-shot-actions">
+          <button class="spectrum-Button btn ghost director-move-up" type="button" aria-label="上移镜头" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button class="spectrum-Button btn ghost director-move-down" type="button" aria-label="下移镜头" ${index === shots.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="spectrum-Button btn ghost director-duplicate" type="button">复制</button>
+          <button class="spectrum-Button btn ghost director-remove" type="button" ${locked ? 'disabled title="已有 Job 证据的镜头不可删除"' : ''}>移除</button>
+        </div>
+      </header>
+      <div class="director-shot-grid">
+        <label>镜头名称<input class="avs-control" data-field="title" value="${esc(shot.title || '')}" ${locked ? 'disabled' : ''}></label>
+        <label>时长（秒）<input class="avs-control" data-field="duration_seconds" type="number" min="4" max="15" step="0.1" value="${esc(String(duration))}" ${locked ? 'disabled' : ''}></label>
+        <label>相机意图 <select class="avs-select" data-field="camera_intent" ${locked ? 'disabled' : ''}>${cameraSelect}</select></label>
+        <label>质量档 <select class="avs-select" data-field="quality" ${locked ? 'disabled' : ''}><option value="NATIVE_HIGH" ${shot.generation_settings?.quality === 'NATIVE_HIGH' ? 'selected' : ''}>NATIVE_HIGH · 1344×768</option><option value="PREVIEW" ${shot.generation_settings?.quality === 'PREVIEW' ? 'selected' : ''}>PREVIEW · 832×480</option></select></label>
+        <label class="wide">镜头动作<textarea class="avs-control" data-field="action_intent" rows="2" ${locked ? 'disabled' : ''}>${esc(shot.action_intent || '')}</textarea></label>
+        <label>构图意图<input class="avs-control" data-field="composition_intent" value="${esc(shot.composition_intent || '')}" ${locked ? 'disabled' : ''}></label>
+        <label>建筑保持<input class="avs-control" data-field="preservation_intent" value="${esc(shot.preservation_intent || '')}" ${locked ? 'disabled' : ''}></label>
+        <label class="wide">声音意图（可选）<input class="avs-control" data-field="audio_intent" value="${esc(shot.audio_intent || '')}" ${locked ? 'disabled' : ''}></label>
+        <label>本镜头运行时${runtimeSelect}</label>
+      </div>
+      <div class="director-binding-line"><span>Study 参考 ${refCount}</span><span>时间线引导 ${guideCount}</span><span>Native H3 24 FPS</span><span>摄像机语义 PROMPT_CAMERA_INTENT</span></div>
+      <p class="director-runtime-note">${guideCount
+        ? `该镜头含 ${guideCount} 个已配置时间线 guide，必须明确选用隔离 8190（${runtimeState}）；不会回退到生产 8189。`
+        : '此镜头使用生产路由；若显式改用实验运行时，将进行独立身份与能力校验。'}</p>
+      ${video}${retake}
+    </article>`;
+    timelineOffset += effective;
+    return rendered;
+  });
+  shotList.innerHTML = cards.join('');
+  if (!shots.some((shot) => shot.shot_id === selectedDirectorShotId)) selectedDirectorShotId = shots[0]?.shot_id || null;
+  select.innerHTML = shots.map((shot, index) => `<option value="${esc(shot.shot_id)}" ${shot.shot_id === selectedDirectorShotId ? 'selected' : ''}>${String(index + 1).padStart(2, '0')} · ${esc(shot.title || '未命名镜头')}</option>`).join('');
+}
+
+async function createDirectorSequence() {
+  try {
+    const result = await post(`/api/projects/${projectId}/director`, {title: '建筑分镜'});
+    director = result.sequence;
+    selectedDirectorShotId = director.shots?.[0]?.shot_id || null;
+    renderDirector();
+  } catch (error) { showErr(friendlyError(error, '分镜序列创建失败')); }
+}
+
+function readDirectorEditor() {
+  if (!director) return;
+  director.title = document.getElementById('director-title').value.trim() || '建筑分镜';
+  for (const card of document.querySelectorAll('.director-shot')) {
+    const shot = directorShotById(card.dataset.shotId);
+    if (!shot || shot.last_job_id) continue;
+    for (const input of card.querySelectorAll('[data-field]')) {
+      const field = input.dataset.field;
+      const raw = input.value;
+      if (field === 'duration_seconds') shot.duration_seconds = Number(raw);
+      else if (field === 'quality') shot.generation_settings.quality = raw;
+      else shot[field] = raw;
+    }
+  }
+}
+
+async function saveDirectorSequence() {
+  if (!director || directorRequestBusy) return false;
+  readDirectorEditor();
+  directorRequestBusy = true;
+  const status = document.getElementById('director-status');
+  if (status) status.textContent = '正在保存分镜…';
+  try {
+    const result = await put(`/api/projects/${projectId}/director`, {
+      expected_revision: director.revision, sequence: director,
+    });
+    director = result.sequence;
+    if (status) status.textContent = `已保存 R${director.revision} · 已执行镜头保持不可变`;
+    renderDirector();
+    return true;
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    showErr(friendlyError(error, '分镜保存失败'));
+    return false;
+  } finally { directorRequestBusy = false; }
+}
+
+function reorderDirectorShot(shotId, direction) {
+  if (!director) return;
+  readDirectorEditor();
+  const index = director.shots.findIndex((shot) => shot.shot_id === shotId);
+  const next = index + direction;
+  if (index < 0 || next < 0 || next >= director.shots.length) return;
+  [director.shots[index], director.shots[next]] = [director.shots[next], director.shots[index]];
+  director.shots.forEach((shot, ordinal) => { shot.ordinal = ordinal; });
+  renderDirector();
+}
+
+function duplicateDirectorShot(shotId) {
+  if (!director) return;
+  readDirectorEditor();
+  const source = directorShotById(shotId);
+  if (!source) return;
+  const copy = JSON.parse(JSON.stringify(source));
+  copy.shot_id = newDirectorShot().shot_id;
+  copy.title = `${source.title || '镜头'} · 副本`;
+  copy.last_job_id = null; copy.lineage = null; copy.compiled_fragment = '';
+  const index = director.shots.indexOf(source);
+  director.shots.splice(index + 1, 0, copy);
+  director.shots.forEach((shot, ordinal) => { shot.ordinal = ordinal; });
+  selectedDirectorShotId = copy.shot_id;
+  renderDirector();
+}
+
+function addDirectorShot() {
+  readDirectorEditor();
+  const shot = newDirectorShot(`镜头 ${(director?.shots?.length || 0) + 1}`);
+  director.shots.push(shot);
+  selectedDirectorShotId = shot.shot_id;
+  renderDirector();
+}
+
+function removeDirectorShot(shotId) {
+  if (!director) return;
+  const shot = directorShotById(shotId);
+  if (!shot || shot.last_job_id) return;
+  director.shots = director.shots.filter((item) => item.shot_id !== shotId);
+  director.shots.forEach((item, ordinal) => { item.ordinal = ordinal; });
+  selectedDirectorShotId = director.shots[0]?.shot_id || null;
+  renderDirector();
+}
+
+function directorGenerationParameters(shot) {
+  const params = currentParams();
+  params.duration = Number(shot.duration_seconds);
+  params.quality = shot.generation_settings?.quality || 'NATIVE_HIGH';
+  params.fps = 24; params.delivery_fps = 24;
+  const frozenSeed = shot.generation_settings?.seed;
+  const rawSeed = value('param-seed').trim();
+  params.seed = Number.isInteger(frozenSeed) && frozenSeed >= 0
+    ? frozenSeed : (rawSeed ? parseInt(rawSeed, 10) : 42);
+  return params;
+}
+
+async function compileDirectorShot() {
+  if (!director) return;
+  const shotId = document.getElementById('director-shot-select').value;
+  const shot = directorShotById(shotId);
+  if (!shot) return;
+  if (!shot.last_job_id && !(await saveDirectorSequence())) return;
+  const preview = document.getElementById('director-compile-preview');
+  const status = document.getElementById('director-status');
+  try {
+    const result = await post(`/api/projects/${projectId}/director/compile`, {
+      sequence_id: director.sequence_id, sequence_revision: director.revision,
+      shot_id: shot.shot_id,
+      generation_parameters: directorGenerationParameters(shot),
+    });
+    preview.textContent = result.compiled_prompt;
+    preview.hidden = false;
+    status.textContent = `编译通过 · ${result.director_provenance.resolved_frame_count} 帧 · ${result.director_provenance.effective_duration_seconds}s · Prompt SHA ${result.prompt_sha256.slice(0, 12)}… · 未提交任务`;
+  } catch (error) {
+    status.textContent = error.message;
+    showErr(friendlyError(error, '分镜编译预览失败'));
+  }
+}
+
+async function submitDirectorShot(shot, sequence = director) {
+  const seedValue = directorGenerationParameters(shot).seed;
+  if (!Number.isInteger(seedValue) || seedValue < 0) throw new Error('Seed 需为非负整数或留空');
+  if (!document.getElementById('risk-check').checked) throw new Error('请先确认参考图与生成设置');
+  const runtimeTarget = shot.runtime_requirement || 'production';
+  if (!['production', 'experimental'].includes(runtimeTarget)) {
+    throw new Error('该镜头的运行时选择无效。');
+  }
+  if (runtimeTarget === 'production' && (project?.guide_frames || []).length) {
+    throw new Error('本 Study 含时间线 guide；请在镜头卡中明确选择隔离实验 8190。');
+  }
+  const params = directorGenerationParameters(shot);
+  const request = {
+    seed: seedValue, risk_reviewed: true, generation_parameters: params,
+    runtime_target: runtimeTarget,
+    director_execution: {
+      sequence_id: sequence.sequence_id,
+      sequence_revision: sequence.revision,
+      shot_id: shot.shot_id,
+    },
+  };
+  if (runtimeTarget === 'experimental') {
+    request.runtime_id = 'experimental-h3-8190';
+    request.execution_purpose = 'A7_DIRECTOR_VALIDATION';
+  }
+  return post(`/api/projects/${projectId}/jobs`, request);
+}
+
+async function preflightDirectorShot() {
+  if (!director || directorRequestBusy) return;
+  const button = document.getElementById('director-preflight-btn');
+  const status = document.getElementById('director-status');
+  try {
+    if (!(await saveDirectorSequence())) return;
+    const shot = directorShotById(document.getElementById('director-shot-select').value);
+    if (!shot) throw new Error('请先选择一个镜头');
+    if ((shot.runtime_requirement || 'production') !== 'experimental') {
+      throw new Error('带 guide 的 Director 镜头须先明确选择隔离实验 8190。');
+    }
+    const seedValue = directorGenerationParameters(shot).seed;
+    if (!Number.isInteger(seedValue) || seedValue < 0) throw new Error('Seed 需为非负整数或留空');
+    if (!document.getElementById('risk-check').checked) throw new Error('请先确认参考图与设置');
+    button.disabled = true;
+    button.textContent = '正在进行 CPU 预检…';
+    const result = await post(`/api/projects/${projectId}/jobs/preflight`, {
+      seed: seedValue, risk_reviewed: true,
+      generation_parameters: directorGenerationParameters(shot),
+      runtime_target: 'experimental', runtime_id: 'experimental-h3-8190',
+      execution_purpose: 'A7_DIRECTOR_VALIDATION',
+      director_execution: {sequence_id: director.sequence_id,
+        sequence_revision: director.revision, shot_id: shot.shot_id},
+    });
+    status.textContent = `A7 CPU 预检通过 · ${result.guide_count} guides · 帧 ${result.guide_frame_indexes.join(', ')} · workflow ${result.workflow_sha256.slice(0, 12)}… · ${result.expected_output_prefix} · 未提交 /prompt`;
+  } catch (error) {
+    status.textContent = error.message;
+    showErr(friendlyError(error, 'A7 CPU 预检未通过；未提交 /prompt。'));
+  } finally {
+    button.disabled = false;
+    button.textContent = '仅预检（不生成）';
+  }
+}
+
+async function generateDirectorShot() {
+  if (!director || directorRequestBusy) return;
+  try {
+    if (!(await saveDirectorSequence())) return;
+    const shot = directorShotById(document.getElementById('director-shot-select').value);
+    if (!shot) throw new Error('请先选择一个镜头');
+    const created = await submitDirectorShot(shot);
+    const job = created && (created.job || created);
+    if (job?.id) location.href = `jobs.html?project=${encodeURIComponent(projectId)}&job=${encodeURIComponent(job.id)}`;
+  } catch (error) { showErr(friendlyError(error, 'Director 镜头任务提交失败')); }
+}
+
+async function createDirectorRetake(shotId, button) {
+  if (!director || directorRequestBusy) return;
+  const source = directorShotById(shotId);
+  if (!source?.last_job_id) return;
+  readDirectorEditor();
+  const card = button.closest('.director-shot');
+  const camera = card.querySelector(`[data-retake-camera="${CSS.escape(shotId)}"]`).value;
+  const reason = card.querySelector(`[data-retake-reason="${CSS.escape(shotId)}"]`).value.trim();
+  button.disabled = true;
+  try {
+    const created = await post(`/api/projects/${projectId}/director/shots/${encodeURIComponent(shotId)}/retake`, {
+      sequence_id: director.sequence_id, source_job_id: source.last_job_id,
+      retake_reason: reason, changes: {camera_intent: camera},
+    });
+    director = created.sequence;
+    selectedDirectorShotId = created.shot.shot_id;
+    renderDirector();
+    const retake = directorShotById(created.shot.shot_id);
+    const result = await submitDirectorShot(retake);
+    const job = result && (result.job || result);
+    if (job?.id) location.href = `jobs.html?project=${encodeURIComponent(projectId)}&job=${encodeURIComponent(job.id)}`;
+  } catch (error) {
+    renderDirector();
+    showErr(friendlyError(error, '创建或提交重拍失败；原 Job 保持不变'));
+  } finally { button.disabled = false; }
 }
 
 function renderArchitectureFidelity() {
@@ -1034,6 +1396,9 @@ async function runExperimentalPreflight() {
 async function pollJobs() {
   try {
     const jobs = await get(`/api/projects/${projectId}/jobs`);
+    directorJobs = jobs;
+    const directorPanel = document.getElementById('director-panel');
+    if (!directorPanel?.contains(document.activeElement)) renderDirector();
     await refreshStudy();
     const active = jobs.find((j) => jobIsActive(j));
     const job = active || jobs[0];
@@ -1162,6 +1527,39 @@ document.getElementById('a6-reference-list').addEventListener('click', (event) =
     bindA6Asset(role, card.querySelector('.a6-asset-select')?.value);
   } else if (event.target.closest('.a6-upload')) uploadA6Asset(role);
   else if (event.target.closest('.a6-remove')) removeA6Asset(role);
+});
+document.getElementById('director-create-btn').addEventListener('click', createDirectorSequence);
+document.getElementById('director-add-shot-btn').addEventListener('click', addDirectorShot);
+document.getElementById('director-save-btn').addEventListener('click', saveDirectorSequence);
+document.getElementById('director-compile-btn').addEventListener('click', compileDirectorShot);
+document.getElementById('director-generate-btn').addEventListener('click', generateDirectorShot);
+document.getElementById('director-preflight-btn').addEventListener('click', preflightDirectorShot);
+document.getElementById('director-title').addEventListener('input', (event) => {
+  if (director) director.title = event.target.value;
+});
+document.getElementById('director-shot-select').addEventListener('change', (event) => {
+  selectedDirectorShotId = event.target.value;
+});
+function syncDirectorField(event) {
+  const card = event.target.closest('.director-shot');
+  const shot = card && directorShotById(card.dataset.shotId);
+  const input = event.target.closest('[data-field]');
+  if (!shot || !input || shot.last_job_id) return;
+  if (input.dataset.field === 'duration_seconds') shot.duration_seconds = Number(input.value);
+  else if (input.dataset.field === 'quality') shot.generation_settings.quality = input.value;
+  else shot[input.dataset.field] = input.value;
+}
+document.getElementById('director-shot-list').addEventListener('input', syncDirectorField);
+document.getElementById('director-shot-list').addEventListener('change', syncDirectorField);
+document.getElementById('director-shot-list').addEventListener('click', (event) => {
+  const card = event.target.closest('.director-shot');
+  const shotId = card?.dataset.shotId;
+  if (!shotId) return;
+  if (event.target.closest('.director-move-up')) reorderDirectorShot(shotId, -1);
+  else if (event.target.closest('.director-move-down')) reorderDirectorShot(shotId, 1);
+  else if (event.target.closest('.director-duplicate')) duplicateDirectorShot(shotId);
+  else if (event.target.closest('.director-remove')) removeDirectorShot(shotId);
+  else if (event.target.closest('.director-retake')) createDirectorRetake(shotId, event.target.closest('.director-retake'));
 });
 document.getElementById('risk-check').addEventListener('change', updateGate);
 document.getElementById('rename-study-btn').addEventListener('click', async () => {

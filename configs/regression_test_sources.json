@@ -19,15 +19,15 @@
     {
       "path": "tests/test_a5_p36_experimental_preflight.py",
       "tracked_status": "tracked",
-      "sha256": "B314E8B967D72D9C55618D49DCBA9D639CEE93ACA416097D538CB8F0A98CB67E",
-      "discovered_test_count": 16,
+      "sha256": "2ABD057B03802FC2AB7BE16BFB3A04045905D4261862F7BF6A293A2C1A823AE3",
+      "discovered_test_count": 18,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_a5_result_pipeline_recovery.py",
       "tracked_status": "tracked",
-      "sha256": "0E5CE3306BD9CC6BE956318C8A0ACA0C94B7E495352900BB5454E0EEFE682DC5",
-      "discovered_test_count": 23,
+      "sha256": "1E99464269875F57CB15ACCE1C9F0AF46671EFA776DF404AB759FEAC0B0B67A1",
+      "discovered_test_count": 24,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -35,6 +35,13 @@
       "tracked_status": "tracked",
       "sha256": "C37DA0458647E69A15014C2CE35991E2F6F01D4A00E01B0C1F11AD96A675F1B6",
       "discovered_test_count": 31,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_a7_director_timeline.py",
+      "tracked_status": "tracked",
+      "sha256": "C415B826612DC4746AC9628B1F583A7913DF15A8B675AADE3BD463C413DFAFD3",
+      "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -131,8 +138,8 @@
     {
       "path": "tests/test_comfyui_submission_reconciliation.py",
       "tracked_status": "tracked",
-      "sha256": "E68B9FF4DEC7560F2FB4017BC291C9414A0954769068702A734584B839C49B29",
-      "discovered_test_count": 8,
+      "sha256": "82B9725F4448CCB40512EC13784E798C2666F76D4F199E0979732550DEA8F5F0",
+      "discovered_test_count": 10,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -173,8 +180,8 @@
     {
       "path": "tests/test_environment_state_unification.py",
       "tracked_status": "tracked",
-      "sha256": "329ACB093CA2363AD06E7CD35AD434D17CA644BA39E0C05667DD8D663DD7C134",
-      "discovered_test_count": 2,
+      "sha256": "5D4DE4A2C2D6CDE9180E84FDAF62BCB36E0DE736312E572046F1C250F915067E",
+      "discovered_test_count": 3,
       "classification": "CORE_REGRESSION"
     },
     {

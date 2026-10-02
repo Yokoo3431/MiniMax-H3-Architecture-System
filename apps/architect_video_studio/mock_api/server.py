@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import hashlib
+import errno
 import re
+import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,6 +27,17 @@ _REFERENCE_UPLOAD_REQUEST_LIMIT_BYTES = 65 * 1024 * 1024
 class StudioServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def handle_error(self, request, client_address) -> None:
+        """Avoid traceback storms when a polling client closes early."""
+        error = sys.exc_info()[1]
+        if isinstance(error, (BrokenPipeError, ConnectionAbortedError,
+                              ConnectionResetError)):
+            return
+        if isinstance(error, OSError) and error.errno in (
+                errno.EPIPE, errno.ECONNABORTED, errno.ECONNRESET):
+            return
+        super().handle_error(request, client_address)
 
     def __init__(self, addr: Tuple[str, int], store: StudioStore,
                  apis: Dict[str, object], mode: str = "production") -> None:
@@ -162,7 +175,12 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             path = parsed.path
             try:
                 if path.startswith("/api/"):
-                    self._route_api(method, path, self._read_json() if method in ("POST", "PATCH", "DELETE") else {}, parsed.query)
+                    self._route_api(
+                        method, path,
+                        self._read_json() if method in (
+                            "POST", "PUT", "PATCH", "DELETE") else {},
+                        parsed.query,
+                    )
                 else:
                     self._route_static(path)
             except _RequestBodyTooLarge:
@@ -186,6 +204,9 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
 
         def do_PATCH(self) -> None:
             self._dispatch("PATCH")
+
+        def do_PUT(self) -> None:
+            self._dispatch("PUT")
 
         def do_DELETE(self) -> None:
             self._dispatch("DELETE")
@@ -265,6 +286,22 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/projects/([^/]+)/study", path)
             if m and method == "GET":
                 return self._ok(apis["study"].get_state(m.group(1)))
+            m = re.fullmatch(r"/api/projects/([^/]+)/director", path)
+            if m and method == "GET":
+                return self._ok(apis["director"].get(m.group(1)))
+            if m and method == "POST":
+                return self._ok(apis["director"].create(
+                    m.group(1), body.get("title", "建筑分镜")))
+            if m and method == "PUT":
+                return self._ok(apis["director"].save(m.group(1), body))
+            m = re.fullmatch(r"/api/projects/([^/]+)/director/compile", path)
+            if m and method == "POST":
+                return self._ok(apis["director"].compile(m.group(1), body))
+            m = re.fullmatch(
+                r"/api/projects/([^/]+)/director/shots/([^/]+)/retake", path)
+            if m and method == "POST":
+                return self._ok(apis["director"].create_retake(
+                    m.group(1), m.group(2), body))
             if method == "GET" and path == "/api/capabilities/multiframe-guides":
                 return self._ok(apis["guide"].capabilities())
             if method == "GET" and path == "/api/system/runtime-registry":
@@ -379,6 +416,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     runtime_target=body.get("runtime_target", "production"),
                     runtime_id=body.get("runtime_id"),
                     execution_purpose=body.get("execution_purpose"),
+                    director_execution=body.get("director_execution"),
                     dry_run=True,
                 ))
             if m and method == "GET":
@@ -393,6 +431,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     runtime_target=body.get("runtime_target", "production"),
                     runtime_id=body.get("runtime_id"),
                     execution_purpose=body.get("execution_purpose"),
+                    director_execution=body.get("director_execution"),
                 ))
             m = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if m and method == "GET":
@@ -512,6 +551,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     from .prompt_api import PromptAPI
     from .reference_api import ReferenceAPI
     from .study_api import StudyAPI
+    from .director_api import DirectorAPI
     from .system_api import SystemAPI
     from runtime.adapters.runtime_paths import resolve_runtime_paths
 
@@ -617,6 +657,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                                 production_identity=production_public,
                                 experimental_identity=experimental_public),
         "study": StudyAPI(store),
+        "director": DirectorAPI(store, output_api=output_api),
         "intent": IntentAPI(store),
         "prompt": PromptAPI(store),
         "job": JobAPI(store, output_api=output_api,
