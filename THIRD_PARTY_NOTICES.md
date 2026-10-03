@@ -52,13 +52,19 @@
 | Distribution notice | `MiniMax H3 is licensed under the MiniMax H3 Community License Agreement, Copyright © 2026 MiniMax. All Rights Reserved.` |
 | Compliance | Applicable Territory, Acceptable Use Policy and upstream downstream-notice obligations apply; users must review `LICENSE` before use |
 
-## 3. Qwen / Qwen2.5-VL (Qwen3-VL 文本编码器)
+## 3. Qwen3-VL（MiniMax H3 文本编码器）
 
 | 项 | 值 |
 | --- | --- |
-| License | Apache-2.0（Qwen 开源模型系列，以官方声明为准） |
-| Source | https://github.com/QwenLM/Qwen2.5-VL |
-| Usage | 文本编码器（qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors）经 ComfyUI CLIPLoader 加载，用于 prompt 编码 |
+| License | Qwen3-VL 上游代码/模型系列为 Apache-2.0；MiniMax H3 发布的具体编码器权重仍须按 MiniMax H3 Community License Agreement 使用，不由本产品重新授权 |
+| Source | Qwen3-VL: https://github.com/QwenLM/Qwen3-VL；实际权重文件来自 MiniMax-H3 固定 revision `42ed227ee7df40d41602854ae760620d6eb651fe` |
+| Usage | 文本编码器 `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` 经 ComfyUI CLIPLoader 加载。此权重不随产品包分发，由用户按安装器的许可确认流程从固定上游获取 |
+
+MiniMax H3 官方许可文本说明其 encoder 使用 Qwen3-VL-32B，并将该 encoder
+列为 Apache-2.0；同时，H3 权重及其输出仍受 MiniMax H3 Community License
+Agreement 的适用范围和使用条件约束。两者不是同一许可，也不能用 Qwen
+上游许可替代 H3 权重许可。固定下载 revision 与权重清单见
+`models/manifest.json` 和 `configs/installation_manifest.yaml`。
 
 ## 4. Python 依赖（运行时使用）
 
