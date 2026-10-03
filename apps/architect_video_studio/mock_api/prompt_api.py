@@ -34,7 +34,7 @@ from runtime.reference_contract import (
 )
 from runtime.workflow_motion import normalize_camera_motion
 from runtime.h3_prompt_engine import (
-    CLIReasoningProvider, OfflineH3Compiler, OpenAICompatibleProvider, PromptReasoningRequest,
+    CLIReasoningProvider, OpenAICompatibleProvider, PromptReasoningRequest,
     CLI_PROVIDER_IDS, UniversalPromptEngine, discover_providers, provider_summary,
     H3PromptValidator, test_provider_configuration,
 )
@@ -267,8 +267,11 @@ class PromptAPI:
                 if mode == "Ref2VA":
                     # A6 requires exact tag-to-slot alignment.  Keep this
                     # path deterministic/offline until a reviewed multi-role
-                    # prompt provider contract is explicitly added.
-                    prompt = OfflineH3Compiler().compile(reasoning_request)
+                    # prompt provider contract is explicitly added. Route
+                    # through the universal engine's offline provider so the
+                    # saved Prompt receives the same pinned Skill provenance.
+                    prompt = self.engine.generate(
+                        reasoning_request, provider="OFFLINE_COMPILER")
                 else:
                     prompt = self._configured_engine().generate(
                         reasoning_request, provider=prompt_engine)
@@ -384,7 +387,8 @@ class PromptAPI:
             "input_fingerprint": prompt_input_hash(
                 intent.get("natural_language", ""), workflow, reference_hash,
                 params, provider_name,
-                allow_a4_2_candidate=allow_a4_2_prompt_candidate),
+                allow_a4_2_candidate=allow_a4_2_prompt_candidate,
+                skill_hash=prompt.get("skill_hash"), skill_version=skill_version),
             "output_hash": prompt_hash,
             "validator_result": validation,
             "skill_invoked": skill_executed,
@@ -435,7 +439,8 @@ class PromptAPI:
             "input_hash": prompt_input_hash(
                 intent.get("natural_language", ""), workflow,
                 reference_hash, params, provider_name,
-                allow_a4_2_candidate=allow_a4_2_prompt_candidate),
+                allow_a4_2_candidate=allow_a4_2_prompt_candidate,
+                skill_hash=prompt.get("skill_hash"), skill_version=skill_version),
             "generated_at": created_at,
             "adapter_version": provenance.get("adapter_revision", ""),
             "bridge_version": provenance.get("bridge_revision", ""),

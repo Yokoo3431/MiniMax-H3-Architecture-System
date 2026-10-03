@@ -3,6 +3,7 @@
   "workflow": "03_Material_Detail",
   "video_task": "material_detail",
   "mode": "I2VA",
+  "expected_prompt_sha256": "2CB242CD2A2524DE1351C3D891AEA25DD35DD7381B72496F8E854894C3CCA993",
   "pinned_skill_revision": "2026-07-29-main-reviewed",
   "duration_seconds": 4.0,
   "architect_intent": {

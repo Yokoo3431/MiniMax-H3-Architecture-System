@@ -137,6 +137,26 @@ class Harness:
 
 
 class TestApiContract(unittest.TestCase):
+    def test_study_marks_prompt_stale_when_skill_bundle_identity_changes_or_is_missing(self):
+        h = Harness()
+        try:
+            pid = h.full_project()
+            h.prompt_api.generate_prompt(pid, prompt_engine="OFFLINE_COMPILER")
+            prompt = h.store.load_prompt(pid)
+            self.assertTrue(build_study_state(h.store, pid)["prompt_ready"])
+
+            prompt["provenance"]["skill_hash"] = "0" * 64
+            h.store.save_prompt(pid, prompt)
+            self.assertFalse(build_study_state(h.store, pid)["prompt_ready"])
+
+            prompt["provenance"].pop("skill_hash")
+            prompt["provenance"].pop("skill_version", None)
+            prompt.pop("skill_version", None)
+            h.store.save_prompt(pid, prompt)
+            self.assertFalse(build_study_state(h.store, pid)["prompt_ready"])
+        finally:
+            h.close()
+
     def test_offline_prompt_can_record_standard_candidate_but_job_stays_blocked(self):
         h = Harness()
         try:
@@ -172,7 +192,9 @@ class TestApiContract(unittest.TestCase):
                 prompt, intent=intent, workflow=prompt["workflow"],
                 reference_hash=reference_asset_hash(approved),
                 parameters=prompt["generation_parameters"],
-                provider="OFFLINE_COMPILER", allow_a4_2_candidate=True))
+                provider="OFFLINE_COMPILER", allow_a4_2_candidate=True,
+                skill_hash=prompt["provenance"]["skill_hash"],
+                skill_version=prompt["skill_version"]))
             study = build_study_state(h.store, pid)
             self.assertTrue(study["prompt_ready"], study.get("gate_reasons"))
             self.assertFalse(study["generate_allowed"])

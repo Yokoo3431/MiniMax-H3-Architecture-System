@@ -59,7 +59,9 @@ def a4_profile_identity(workflow: str,
 def prompt_input_hash(intent: str, workflow: str, reference_hash: str,
                       parameters: Mapping[str, Any] | None = None,
                       provider: str | None = None, *,
-                      allow_a4_2_candidate: bool = False) -> str:
+                      allow_a4_2_candidate: bool = False,
+                      skill_hash: str | None = None,
+                      skill_version: str | None = None) -> str:
     payload = {
         "original_intent": intent,
         "workflow_id": workflow,
@@ -71,6 +73,10 @@ def prompt_input_hash(intent: str, workflow: str, reference_hash: str,
     }
     if provider:
         payload["prompt_engine_provider"] = provider
+    if skill_hash is not None:
+        payload["prompt_skill_hash"] = skill_hash
+    if skill_version is not None:
+        payload["prompt_skill_version"] = skill_version
     return stable_hash(payload)
 
 
@@ -78,13 +84,27 @@ def is_current_prompt(prompt: Mapping[str, Any] | None, *, intent: str,
                       workflow: str, reference_hash: str,
                       parameters: Mapping[str, Any] | None = None,
                       provider: str | None = None,
-                      allow_a4_2_candidate: bool = False) -> bool:
+                      allow_a4_2_candidate: bool = False,
+                      skill_hash: str | None = None,
+                      skill_version: str | None = None) -> bool:
     if not prompt or not prompt.get("verified", {}).get("pass"):
         return False
+    provenance = prompt.get("provenance")
+    if not isinstance(provenance, Mapping):
+        provenance = {}
+    if skill_hash is not None:
+        recorded_skill_hash = prompt.get("skill_hash") or provenance.get("skill_hash")
+        if recorded_skill_hash != skill_hash:
+            return False
+    if skill_version is not None:
+        recorded_skill_version = prompt.get("skill_version") or provenance.get("skill_version")
+        if recorded_skill_version != skill_version:
+            return False
     effective_provider = provider or prompt.get("prompt_engine_provider")
     expected = prompt_input_hash(
         intent, workflow, reference_hash, parameters, effective_provider,
-        allow_a4_2_candidate=allow_a4_2_candidate)
+        allow_a4_2_candidate=allow_a4_2_candidate,
+        skill_hash=skill_hash, skill_version=skill_version)
     return (
         prompt.get("status", "CURRENT") == "CURRENT"
         and prompt.get("workflow") == workflow

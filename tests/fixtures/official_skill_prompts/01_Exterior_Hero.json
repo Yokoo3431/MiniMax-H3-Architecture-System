@@ -3,6 +3,7 @@
   "workflow": "01_Exterior_Hero",
   "video_task": "exterior_hero",
   "mode": "I2VA",
+  "expected_prompt_sha256": "0029F1F8249F5A7E0062286226D06177F95A7952A54DDF5F037F686BAB9955DF",
   "pinned_skill_revision": "2026-07-29-main-reviewed",
   "duration_seconds": 4.0,
   "architect_intent": {

@@ -3,6 +3,7 @@
   "workflow": "04_Drone_Aerial",
   "video_task": "drone_aerial",
   "mode": "I2VA",
+  "expected_prompt_sha256": "C2AE77BC817DFA93A4DB638B4CEB26E4B3962CEC91C07128FFB3AA48C5346013",
   "pinned_skill_revision": "2026-07-29-main-reviewed",
   "duration_seconds": 4.0,
   "architect_intent": {

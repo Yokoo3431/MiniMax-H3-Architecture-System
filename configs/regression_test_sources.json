@@ -33,7 +33,7 @@
     {
       "path": "tests/test_a6_ref2va_contract.py",
       "tracked_status": "tracked",
-      "sha256": "C37DA0458647E69A15014C2CE35991E2F6F01D4A00E01B0C1F11AD96A675F1B6",
+      "sha256": "23EC63871B57F4DFABFC96FEACFE79CB1CE9087CA8F758F157C039416D56DF7E",
       "discovered_test_count": 31,
       "classification": "CORE_REGRESSION"
     },
@@ -376,7 +376,7 @@
     {
       "path": "tests/test_official_skill_pipeline.py",
       "tracked_status": "tracked",
-      "sha256": "448C2DF4B6A3AD0B16BC68D24B68CE06FC8587350CB5413D990152D06709DC48",
+      "sha256": "31FD871D8786A3E7F566EBD780D9BB9D7B37F842C4C83D76809D8596F0F9239C",
       "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
@@ -404,7 +404,7 @@
     {
       "path": "tests/test_patch25a_hardening.py",
       "tracked_status": "tracked",
-      "sha256": "FE215E8D581CB0A533C8AE58D8930BD528A619684E681E5D073495F004D912E7",
+      "sha256": "F7E9C884AC4033F41FE2D7E620D780876A8473B3760A1E301F4111D483E2B676",
       "discovered_test_count": 28,
       "classification": "CORE_REGRESSION"
     },
@@ -453,8 +453,8 @@
     {
       "path": "tests/test_patch27d_ui_runtime_binding.py",
       "tracked_status": "tracked",
-      "sha256": "154EBEA37C4A1639FE4682917885C786D4B47D1147E8411DF80BDCBDDB9D5AB4",
-      "discovered_test_count": 15,
+      "sha256": "C8F5DC7A93B6B83768D0414C3392CF2CEB14E9FC58129FC9A8091B7F4E6CF82E",
+      "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -705,8 +705,8 @@
     {
       "path": "tests/test_prompt_engine_closure.py",
       "tracked_status": "tracked",
-      "sha256": "C985FB079DF21D6F23584F52DB8312A8454A568740812C4BC766F773E12BC4B1",
-      "discovered_test_count": 6,
+      "sha256": "6FC970CA4B9DB8470655799104BF8E4CDF76EE84263813B0F6CEE8680B1FE19C",
+      "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -775,7 +775,7 @@
     {
       "path": "tests/test_universal_h3_prompt_engine.py",
       "tracked_status": "tracked",
-      "sha256": "32A23313D31B20A4F6993A4F8188951A344BD5FDA52B1FFD7CD4042B23F4E331",
+      "sha256": "2ACA25AC3269E7C11E6A945B5CDC8D4AEB0EFABD26C71BE6815C611C03AD94FF",
       "discovered_test_count": 6,
       "classification": "CORE_REGRESSION"
     },

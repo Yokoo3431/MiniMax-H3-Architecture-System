@@ -15,6 +15,7 @@ Covers the pre-UI hardening gate:
 """
 
 import json
+import hashlib
 import sys
 import unittest
 import importlib.util
@@ -388,14 +389,12 @@ class TestFrozenFixtures(unittest.TestCase):
             self.assertTrue(first["verified"]["pass"])
             self.assertEqual(first["provenance"]["video_task"], fixture["video_task"])
             self.assertTrue(first["prompt"].startswith(fixture["expected_structure"]["alignment_prefix"]))
+            self.assertEqual(
+                hashlib.sha256(first["prompt"].encode("utf-8")).hexdigest().upper(),
+                fixture["expected_prompt_sha256"],
+                fixture_path.name,
+            )
 
-
-if not _HAS_CV2:
-    for _value in list(globals().values()):
-        if isinstance(_value, type) and issubclass(_value, unittest.TestCase):
-            _value.__unittest_skip__ = True
-            _value.__unittest_skip_why__ = "optional dependency cv2/numpy is not installed"
-    del _value
 
 if __name__ == "__main__":
     unittest.main()

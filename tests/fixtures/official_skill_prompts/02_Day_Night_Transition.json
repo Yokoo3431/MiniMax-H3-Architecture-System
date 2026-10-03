@@ -3,6 +3,7 @@
   "workflow": "02_Day_Night_Transition",
   "video_task": "day_night_transition",
   "mode": "FL2VA",
+  "expected_prompt_sha256": "DA1034C9E83FF2BFFABF3256ED2F35D77E462B2F08FCF7E37BF37BF1A1371DBB",
   "pinned_skill_revision": "2026-07-29-main-reviewed",
   "duration_seconds": 4.0,
   "frame_count": 107,

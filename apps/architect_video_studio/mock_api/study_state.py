@@ -175,6 +175,22 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         and QUALITY_PROFILE_SPECS["STANDARD"].get("availability")
         == "CANDIDATE_FOR_A4_2"
     )
+    current_skill_hash = ""
+    current_skill_version = ""
+    if prompt:
+        try:
+            # The pinned Skill bundle is an input to compilation. A prompt
+            # made with an older/missing bundle must be reviewed again.
+            from runtime.h3_prompt_engine import official_skill_bundle
+
+            current_skill = official_skill_bundle()
+            current_skill_hash = str(current_skill.get("skill_hash") or "")
+            current_skill_version = str(current_skill.get("version") or "")
+        except (OSError, UnicodeError, ValueError, RuntimeError):
+            # Fail closed: an unreadable current contract cannot validate an
+            # already-saved prompt as current.
+            current_skill_hash = ""
+            current_skill_version = ""
     prompt_ready = is_current_prompt(
         prompt,
         intent=str(intent.get("natural_language") or ""),
@@ -183,6 +199,8 @@ def build_study_state(store: StudioStore, project_id: str) -> Dict[str, Any]:
         parameters=prompt.get("generation_parameters") if prompt else None,
         provider=prompt.get("prompt_engine_provider") if prompt else None,
         allow_a4_2_candidate=allow_a4_2_prompt_candidate,
+        skill_hash=current_skill_hash,
+        skill_version=current_skill_version,
     ) and reference_approved
     prompt_confirmed = bool(
         prompt_ready and not candidate_prompt_only and project.get("state") in {

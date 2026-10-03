@@ -3,6 +3,7 @@
   "workflow": "05_Slow_Walkthrough",
   "video_task": "slow_walkthrough",
   "mode": "I2VA",
+  "expected_prompt_sha256": "6A06B50BD4CA86707D128F677AB1F25C29216254152A3652523809D2CCC62FD6",
   "pinned_skill_revision": "2026-07-29-main-reviewed",
   "duration_seconds": 4.0,
   "architect_intent": {

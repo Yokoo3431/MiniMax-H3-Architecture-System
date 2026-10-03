@@ -666,6 +666,9 @@ class PromptIntegrationTests(unittest.TestCase):
                 prompt_engine="OFFLINE_COMPILER")
             self.assertEqual(prompt["mode"], "Ref2VA")
             self.assertTrue(prompt["verified"]["pass"], prompt["verified"])
+            self.assertTrue(prompt["provenance"]["skill_hash"])
+            self.assertEqual(prompt["provenance"]["skill_version"],
+                             prompt["skill_version"])
             self.assertIn("<Picture 1>", prompt["prompt"])
             self.assertNotIn("<Picture 2>", prompt["prompt"])
             self.assertEqual([item["role"] for item in prompt["reference_bindings"]],

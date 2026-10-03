@@ -170,12 +170,5 @@ class TestOfficialSkillPipeline(unittest.TestCase):
         self.assertIn("SINGLE_FRAME_DEEP_WALKTHROUGH_LIMITATION", catalog05["known_limitations"])
 
 
-if not _HAS_CV2:
-    for _value in list(globals().values()):
-        if isinstance(_value, type) and issubclass(_value, unittest.TestCase):
-            _value.__unittest_skip__ = True
-            _value.__unittest_skip_why__ = "optional dependency cv2/numpy is not installed"
-    del _value
-
 if __name__ == "__main__":
     unittest.main()

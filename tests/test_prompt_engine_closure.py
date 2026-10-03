@@ -12,6 +12,7 @@ from runtime.h3_prompt_engine import (
     PromptReasoningRequest,
     UniversalPromptEngine,
 )
+from runtime.prompt_provenance import is_current_prompt, prompt_input_hash
 
 
 class PromptEngineClosureTests(unittest.TestCase):
@@ -82,6 +83,54 @@ class PromptEngineClosureTests(unittest.TestCase):
         payload = provider._request_text(self.request(), {"source": "public"})
         self.assertNotIn(r"C:\private", payload)
         self.assertIn('"reference_image_path": null', payload)
+
+    def test_skill_bundle_identity_is_part_of_prompt_freshness(self):
+        identity = {
+            "intent": "fixture intent",
+            "workflow": "fixture",
+            "reference_hash": "ref-hash",
+            "parameters": {"duration": 5},
+            "provider": "OFFLINE_COMPILER",
+            "skill_hash": "a" * 64,
+            "skill_version": "fixture-skill-v1",
+        }
+        record = {
+            "verified": {"pass": True},
+            "status": "CURRENT",
+            "workflow": identity["workflow"],
+            "input_hash": prompt_input_hash(
+                identity["intent"], identity["workflow"],
+                identity["reference_hash"], identity["parameters"],
+                identity["provider"], skill_hash=identity["skill_hash"],
+                skill_version=identity["skill_version"],
+            ),
+            "provenance": {"skill_hash": identity["skill_hash"]},
+            "skill_version": identity["skill_version"],
+        }
+        self.assertTrue(is_current_prompt(
+            record, intent=identity["intent"], workflow=identity["workflow"],
+            reference_hash=identity["reference_hash"],
+            parameters=identity["parameters"], provider=identity["provider"],
+            skill_hash=identity["skill_hash"],
+            skill_version=identity["skill_version"],
+        ))
+        self.assertFalse(is_current_prompt(
+            record, intent=identity["intent"], workflow=identity["workflow"],
+            reference_hash=identity["reference_hash"],
+            parameters=identity["parameters"], provider=identity["provider"],
+            skill_hash="b" * 64, skill_version=identity["skill_version"],
+        ))
+        legacy = {**record, "provenance": {}, "input_hash": prompt_input_hash(
+            identity["intent"], identity["workflow"], identity["reference_hash"],
+            identity["parameters"], identity["provider"],
+        )}
+        self.assertFalse(is_current_prompt(
+            legacy, intent=identity["intent"], workflow=identity["workflow"],
+            reference_hash=identity["reference_hash"],
+            parameters=identity["parameters"], provider=identity["provider"],
+            skill_hash=identity["skill_hash"],
+            skill_version=identity["skill_version"],
+        ))
 
 
 if __name__ == "__main__":

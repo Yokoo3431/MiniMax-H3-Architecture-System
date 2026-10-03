@@ -67,6 +67,9 @@ class UniversalH3PromptEngineTests(unittest.TestCase):
         self.assertTrue(result["fallback"])
         self.assertEqual(result["engine_mode"], "OFFLINE_COMPILER")
         self.assertTrue(result["validator_result"]["pass"])
+        self.assertTrue(result["skill_hash"])
+        self.assertTrue(result["skill_version"])
+        self.assertTrue(result["bundle_manifest_sha256"])
         self.assertIn("TimeoutError", result["fallback_reason"])
 
     def test_openai_compatible_fixture_and_remote_image_consent(self):

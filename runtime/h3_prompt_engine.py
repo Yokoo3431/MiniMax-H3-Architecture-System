@@ -868,6 +868,9 @@ class UniversalPromptEngine:
         except Exception as exc:  # optional providers must never block generation
             offline = self.providers["OFFLINE_COMPILER"].generate(request, self.bundle)
             offline.update({"fallback": True, "fallback_reason": f"{type(exc).__name__}: {exc}",
+                            "skill_hash": self.bundle["skill_hash"],
+                            "skill_version": self.bundle["version"],
+                            "skill_source": self.bundle["source"],
                             "bundle_manifest_sha256": self.bundle["bundle_manifest_sha256"],
                             "payload_manifest_sha256": self.bundle["payload_manifest_sha256"],
                             "skill_execution": False,
