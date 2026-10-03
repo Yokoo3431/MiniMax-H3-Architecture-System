@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from apps.architect_video_studio.mock_api.job_api import JobAPI
 from apps.architect_video_studio.mock_api.output_api import OutputAPI
@@ -15,7 +16,7 @@ from apps.architect_video_studio.mock_api.project_api import ProjectAPI
 from apps.architect_video_studio.mock_api.server import StudioServer
 from apps.architect_video_studio.mock_api.store import StudioStore
 from runtime.a8_delivery import DeliveryError, DeliveryPipeline, sha256_file
-from runtime.media_probe import _from_ffmpeg_text
+from runtime.media_probe import _from_ffmpeg_text, _from_ffprobe, probe_media_file
 
 
 class A8DeliveryFixture(unittest.TestCase):
@@ -315,6 +316,58 @@ class A8ProbeTests(unittest.TestCase):
             "Video: h264, yuv420p, 1344x768, 48 fps\n"
             "Audio: aac\nframe=  214 fps=0.0 q=-0.0 Lsize=N/A time=00:00:04.46\n")
         self.assertEqual(value["frame_count"], 214)
+        self.assertEqual(value["probe_tool"], "managed_ffmpeg_decode_count_fallback")
+
+    def test_ffprobe_prefers_decoded_frame_count_not_container_estimate(self):
+        value = _from_ffprobe({
+            "streams": [{"codec_type": "video", "codec_name": "h264",
+                         "width": 1344, "height": 768,
+                         "avg_frame_rate": "24/1", "duration": "4.46",
+                         "nb_frames": "999", "nb_read_frames": "107"}],
+            "format": {"duration": "4.46"},
+        })
+        self.assertEqual(value["frame_count"], 107)
+        self.assertEqual(value["probe_tool"], "managed_ffprobe")
+
+    def test_ffmpeg_probe_requests_progress_and_returns_exact_frame_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "synthetic.mp4"
+            media.write_bytes(b"fixture")
+            completed = SimpleNamespace(
+                returncode=0,
+                stderr=("Duration: 00:00:04.46, start: 0.0, bitrate: 1 kb/s\n"
+                        "Video: h264, yuv420p, 1344x768, 24 fps\nAudio: aac\n"),
+                stdout="frame=107\nprogress=end\n",
+            )
+            with patch("runtime.media_probe._managed_executable",
+                       return_value=("ffmpeg", Path(tmp) / "ffmpeg.exe")), \
+                    patch("runtime.media_probe.subprocess.run",
+                          return_value=completed) as run:
+                value = probe_media_file(media)
+        self.assertEqual(value["frame_count"], 107)
+        self.assertEqual(value["probe_tool"], "managed_ffmpeg_decode_count_fallback")
+        args = run.call_args.args[0]
+        self.assertIn("-progress", args)
+        self.assertIn("pipe:1", args)
+        self.assertIn("-map", args)
+        self.assertIn("0:v:0", args)
+
+    def test_ffmpeg_probe_does_not_promote_incomplete_progress_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "synthetic.mp4"
+            media.write_bytes(b"fixture")
+            completed = SimpleNamespace(
+                returncode=0,
+                stderr=("Duration: 00:00:04.46, start: 0.0, bitrate: 1 kb/s\n"
+                        "Video: h264, yuv420p, 1344x768, 24 fps\n"),
+                stdout="frame=54\nprogress=continue\n",
+            )
+            with patch("runtime.media_probe._managed_executable",
+                       return_value=("ffmpeg", Path(tmp) / "ffmpeg.exe")), \
+                    patch("runtime.media_probe.subprocess.run",
+                          return_value=completed):
+                value = probe_media_file(media)
+        self.assertIsNone(value["frame_count"])
         self.assertEqual(value["probe_tool"], "managed_ffmpeg_compatibility")
 
 

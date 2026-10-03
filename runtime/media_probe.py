@@ -125,6 +125,10 @@ def _from_ffprobe(payload: dict[str, Any]) -> dict[str, Any]:
         "video_codec": video.get("codec_name"),
         "audio_stream": any(isinstance(stream, dict) and stream.get("codec_type") == "audio"
                              for stream in streams),
+        # probe_media_file requests -count_frames, so nb_read_frames is the
+        # decoded stream count, unlike container-level nb_frames metadata.
+        "frame_count": int(video["nb_read_frames"])
+        if str(video.get("nb_read_frames") or "").isdigit() else None,
         "probe_tool": "managed_ffprobe",
     }
 
@@ -148,7 +152,8 @@ def _from_ffmpeg_text(text: str) -> dict[str, Any]:
         "video_codec": video_match.group(1),
         "audio_stream": "Audio:" in text,
         "frame_count": int(frame_matches[-1]) if frame_matches else None,
-        "probe_tool": "managed_ffmpeg_compatibility",
+        "probe_tool": "managed_ffmpeg_decode_count_fallback"
+        if frame_matches else "managed_ffmpeg_compatibility",
     }
 
 
@@ -218,7 +223,7 @@ def probe_media_file(path: Path, *, runtime_paths: Optional[RuntimePathContract]
         name, executable = tool
         if name == "ffprobe":
             completed = subprocess.run(
-                [str(executable), "-v", "error", "-print_format", "json",
+                [str(executable), "-v", "error", "-count_frames", "-print_format", "json",
                  "-show_streams", "-show_format", str(media)],
                 capture_output=True, text=True, timeout=timeout_seconds, check=False,
             )
@@ -228,13 +233,29 @@ def probe_media_file(path: Path, *, runtime_paths: Optional[RuntimePathContract]
                 return _from_ffprobe(json.loads(completed.stdout))
         else:
             completed = subprocess.run(
-                [str(executable), "-hide_banner", "-i", str(media), "-f", "null", "-"],
+                [str(executable), "-hide_banner", "-progress", "pipe:1", "-nostats",
+                 "-i", str(media), "-map", "0:v:0", "-fps_mode", "passthrough",
+                 "-f", "null", "-"],
                 capture_output=True, text=True, timeout=timeout_seconds, check=False,
             )
             if completed.returncode != 0:
                 result["error_code"] = "MEDIA_PROBE_FAILED"
             else:
-                return _from_ffmpeg_text(completed.stderr)
+                # FFmpeg's progress channel reports decoded/output frame
+                # counts; stderr continues to provide stream metadata. Only
+                # promote a count after FFmpeg's explicit terminal marker.
+                value = _from_ffmpeg_text(completed.stderr)
+                progress_lines = (completed.stdout or "").splitlines()
+                frame_matches = _FRAME_COUNT_RE.findall(completed.stdout or "")
+                completed_progress = any(
+                    line.strip() == "progress=end" for line in progress_lines)
+                if completed_progress and frame_matches:
+                    value["frame_count"] = int(frame_matches[-1])
+                    value["probe_tool"] = "managed_ffmpeg_decode_count_fallback"
+                else:
+                    value["frame_count"] = None
+                    value["probe_tool"] = "managed_ffmpeg_compatibility"
+                return value
     except subprocess.TimeoutExpired:
         result["error_code"] = "MEDIA_PROBE_TIMEOUT"
     except (OSError, ValueError, TypeError, json.JSONDecodeError):

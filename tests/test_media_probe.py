@@ -52,6 +52,7 @@ class TestMediaProbe(unittest.TestCase):
                 "fps": 24.0,
                 "video_codec": "h264",
                 "audio_stream": True,
+                "frame_count": None,
                 "probe_tool": "managed_ffprobe",
             })
             self.assertNotIn("private-video.mp4", json.dumps(result))

@@ -47,8 +47,8 @@
     {
       "path": "tests/test_a8_delivery_pipeline.py",
       "tracked_status": "tracked",
-      "sha256": "659FB81C347E22D0FCF2F12BE8A0CBCFBD01E5EB9723130B4AD42205B0088BCB",
-      "discovered_test_count": 9,
+      "sha256": "D7AB78BE379CFD8B86344D33DF005460564F27E87CA8A0BF1DA30821D9E89B54",
+      "discovered_test_count": 12,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -320,7 +320,7 @@
     {
       "path": "tests/test_media_probe.py",
       "tracked_status": "tracked",
-      "sha256": "372D340236CC647CF68B41943D81321AB9297F1CD85DDEEE97D8E5298F12BFC5",
+      "sha256": "D75BCB663E32FFD9AF7E48D83F34E7910F6B3103AA0F636119752D9D482D8E9A",
       "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
