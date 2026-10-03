@@ -39,6 +39,18 @@ class PromptEngineClosureTests(unittest.TestCase):
         self.assertTrue(result["optimized_prompt"])
         self.assertEqual(result["engine_mode"], "OFFLINE_COMPILER")
         self.assertTrue(result["validator_result"]["pass"])
+        provider = mock.Mock()
+        provider.provider = "ANTIGRAVITY"
+        provider.describe.return_value = {
+            "provider": "ANTIGRAVITY", "configured": True, "available": True,
+            "multimodal_capable": False,
+        }
+        provider.generate.side_effect = AssertionError("AUTO must stay offline")
+        engine = UniversalPromptEngine({"ANTIGRAVITY": provider})
+        configured_result = engine.generate(self.request(), provider="AUTO")
+        self.assertEqual(configured_result["engine_mode"], "OFFLINE_COMPILER")
+        self.assertEqual(configured_result["provider"], "OFFLINE_COMPILER")
+        provider.generate.assert_not_called()
 
     def test_observed_agy_json_envelope_is_unwrapped(self):
         inner = json.dumps({"optimized_prompt": "For the target video, at 0.00 seconds into the target video, <Picture 1> is fully referenced.\n\nintegrated_multimodal_description: interior to exterior\n\noverall_soundscape: quiet\n\nnon_diegetic_music: N/A"})

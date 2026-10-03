@@ -115,6 +115,16 @@ class TestProductionJobUiContract(unittest.TestCase):
         self.assertIn("schedulePromptRefresh", script)
         self.assertIn("prompt_current", script)
         self.assertIn("OfficialSkillAdapter", script)
+        prompt_refresh = script.split("async function refreshPrompt()", 1)[1].split(
+            "function schedulePromptRefresh", 1)[0]
+        self.assertIn("const imageConsent = !!consentControl?.checked;", prompt_refresh)
+        self.assertIn("if (consentControl) consentControl.checked = false;", prompt_refresh)
+        self.assertLess(
+            prompt_refresh.index("if (consentControl) consentControl.checked = false;"),
+            prompt_refresh.index("if (!text || !study?.reference_approved)"))
+        self.assertIn("image_consent: imageConsent", prompt_refresh)
+        self.assertIn("自动（仅离线）", studio)
+        self.assertIn("本次允许将参考图发送", studio)
 
 
 if __name__ == "__main__":

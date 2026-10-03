@@ -188,7 +188,7 @@
           <details class="prompt-assistance mt"><summary>AI Prompt（可选）</summary>
             <label for="prompt-engine">Prompt Engine</label>
                       <select class="avs-select" id="prompt-engine">
-                        <option value="AUTO" selected>自动（离线优先）</option>
+                        <option value="AUTO" selected>自动（仅离线）</option>
                         <option value="OFFLINE_COMPILER">H3 官方格式编译（离线）</option>
                         <option value="CODEX">Codex（本地 CLI）</option>
                         <option value="ANTIGRAVITY">Antigravity（本地 CLI）</option>
@@ -198,7 +198,7 @@
                         <option value="LOCAL_OPENAI_COMPATIBLE">本地 OpenAI 兼容 Provider</option>
                         <option value="OPENAI_COMPATIBLE_HTTP">外部 OpenAI 兼容 Provider（需同意）</option>
                       </select>
-                      <div class="muted small">离线模式不需要 LLM，也不会进行 AI 图像理解。</div>
+                      <div class="muted small">自动 / 离线模式不会外发意图、提示词或参考图。选择非离线 Provider 时，意图与提示词可能发送给该服务；参考图仅在单独勾选同意且 Provider 支持时发送。</div>
                       <details class="prompt-provider-settings mt"><summary>配置可选 Prompt Provider</summary>
                         <div class="param-grid mt">
                           <div class="wide"><label for="provider-executable">CLI 可执行文件</label><input id="provider-executable" type="text" placeholder="例如 codex 或自定义路径"><button class="spectrum-Button btn small mt" id="detect-provider-btn" type="button">自动检测</button></div>
@@ -209,7 +209,7 @@
                         </div>
                         <div class="row mt"><button class="spectrum-Button btn small" id="save-provider-btn" type="button">保存 Provider</button><button class="spectrum-Button btn small" id="test-provider-btn" type="button">测试连接</button><span id="provider-status" class="muted small"></span></div>
                       </details>
-                      <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 允许将参考图发送给选定 AI 服务</label>
+                      <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 本次允许将参考图发送给选定 AI 服务</label>
                       <button class="spectrum-Button btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
                       <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
                       <details id="prompt-details" class="prompt-details" style="display:none"><summary>查看优化提示词</summary>

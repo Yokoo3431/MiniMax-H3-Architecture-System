@@ -6,14 +6,15 @@ separate from execution providers:
 
 * :class:`OfflineH3Compiler` always works without an LLM or network.
 * :class:`CLIReasoningProvider` and :class:`OpenAICompatibleProvider` are
-  optional adapters with explicit configuration and image-consent gates.
+  optional adapters selected explicitly for a prompt request.
 * :class:`H3PromptValidator` is shared by every provider and only checks the
   contract; it never pretends to understand an image.
 
-Discovery never invokes a provider.  AUTO may use an explicitly configured
-local provider when one is available; otherwise it deterministically falls
-back to the offline compiler.  Cloud providers remain explicit and consent
-gated.
+Discovery never invokes a provider.  AUTO always selects the offline
+compiler; configured providers are never invoked implicitly.  A non-offline
+provider must be explicitly selected for the current request.  Reference
+images additionally require explicit per-request consent when a provider can
+consume them.
 """
 
 from __future__ import annotations
@@ -806,21 +807,10 @@ class UniversalPromptEngine:
     def generate(self, request: PromptReasoningRequest, provider: str = "AUTO") -> dict[str, Any]:
         selected = str(provider or "AUTO").upper()
         if selected == "AUTO":
-            # Auto may use explicitly configured local providers, but never
-            # silently selects a cloud endpoint or invokes an unconfigured
-            # executable. Offline compilation remains the deterministic
-            # fallback when no local provider is configured.
-            local_candidates = (
-                "LOCAL_OPENAI_COMPATIBLE", "CODEX", "ANTIGRAVITY",
-                "DEEPSEEK_HARNESS", "CUSTOM_CLI", "CLI_BRIDGE",
-            )
-            selected = next(
-                (name for name in local_candidates
-                 if name in self.providers
-                 and bool(self.providers[name].describe().get("configured"))
-                 and bool(self.providers[name].describe().get("available"))),
-                "OFFLINE_COMPILER",
-            )
+            # AUTO is a privacy boundary, not provider discovery: it must
+            # never transmit user intent or prompt data to a configured
+            # network-capable CLI/HTTP adapter.
+            selected = "OFFLINE_COMPILER"
         selected_provider = self.providers.get(selected)
         fallback_reason = None
         if selected_provider is None:

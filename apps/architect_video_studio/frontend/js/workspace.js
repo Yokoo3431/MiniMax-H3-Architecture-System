@@ -1341,6 +1341,9 @@ function renderPrompt() {
 
 async function refreshPrompt() {
   const requestSerial = ++promptRequestSerial;
+  const consentControl = document.getElementById('prompt-image-consent');
+  const imageConsent = !!consentControl?.checked;
+  if (consentControl) consentControl.checked = false;
   const text = value('intent-text').trim();
   if (!text || !study?.reference_approved) {
     prompt = null; renderPrompt(); updateGate(); return;
@@ -1353,13 +1356,13 @@ async function refreshPrompt() {
   }
   try {
     document.getElementById('prompt-skill-card').style.display = 'block';
-    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在编译 H3 Prompt…</strong><span class="muted small">离线始终可用；已配置的本地 Provider 可在“自动”模式下使用，云端仅在明确选择并同意后执行</span>';
+    document.getElementById('prompt-skill-card').innerHTML = '<strong>正在编译 H3 Prompt…</strong><span class="muted small">自动模式仅离线编译；非离线 Provider 只会在本次明确选择后调用。参考图还需单独勾选同意</span>';
     intent = await post(`/api/projects/${projectId}/intent`, {natural_language: text});
     intent = await post(`/api/projects/${projectId}/workflow/select`, {workflow: currentWorkflow()});
     prompt = await post(`/api/projects/${projectId}/prompt`, {
       workflow: currentWorkflow(), generation_parameters: currentParams(),
       prompt_engine: value('prompt-engine') || 'AUTO',
-      image_consent: !!document.getElementById('prompt-image-consent')?.checked,
+      image_consent: imageConsent,
     });
     if (requestSerial !== promptRequestSerial) return;
     [project, study] = await Promise.all([get(`/api/projects/${projectId}`), refreshStudy()]);
