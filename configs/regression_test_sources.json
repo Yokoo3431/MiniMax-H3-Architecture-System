@@ -54,8 +54,8 @@
     {
       "path": "tests/test_a9_long_form.py",
       "tracked_status": "tracked",
-      "sha256": "0BAC64E6B3719E35E5274990DB2D5F6DD0C69A1E33D4A267C2798229AF1CF766",
-      "discovered_test_count": 20,
+      "sha256": "29E2CC2231C6DC1B5F2EEB5C66F4273D9CE8BB644D00D88BAF3EB5BF8BF51138",
+      "discovered_test_count": 21,
       "classification": "CORE_REGRESSION"
     },
     {

@@ -200,9 +200,13 @@ def reconcile_shot_queue(queue: Mapping[str, Any],
             shot.update(state="FAILED", error_code="LONG_FORM_JOB_CROSS_PROJECT")
             continue
         state = str(job.get("state") or "").upper()
-        if state in {"PREPARING", "PREFLIGHT", "QUEUED"}:
+        if state in {"PREPARING", "PREFLIGHT", "SUBMITTING",
+                     "SUBMISSION_UNKNOWN", "QUEUED"}:
             shot["state"] = "PREFLIGHT"
-        elif state in {"RUNNING", "GPU_RUNNING", "OBSERVING"}:
+        elif state in {
+                "RUNNING", "GPU_RUNNING", "OBSERVING", "LOADING_MODEL",
+                "LOADING_MODELS", "SAMPLING", "DECODING", "ENCODING",
+                "FINALIZING", "EXPORTING", "RECONCILING"}:
             shot["state"] = "RUNNING"
         elif state == "COMPLETED":
             identity = result_identities.get(job_id)
@@ -253,7 +257,7 @@ def reconcile_shot_queue(queue: Mapping[str, Any],
         status = "ASSEMBLY_FAILED"
     elif all(state in {"RESULT_READY", "POSTPROCESSING", "READY"} for state in states):
         status = "ASSEMBLY_PENDING"
-    elif any(state == "RUNNING" for state in states):
+    elif any(state in {"PREFLIGHT", "RUNNING"} for state in states):
         status = "RUNNING"
     elif any(state == "FAILED" for state in states):
         status = "PARTIAL_FAILED"

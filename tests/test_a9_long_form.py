@@ -141,6 +141,29 @@ class LongFormQueueContractTests(unittest.TestCase):
             "action": "WAIT_EXISTING_JOB", "shot_id": "shot-1",
             "job_id": "job-running", "submission_performed": False})
 
+    def test_every_active_job_state_reconciles_as_waitable_not_failed(self):
+        active_states = (
+            "SUBMITTING", "SUBMISSION_UNKNOWN", "QUEUED", "RUNNING",
+            "PREPARING", "PREFLIGHT", "LOADING_MODEL", "LOADING_MODELS",
+            "ENCODING", "SAMPLING", "DECODING", "FINALIZING", "EXPORTING",
+            "RECONCILING", "GPU_RUNNING", "OBSERVING",
+        )
+        for state in active_states:
+            with self.subTest(state=state):
+                queue = create_shot_queue(
+                    project_id=PROJECT_ID,
+                    director_sequence=director_sequence())
+                queue["shots"][0]["job_id"] = "job-active"
+                result = reconcile_shot_queue(
+                    queue, {"job-active": {"id": "job-active",
+                                           "project_id": PROJECT_ID,
+                                           "state": state}}, {})
+                self.assertIn(result["shots"][0]["state"], {"PREFLIGHT", "RUNNING"})
+                self.assertEqual(result["status"], "RUNNING")
+                self.assertEqual(resume_plan(result), {
+                    "action": "WAIT_EXISTING_JOB", "shot_id": "shot-1",
+                    "job_id": "job-active", "submission_performed": False})
+
     def test_continuity_binding_requires_ready_predecessor_and_strong_frame_identity(self):
         queue = create_shot_queue(
             project_id=PROJECT_ID, director_sequence=director_sequence(),
