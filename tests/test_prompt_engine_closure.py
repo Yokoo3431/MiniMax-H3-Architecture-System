@@ -69,7 +69,7 @@ class PromptEngineClosureTests(unittest.TestCase):
         self.assertEqual(result["non_diegetic_music"], "N/A")
 
     def test_agy_command_attaches_print_prompt_and_safe_defaults(self):
-        provider = CLIReasoningProvider(r"C:\Users\Pondsi\AppData\Local\agy\bin\agy.exe", provider_name="ANTIGRAVITY")
+        provider = CLIReasoningProvider("agy.exe", provider_name="ANTIGRAVITY")
         command = provider._build_command("probe")
         self.assertIn("--print=probe", command)
         self.assertIn("--output-format", command)
