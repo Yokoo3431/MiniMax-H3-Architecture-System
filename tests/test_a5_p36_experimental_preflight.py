@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from apps.architect_video_studio.mock_api.intent_api import IntentAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.director_api import DirectorAPI  # noqa: E402
+from apps.architect_video_studio.mock_api.guide_frame_api import GuideFrameAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.job_api import JobAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.output_api import OutputAPI  # noqa: E402
 from apps.architect_video_studio.mock_api.project_api import ProjectAPI  # noqa: E402
@@ -38,6 +39,7 @@ from runtime.adapters.production_workflow_binding import (  # noqa: E402
 )
 from runtime.a4_profiles import resolve_product_parameters  # noqa: E402
 from runtime.multiframe_guides import guide_comfy_filename  # noqa: E402
+from runtime.adapters.ref2va_workflow_binding import REF2VA_MODEL  # noqa: E402
 from runtime.adapters.production_workflow_binding import (  # noqa: E402
     canonical_workflow_sha256,
 )
@@ -104,16 +106,19 @@ class FakeExperimentalAdapter:
         self.fail_preflight = fail_preflight
         self.prepare_calls = 0
         self.generate_calls = 0
+        self.prepare_modes = []
 
     def preflight(self):
         if self.fail_preflight:
             raise RuntimeError("offline")
         return {"ready": True, "health": {"comfyui_version": self.runtime_identity_spec[
-            "comfyui_version"]}}
+            "comfyui_version"]}, "object_info": self.client.object_info()}
 
     def prepare(self, request):
         self.prepare_calls += 1
         params = request.generation_parameters
+        mode = str((request.prompt_payload or {}).get("mode") or "")
+        self.prepare_modes.append(mode)
         payload = {
             "1": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {
                 "width": int(params["width"]),
@@ -143,6 +148,33 @@ class FakeExperimentalAdapter:
         for offset, reference in enumerate(request.reference_assets, start=20):
             payload[str(offset)] = {"class_type": "LoadImage", "inputs": {
                 "image": reference["filename"]}}
+        if mode == "Ref2VA":
+            inputs = payload["1"]["inputs"]
+            payload["1"]["class_type"] = "MiniMaxH3ReferenceToVideo"
+            inputs["ref_image_size"] = str(params["ref2va_image_size"])
+            bindings = []
+            for ordinal, reference in enumerate(request.reference_assets):
+                input_name = f"ref_images.ref_image_{ordinal}"
+                inputs[input_name] = [str(20 + ordinal), 0]
+                bindings.append({
+                    "asset_id": reference["asset_id"], "role": reference["role"],
+                    "native_input": input_name,
+                    "prompt_tag": f"<Picture {ordinal + 1}>",
+                    "ordinal": ordinal + 1,
+                    "requested_fidelity": params["ref2va_image_size"],
+                })
+            return {
+                "translated_payload": payload,
+                "ref2va_plan": {
+                    "schema_version": 1, "runtime_id": EXPECTED_RUNTIME_ID,
+                    "backend": "comfyui", "node": "MiniMaxH3ReferenceToVideo",
+                    "limits": {"image": 9, "video": 3, "audio": 3},
+                    "counts": {"image": len(bindings), "video": 0, "audio": 0},
+                    "reference_image_size": params["ref2va_image_size"],
+                    "required_vaes": {"video": True, "audio": False},
+                    "bindings": bindings,
+                },
+            }
         return {"translated_payload": payload, "guide_capability": {
             "node": "MiniMaxH3AddGuide", "available": True,
             "status": "AVAILABLE", "port": 8190,
@@ -734,6 +766,101 @@ class TestExperimentalMediaToolIsolation(unittest.TestCase):
                     self.assertTrue(server.apis["job"].experimental_route_enabled)
                 finally:
                     server.server_close()
+
+
+class A10CrossStageStudyIntegrationTests(unittest.TestCase):
+    def test_a5_guides_and_a6_roles_coexist_as_separate_study_preflights(self):
+        harness = PreflightHarness()
+        try:
+            guide_api = GuideFrameAPI(harness.store)
+            guide_rows = list(harness.store.load_project(
+                harness.project_id).get("guide_frames") or [])
+            guide_assets = [row["asset_id"] for row in guide_rows]
+            for row in reversed(guide_rows):
+                guide_api.remove(harness.project_id, row["guide_id"])
+
+            harness.references.upload_and_approve(
+                harness.project_id, "identity.png", "identity_reference",
+                tiny_png((0, 255, 0)))
+            harness.references.upload_and_approve(
+                harness.project_id, "site.png", "site_reference",
+                tiny_png((0, 0, 255)))
+            ref2va_info = {
+                **GUIDE_INFO,
+                "MiniMaxH3ReferenceToVideo": {
+                    "input": {
+                        "required": {
+                            **{name: [] for name in (
+                                "clip", "prompt", "width", "height", "length")},
+                            "ref_image_size": [
+                                "COMBO", {"options": ["match", "max"]}],
+                        },
+                        "optional": {
+                            "vae": [], "audio_vae": [],
+                            "ref_images": ["IMAGE", {"template": {"max": 9}}],
+                            "ref_videos": ["IMAGE", {"template": {"max": 3}}],
+                            "ref_video_audios": ["AUDIO", {"template": {"max": 3}}],
+                            "ref_audios": ["AUDIO", {"template": {"max": 3}}],
+                        },
+                    },
+                    "output": ["CONDITIONING", "LATENT"],
+                },
+                "UNETLoader": {"input": {"required": {
+                    "unet_name": [[REF2VA_MODEL]],
+                }}},
+                "VAELoader": {"input": {"required": {
+                    "vae_name": [["minimax_h3_video_vae_fp16.safetensors"]],
+                }}},
+            }
+            harness.adapter.client.object_info_value = ref2va_info
+            harness.adapter.runtime_identity_spec["capabilities"].append(
+                "MiniMaxH3ReferenceToVideo")
+            prompt_args = {
+                "workflow": "01_Exterior_Hero",
+                "generation_parameters": {
+                    "quality": "NATIVE_HIGH", "duration": 4.0,
+                    "fps": 24, "seed": 42,
+                },
+                "prompt_engine": "OFFLINE_COMPILER",
+            }
+            self.assertEqual(harness.prompts.generate_prompt(
+                harness.project_id, **prompt_args)["mode"], "Ref2VA")
+            a6_parameters = {
+                **prompt_args["generation_parameters"],
+                "ref2va_image_size": "match",
+            }
+            a6 = harness.dry_run(
+                execution_purpose="A6_REF2VA_VALIDATION",
+                generation_parameters=a6_parameters)
+            self.assertEqual(a6["snapshot_type"], "A6_REF2VA_EXPERIMENTAL_PREFLIGHT")
+            self.assertEqual((a6["ref2va_count"], a6["guide_count"]), (2, 0))
+
+            guide_api.add(harness.project_id, guide_assets[0], 1.5)
+            guide_api.add(harness.project_id, guide_assets[1], 3.0)
+            with self.assertRaisesRegex(
+                    ValueError, "REF2VA_WITH_ADDGUIDE_UNVALIDATED"):
+                harness.dry_run(
+                    execution_purpose="A6_REF2VA_VALIDATION",
+                    generation_parameters=a6_parameters)
+
+            harness.references.clear_role_binding(
+                harness.project_id, "identity_reference")
+            harness.references.clear_role_binding(
+                harness.project_id, "site_reference")
+            self.assertEqual(harness.prompts.generate_prompt(
+                harness.project_id, **prompt_args)["mode"], "I2VA")
+            a5 = harness.dry_run()
+            self.assertEqual(a5["snapshot_type"], "A5_EXPERIMENTAL_PREFLIGHT")
+            self.assertEqual((a5["guide_count"], a5["guide_frame_indexes"]),
+                             (2, [36, 72]))
+            self.assertEqual(a5["ref2va_count"], 0)
+            self.assertEqual(harness.adapter.prepare_modes, ["Ref2VA", "I2VA"])
+            self.assertEqual(harness.adapter.client.prompt_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+            self.assertEqual(harness.store.load_jobs(harness.project_id), {})
+            self.assertEqual(len(harness.store.load_references(harness.project_id)), 5)
+        finally:
+            harness.close()
 
 
 if __name__ == "__main__":

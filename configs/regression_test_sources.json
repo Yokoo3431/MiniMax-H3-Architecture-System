@@ -19,8 +19,8 @@
     {
       "path": "tests/test_a5_p36_experimental_preflight.py",
       "tracked_status": "tracked",
-      "sha256": "2ABD057B03802FC2AB7BE16BFB3A04045905D4261862F7BF6A293A2C1A823AE3",
-      "discovered_test_count": 18,
+      "sha256": "52F59DBE42FB9A342D232CBFD3DD92B12487CC11202E608E671A86BB37C6637D",
+      "discovered_test_count": 19,
       "classification": "CORE_REGRESSION"
     },
     {
