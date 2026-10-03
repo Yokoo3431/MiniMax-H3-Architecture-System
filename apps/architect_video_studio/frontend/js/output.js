@@ -83,8 +83,9 @@ async function loadDeliveries(currentJobId) {
     }
     list.innerHTML = items.slice().reverse().map((item) => {
       const status = item.status === 'READY' ? '已验证' : item.status === 'FAILED' ? '失败，可重试' : '处理中';
-      const action = item.status === 'READY' && item.media_url
-        ? `<button class="btn small ghost" type="button" data-delivery-id="${esc(item.delivery_id)}" data-delivery-url="${esc(item.media_url)}">预览</button>` : '';
+      const mediaUrl = item.status === 'READY' ? sameOriginMediaUrl(item.media_url) : '';
+      const action = mediaUrl
+        ? `<div class="row" style="gap:8px;"><button class="btn small ghost" type="button" data-delivery-id="${esc(item.delivery_id)}" data-delivery-url="${esc(mediaUrl)}">预览</button><a class="btn small primary" href="${esc(mediaUrl)}" download="${esc(mediaDownloadName('avs', currentJobId, item.delivery_id))}">下载交付视频</a></div>` : '';
       const error = item.error_code ? `<span class="small muted">${esc(item.error_code)}</span>` : '';
       return `<div class="intent-card delivery-record">
         <div class="kv"><span class="k">${esc(item.target_resolution || 'NATIVE')} · ${esc(item.delivery_fps)} fps</span><span>${esc(status)}</span></div>
@@ -172,12 +173,23 @@ async function load() {
     const resolution = width && height ? `${width}×${height}` : '—';
     const video = document.getElementById('output-video');
     const empty = document.getElementById('output-video-empty');
-    if (video && empty && media.available && media.media_url) {
-      video.src = media.media_url;
+    const mediaUrl = media.available ? sameOriginMediaUrl(media.media_url) : '';
+    const download = document.getElementById('output-download');
+    if (video && empty && mediaUrl) {
+      video.src = mediaUrl;
       video.hidden = false;
       empty.hidden = true;
+      if (download) {
+        download.href = mediaUrl;
+        download.download = mediaDownloadName('avs', jobId, 'native');
+        download.hidden = false;
+      }
     } else if (empty) {
       empty.textContent = '该任务已完成，但浏览器媒体暂不可用。';
+      if (download) {
+        download.removeAttribute('href');
+        download.hidden = true;
+      }
     }
     await loadDeliveries(jobId);
     document.getElementById('params').innerHTML = `

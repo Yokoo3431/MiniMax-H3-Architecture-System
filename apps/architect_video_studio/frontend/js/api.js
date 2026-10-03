@@ -23,6 +23,24 @@ function qs(name) {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+function sameOriginMediaUrl(value) {
+  try {
+    const url = new URL(String(value || ''), window.location.href);
+    const allowedPath = /^\/api\/(?:jobs\/[^/]+\/media|jobs\/[^/]+\/deliveries\/delivery-[a-f0-9]{24}\/media|projects\/[^/]+\/long-form\/[^/]+\/media)$/i;
+    if (url.origin !== window.location.origin || url.username || url.password
+      || url.search || url.hash || !allowedPath.test(url.pathname)) return '';
+    return url.pathname;
+  } catch (_) {
+    return '';
+  }
+}
+
+function mediaDownloadName(...parts) {
+  const base = parts.map((part) => String(part || '').replace(/[^A-Za-z0-9_-]/g, '-'))
+    .filter(Boolean).join('-').replace(/-+/g, '-').slice(0, 96);
+  return `${base || 'architect-video'}.mp4`;
+}
+
 function esc(text) {
   const d = document.createElement('div');
   d.textContent = text == null ? '' : String(text);

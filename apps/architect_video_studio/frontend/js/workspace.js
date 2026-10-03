@@ -380,6 +380,16 @@ function renderLongForm() {
     if (resumeButton) resumeButton.disabled = true;
     if (assembleButton) assembleButton.disabled = true;
     if (generateButton) generateButton.textContent = '生成所选镜头';
+    const video = document.getElementById('a9-result');
+    const download = document.getElementById('a9-download');
+    if (video) {
+      video.hidden = true;
+      video.removeAttribute('src');
+    }
+    if (download) {
+      download.hidden = true;
+      download.removeAttribute('href');
+    }
     return;
   }
   const shotText = (queue.shots || []).map((shot) =>
@@ -392,10 +402,21 @@ function renderLongForm() {
   if (assembleButton) assembleButton.disabled = !(queue.shots?.length >= 3
     && queue.shots.every((shot) => ['RESULT_READY', 'READY'].includes(shot.state)));
   const video = document.getElementById('a9-result');
+  const download = document.getElementById('a9-download');
+  const mediaUrl = assembly.status === 'READY' ? sameOriginMediaUrl(assembly.media_url) : '';
   if (video) {
-    const url = assembly.status === 'READY' ? assembly.media_url : '';
-    video.hidden = !url;
-    if (url && video.getAttribute('src') !== url) video.setAttribute('src', url);
+    video.hidden = !mediaUrl;
+    if (mediaUrl && video.getAttribute('src') !== mediaUrl) video.setAttribute('src', mediaUrl);
+    if (!mediaUrl) video.removeAttribute('src');
+  }
+  if (download) {
+    download.hidden = !mediaUrl;
+    if (mediaUrl) {
+      download.href = mediaUrl;
+      download.download = mediaDownloadName('avs', queue.queue_id, 'assembly');
+    } else {
+      download.removeAttribute('href');
+    }
   }
 }
 
