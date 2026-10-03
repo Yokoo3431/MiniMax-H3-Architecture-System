@@ -8,6 +8,56 @@ const errEl = document.getElementById('err');
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = friendlyError(msg); }
 function jobIsTerminal(job) { return !!(job && job.is_terminal); }
 function jobIsActive(job) { return !!(job && job.is_active); }
+const RESULT_RECOVERY_FAILURE_STAGES = new Set([
+  'SAVE_VIDEO_CONTRACT', 'SAVE_VIDEO_NODE', 'COMFY_HISTORY',
+  'OUTPUT_DISCOVERY', 'MEDIA_PROBE', 'PACKAGING', 'RESULT_PERSISTENCE',
+  'OUTPUT_DELIVERY', 'RECOVERY',
+]);
+function hasStrongResultRecoveryIdentity(job) {
+  if (!job || job.runtime !== 'native' || job.cancelled || !job.prompt_id) return false;
+  if (!['COMPLETED', 'FAILED', 'GPU_FAILED', 'SUBMISSION_LOST'].includes(job.state)) return false;
+  if (!/^[a-f0-9]{64}$/i.test(String(job.execution_workflow_sha256 || ''))) return false;
+  const target = job.runtime_target;
+  const identity = job.execution_trace?.runtime_identity || {};
+  const expected = target === 'experimental'
+    ? {runtimeId: 'experimental-h3-8190', role: 'experimental', port: 8190, version: '0.36.0'}
+    : target === 'production'
+      ? {runtimeId: 'production-h3-8189', role: 'production', port: 8189, version: '0.33.1'}
+      : null;
+  return !!expected
+    && Number(identity.identity_schema_version) >= 2
+    && identity.runtime_id === expected.runtimeId
+    && identity.runtime_role === expected.role
+    && identity.backend === 'comfyui'
+    && Number(identity.port) === expected.port
+    && identity.comfyui_version === expected.version
+    && !!identity.endpoint_fingerprint
+    && !!identity.runtime_config_fingerprint
+    && !!identity.output_root_fingerprint
+    && (target !== 'experimental'
+      || identity.comfyui_git_sha === 'ee71d5c4993f29086b27fde1629a945ae48425bf');
+}
+function hasResultPipelineRecoveryFailure(job) {
+  const pipeline = job?.result_pipeline || {};
+  if (RESULT_RECOVERY_FAILURE_STAGES.has(pipeline.current_stage)
+      && pipeline.status === 'FAILED') return true;
+  return (pipeline.events || []).some((event) =>
+    RESULT_RECOVERY_FAILURE_STAGES.has(event?.stage) && event?.status === 'FAILED');
+}
+async function shouldOfferResultRecovery(job) {
+  if (!hasStrongResultRecoveryIdentity(job)) return false;
+  if (job.state === 'COMPLETED') {
+    try {
+      const result = await get(`/api/jobs/${encodeURIComponent(job.id)}/result`);
+      return result?.output?.available === false;
+    } catch (error) {
+      // Only the explicit missing-output contract makes a completed Job
+      // eligible; transient/API errors must not create a misleading action.
+      return /^OUTPUT_ERROR:/i.test(String(error?.message || error));
+    }
+  }
+  return hasResultPipelineRecoveryFailure(job);
+}
 function friendlyState(job) {
   return job.status_label || ({QUEUED:'排队中', SUBMITTED:'已提交', RUNNING:'运行中', GENERATING:'生成中', RECONCILING:'整理输出', COMPLETED:'完成', FAILED:'生成失败', GPU_FAILED:'生成失败', CANCELLED:'已取消', SUBMISSION_LOST:'提交未确认'}[job.state] || '生成中');
 }
@@ -110,10 +160,13 @@ async function openDetail(jobId, pid) {
     <div class="kv"><span class="k">提示词摘要</span><span>${esc(detail.prompt_summary || '—')}</span></div>
     ${detail.output_path ? `<div class="kv"><span class="k">视频文件</span><span class="small">${esc(detail.output_path)}</span></div>` : ''}`;
   const actions = document.getElementById('detail-actions');
+  const offerResultRecovery = await shouldOfferResultRecovery(detail);
   actions.innerHTML = `${['FAILED','GPU_FAILED','CANCELLED','SUBMISSION_LOST'].includes(detail.state) ? '<sl-button class="btn primary" id="retry-job">重试</sl-button>' : ''}
+    ${offerResultRecovery ? '<sl-button class="btn" id="recover-result" aria-describedby="recover-result-note">恢复已有结果（不会重新生成）</sl-button>' : ''}
     ${detail.error_category === 'COMFYUI_CRASHED' ? '<sl-button class="btn" id="restart-comfyui">重新启动服务</sl-button>' : ''}
     <sl-button class="btn" id="open-current-workflow">打开当前任务工作流</sl-button>
     <sl-button class="btn" id="open-study">打开 Study</sl-button>
+    ${offerResultRecovery ? '<span class="small muted" id="recover-result-note">仅核验这次已提交任务并恢复可验证输出；不会创建新任务或提交生成。</span>' : ''}
     ${detail.state === 'COMPLETED' ? `<a class="btn" href="output.html?project=${encodeURIComponent(pid)}&job=${esc(detail.id)}">打开输出</a><sl-button class="btn" id="open-output-folder">打开所在文件夹</sl-button>${detail.delivery_state === 'OUTPUT_DELIVERY_FAILED' ? '<sl-button class="btn" id="retry-output">重试复制</sl-button>' : ''}` : ''}
     <sl-button class="btn" id="copy-tech">复制技术详情</sl-button>`;
   document.getElementById('detail-technical').textContent = JSON.stringify(detail.technical_details || {}, null, 2);
@@ -144,7 +197,21 @@ async function openDetail(jobId, pid) {
       await post(`/api/jobs/${encodeURIComponent(detail.id)}/retry-output`, {});
       await openDetail(detail.id, pid);
     } catch (e) { showErr(e.message || '复制视频失败'); button.disabled = false; }
-  });  document.getElementById('retry-job')?.addEventListener('click', async () => {
+  });
+  document.getElementById('recover-result')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = '正在核验并恢复…';
+    try {
+      await post(`/api/jobs/${encodeURIComponent(detail.id)}/recover-result`, {});
+      await openDetail(detail.id, pid);
+    } catch (e) {
+      showErr('恢复未完成；本次操作没有重新提交生成。请查看任务技术详情。');
+      button.disabled = false;
+      button.textContent = '恢复已有结果（不会重新生成）';
+    }
+  });
+  document.getElementById('retry-job')?.addEventListener('click', async () => {
     try { const next = await post(`/api/jobs/${encodeURIComponent(detail.id)}/retry`, {}); location.href = `jobs.html?project=${encodeURIComponent(pid)}&job=${encodeURIComponent(next.id)}`; }
     catch (e) { showErr(e.message); }
   });

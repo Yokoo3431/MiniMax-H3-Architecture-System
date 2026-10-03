@@ -184,6 +184,30 @@ class StudioUX2P1Tests(unittest.TestCase):
         for element in ('sl-button', 'sl-select', 'sl-option', 'sl-textarea', 'sl-details', 'sl-badge'):
             self.assertNotIn(f'<{element}', workspace)
 
+    def test_result_recovery_action_requires_strong_identity_and_never_retries(self):
+        jobs = self.read("js/jobs.js")
+        for marker in (
+            "function hasStrongResultRecoveryIdentity(job)",
+            "function hasResultPipelineRecoveryFailure(job)",
+            "async function shouldOfferResultRecovery(job)",
+            "job.runtime !== 'native'",
+            "job.execution_workflow_sha256",
+            "job.execution_trace?.runtime_identity",
+            "identity.runtime_config_fingerprint",
+            "identity.output_root_fingerprint",
+            "identity.comfyui_git_sha === 'ee71d5c4993f29086b27fde1629a945ae48425bf'",
+            "result?.output?.available === false",
+            "OUTPUT_ERROR:",
+            "恢复已有结果（不会重新生成）",
+            "不会创建新任务或提交生成",
+        ):
+            self.assertIn(marker, jobs)
+        recovery_action = jobs.split("document.getElementById('recover-result')?.addEventListener", 1)[1]
+        recovery_action = recovery_action.split("document.getElementById('retry-job')?.addEventListener", 1)[0]
+        self.assertIn("/recover-result", recovery_action)
+        self.assertNotIn("/retry", recovery_action)
+        self.assertNotIn("/prompt", recovery_action)
+
     def test_no_new_backend_surface_in_p1_test_scope(self):
         changed = {
             p.relative_to(ROOT).as_posix()
