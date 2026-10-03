@@ -41,6 +41,43 @@
         <div id="record" class="small"></div>
       </div>
     </div>
+    <section class="panel mt" aria-labelledby="delivery-heading">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+        <div>
+          <h3 id="delivery-heading" style="margin-top:0;">交付副本 · 后处理</h3>
+          <p class="small muted">原生 H3 成片保持不变。交付版本单独生成并记录缩放、插帧与探测结果；不会重新运行生成。</p>
+        </div>
+        <form id="delivery-form" class="row" style="gap:8px;align-items:end;flex-wrap:wrap;">
+          <label class="small">交付画布
+            <select id="delivery-resolution" name="target_resolution">
+              <option value="NATIVE">保持原生画布</option>
+              <option value="ULTRA_1080">1080p · 1920×1080</option>
+              <option value="ULTRA_2K">2K · 2048×1152</option>
+            </select>
+          </label>
+          <label class="small">交付帧率
+            <select id="delivery-fps" name="delivery_fps">
+              <option value="24">24 fps</option>
+              <option value="48">48 fps</option>
+              <option value="60">60 fps</option>
+            </select>
+          </label>
+          <button id="delivery-submit" class="btn primary" type="submit">生成交付副本</button>
+        </form>
+      </div>
+      <p id="delivery-status" class="small muted" aria-live="polite">交付副本尚未生成。</p>
+      <div class="workspace delivery-workspace">
+        <div>
+          <h4>交付预览</h4>
+          <div class="video-box"><video id="delivery-video" controls preload="metadata" hidden></video><span id="delivery-video-empty" class="small">选择已验证的交付版本后可在此预览。</span></div>
+          <div id="delivery-preview-meta" class="small muted mt"></div>
+        </div>
+        <div>
+          <h4>交付记录</h4>
+          <div id="delivery-list" class="small" aria-live="polite">正在读取…</div>
+        </div>
+      </div>
+    </section>
     <div class="panel mt">
       <h3>Output Package 结构</h3>
       <div class="pkg-tree" id="pkg-tree"></div>

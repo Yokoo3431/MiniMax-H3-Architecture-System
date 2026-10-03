@@ -2054,6 +2054,59 @@ class JobAPI:
         if not self._recover_completed_output(project_id, job):
             raise ValueError("Runtime 输出不存在，无法重试复制")
         return _decorate_job(self.store.find_job(job_id)[1])
+
+    def create_delivery(self, job_id: str, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Run A8 post-processing and persist path-free delivery provenance."""
+        from runtime.a8_delivery import DeliveryError
+
+        project_id, job = self.store.find_job(job_id)
+        target_resolution = str(request.get("target_resolution") or "")
+        delivery_fps = request.get("delivery_fps")
+        try:
+            result = self.output_api.create_delivery(
+                job_id, target_resolution=target_resolution,
+                delivery_fps=delivery_fps)
+        except DeliveryError as exc:
+            # The per-Job delivery manifest is the detailed stage record.
+            # Mirror only safe identifiers/status into the Job trace.
+            try:
+                available = self.output_api.list_deliveries(job_id).get("items", [])
+                failed = next((item for item in reversed(available)
+                               if item.get("target_resolution") == target_resolution
+                               and item.get("delivery_fps") == delivery_fps
+                               and item.get("status") == "FAILED"), None)
+                trace = dict(job.get("execution_trace") or {})
+                if failed:
+                    records = list(trace.get("delivery_outputs") or [])
+                    records = [item for item in records
+                               if item.get("delivery_id") != failed.get("delivery_id")]
+                    records.append(failed)
+                    trace["delivery_outputs"] = records[-12:]
+                trace["delivery_last_error"] = {
+                    "stage": "A8_DELIVERY",
+                    "error_code": exc.code,
+                    "target_resolution": target_resolution[:32],
+                    "delivery_fps": delivery_fps
+                    if type(delivery_fps) is int else None,
+                    "timestamp": self.store.timestamp(),
+                }
+                job["execution_trace"] = trace
+                self._save_job(project_id, job, preserve_result_pipeline=True)
+            except Exception:
+                pass
+            raise
+
+        trace = dict(job.get("execution_trace") or {})
+        records = list(trace.get("delivery_outputs") or [])
+        records = [item for item in records
+                   if item.get("delivery_id") != result.get("delivery_id")]
+        records.append(result)
+        trace["delivery_outputs"] = records[-12:]
+        trace.pop("delivery_last_error", None)
+        job["execution_trace"] = trace
+        self._save_job(project_id, job, preserve_result_pipeline=True)
+        return result
+
     def advance(self, job_id: str, elapsed_seconds: float) -> Dict[str, Any]:
         """Explicit deterministic progression (mock tests only)."""
         project_id, job = self.store.find_job(job_id)

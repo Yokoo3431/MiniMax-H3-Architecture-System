@@ -53,6 +53,92 @@ function setContextLinks(projectId, currentJobId, outputPath) {
   links.style.display = 'flex';
 }
 
+function deliveryDescription(item) {
+  const size = item.delivery_resolution || {};
+  const resolution = size.width && size.height ? `${size.width}×${size.height}` : '—';
+  const methods = [item.frame_interpolation_method, item.upscale_method,
+    item.restoration_method && item.restoration_method !== 'NONE' ? item.restoration_method : null]
+    .filter(Boolean).join(' · ') || '仅转码';
+  const padding = Number(item.terminal_padding_frames || 0);
+  const alignment = padding > 0 ? ` · 末帧对齐 +${padding} 帧` : '';
+  return `${resolution} · ${item.delivery_fps} fps · ${methods}${alignment}`;
+}
+
+async function loadDeliveries(currentJobId) {
+  const list = document.getElementById('delivery-list');
+  const form = document.getElementById('delivery-form');
+  const submit = document.getElementById('delivery-submit');
+  try {
+    const state = await get(`/api/jobs/${encodeURIComponent(currentJobId)}/deliveries`);
+    form.hidden = !state.available;
+    form.style.display = state.available ? 'flex' : 'none';
+    if (!state.available) {
+      list.textContent = '当前运行环境未提供受管 FFmpeg 交付能力。';
+      return;
+    }
+    const items = state.items || [];
+    if (!items.length) {
+      list.innerHTML = '<p class="small muted">尚无后处理交付记录。</p>';
+      return;
+    }
+    list.innerHTML = items.slice().reverse().map((item) => {
+      const status = item.status === 'READY' ? '已验证' : item.status === 'FAILED' ? '失败，可重试' : '处理中';
+      const action = item.status === 'READY' && item.media_url
+        ? `<button class="btn small ghost" type="button" data-delivery-id="${esc(item.delivery_id)}" data-delivery-url="${esc(item.media_url)}">预览</button>` : '';
+      const error = item.error_code ? `<span class="small muted">${esc(item.error_code)}</span>` : '';
+      return `<div class="intent-card delivery-record">
+        <div class="kv"><span class="k">${esc(item.target_resolution || 'NATIVE')} · ${esc(item.delivery_fps)} fps</span><span>${esc(status)}</span></div>
+        <div class="kv"><span class="k">输出</span><span>${esc(deliveryDescription(item))}</span></div>
+        <div class="kv"><span class="k">文件 / SHA</span><span class="small">${esc(item.size_bytes || '—')} bytes · ${esc((item.output_sha256 || '').slice(0, 16) || '—')}</span></div>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;">${error}${action}</div>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('[data-delivery-url]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const video = document.getElementById('delivery-video');
+        video.src = button.dataset.deliveryUrl;
+        video.hidden = false;
+        document.getElementById('delivery-video-empty').hidden = true;
+        const selected = items.find((item) => item.delivery_id === button.dataset.deliveryId);
+        document.getElementById('delivery-preview-meta').textContent = selected
+          ? `${deliveryDescription(selected)} · duration ${selected.duration_seconds ?? '—'}s · ${selected.video_codec || '—'} · source SHA ${String(selected.source_sha256 || '').slice(0, 16)}`
+          : '';
+      });
+    });
+    if (!form.dataset.bound) {
+      form.dataset.bound = '1';
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (submit.disabled) return;
+        submit.disabled = true;
+        const statusEl = document.getElementById('delivery-status');
+        statusEl.textContent = '本地 CPU 正在处理；原生 H3 视频不变。请勿重复提交。';
+        try {
+          const output = await post(`/api/jobs/${encodeURIComponent(currentJobId)}/deliveries`, {
+            target_resolution: document.getElementById('delivery-resolution').value,
+            delivery_fps: Number(document.getElementById('delivery-fps').value),
+          });
+          statusEl.textContent = output.status === 'READY'
+            ? `交付副本已验证：${deliveryDescription(output)}。原生结果未更改。`
+            : `交付副本状态：${output.status || '未知'}。可刷新记录继续检查。`;
+          await loadDeliveries(currentJobId);
+          const previewButton = document.querySelector(`[data-delivery-id="${CSS.escape(output.delivery_id)}"]`);
+          if (previewButton) previewButton.click();
+        } catch (error) {
+          statusEl.textContent = `交付未完成：${friendlyError(error, '处理失败；可重试后处理，不会重新生成。')}`;
+          await loadDeliveries(currentJobId);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+    }
+  } catch (error) {
+    list.textContent = `交付记录暂不可用：${friendlyError(error, '请检查 Studio 服务。')}`;
+    form.hidden = true;
+    form.style.display = 'none';
+  }
+}
+
 async function load() {
   if (!jobId) {
     document.getElementById('job-id').textContent = '—';
@@ -93,6 +179,7 @@ async function load() {
     } else if (empty) {
       empty.textContent = '该任务已完成，但浏览器媒体暂不可用。';
     }
+    await loadDeliveries(jobId);
     document.getElementById('params').innerHTML = `
       <div class="intent-card">
         <div class="kv"><span class="k">Workflow</span><span>${esc(result.workflow)}</span></div>

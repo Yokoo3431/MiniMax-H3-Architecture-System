@@ -20,6 +20,7 @@ from runtime.adapters.runtime_paths import RuntimePathContract
 _DURATION_RE = re.compile(r"Duration:\s*([0-9:.]+)")
 _VIDEO_RE = re.compile(r"Video:\s*([^,\s]+).*?(\d{2,5})x(\d{2,5})")
 _FPS_RE = re.compile(r"(\d+(?:\.\d+)?)\s+fps")
+_FRAME_COUNT_RE = re.compile(r"\bframe=\s*(\d+)")
 
 _PYAV_PROBE_SCRIPT = r"""
 import json
@@ -137,6 +138,7 @@ def _from_ffmpeg_text(text: str) -> dict[str, Any]:
     hours, minutes, seconds = duration_match.group(1).split(":")
     duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
     fps = float(fps_match.group(1))
+    frame_matches = _FRAME_COUNT_RE.findall(text)
     return {
         "available": True,
         "duration_seconds": round(duration, 3),
@@ -145,6 +147,7 @@ def _from_ffmpeg_text(text: str) -> dict[str, Any]:
         "fps": round(fps, 2),
         "video_codec": video_match.group(1),
         "audio_stream": "Audio:" in text,
+        "frame_count": int(frame_matches[-1]) if frame_matches else None,
         "probe_tool": "managed_ffmpeg_compatibility",
     }
 

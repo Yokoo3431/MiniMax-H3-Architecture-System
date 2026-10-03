@@ -15,6 +15,7 @@ from typing import Any, Dict, List
 
 from ._paths import REPO_ROOT
 from .store import StudioStore
+from runtime.a8_delivery import DeliveryError, DeliveryPipeline, sha256_file
 
 WORKFLOW_FILE_MAP = {
     "01_Exterior_Hero": "workflows/01_Exterior_Hero_NATIVE.json",
@@ -35,6 +36,95 @@ class OutputAPI:
         self.runtime_paths = runtime_paths
         # Private deployment-only path; it is never copied into Job/API records.
         self.experimental_video_probe_python = experimental_video_probe_python
+        self.delivery_pipeline = DeliveryPipeline(
+            store=store, runtime_paths=runtime_paths)
+
+    def list_deliveries(self, job_id: str) -> Dict[str, Any]:
+        """List only Job-bound A8 delivery derivatives; native Result is unchanged."""
+        project_id, job = self.store.find_job(job_id)
+        if job.get("state") != "COMPLETED":
+            raise DeliveryError("DELIVERY_SOURCE_JOB_NOT_COMPLETED")
+        self.media_path(job_id)
+        package = self.store.job_package_dir(project_id, job_id)
+        items = self.delivery_pipeline.list_for_job(
+            job_id=job_id, package_root=package)
+        expected = self.delivery_pipeline._identity(job)
+        source_sha = sha256_file(self.media_path(job_id))
+        for item in items:
+            if (item.get("prompt_id") != expected["prompt_id"]
+                    or item.get("workflow_sha256") != expected["workflow_sha256"]
+                    or item.get("runtime_identity") != expected["runtime_identity"]
+                    or item.get("source_sha256") != source_sha):
+                item["status"] = "IDENTITY_MISMATCH"
+                item["error_code"] = "DELIVERY_IDENTITY_MISMATCH"
+            elif item.get("status") == "READY":
+                manifest = self.delivery_pipeline.manifest_for_job(
+                    job_id=job_id, package_root=package,
+                    delivery_id=str(item.get("delivery_id") or ""))
+                media = (package / "delivery" / "outputs"
+                         / f"{item['delivery_id']}.mp4").resolve()
+                try:
+                    media.relative_to((package / "delivery" / "outputs").resolve())
+                    valid_output = (media.is_file()
+                                    and sha256_file(media) == manifest.get("output_sha256"))
+                except (OSError, ValueError):
+                    valid_output = False
+                if not valid_output:
+                    item["status"] = "OUTPUT_INTEGRITY_FAILED"
+                    item["error_code"] = "DELIVERY_OUTPUT_INTEGRITY_FAILED"
+                    continue
+                item["media_url"] = (
+                    f"/api/jobs/{job_id}/deliveries/{item['delivery_id']}/media")
+        return {
+            "job_id": job_id,
+            "available": bool(self.delivery_pipeline.available
+                               and job.get("runtime") == "native"),
+            "items": items,
+        }
+
+    def create_delivery(self, job_id: str, *, target_resolution: str,
+                        delivery_fps: int) -> Dict[str, Any]:
+        """Create/reconcile one CPU derivative without invoking ComfyUI."""
+        project_id, job = self.store.find_job(job_id)
+        source = self.media_path(job_id)
+        recorded = [str(job.get(key) or "").strip()
+                    for key in ("final_output_path", "output_path")]
+        recorded = [Path(value).resolve() for value in recorded if value]
+        package_video = self._package_video_path(project_id, job)
+        strongly_bound = (
+            source.resolve() in recorded
+            or (package_video is not None and source.resolve() == package_video.resolve())
+            or job_id in source.name
+        )
+        if not strongly_bound:
+            raise DeliveryError("DELIVERY_SOURCE_IDENTITY_UNPROVEN")
+        package = self.store.job_package_dir(project_id, job_id)
+        return self.delivery_pipeline.create(
+            job=job, source=source, package_root=package,
+            target_resolution=target_resolution, delivery_fps=delivery_fps)
+
+    def delivery_media_path(self, job_id: str, delivery_id: str) -> Path:
+        """Resolve a ready derivative through the exact canonical Job identity."""
+        project_id, job = self.store.find_job(job_id)
+        source = self.media_path(job_id)
+        package = self.store.job_package_dir(project_id, job_id)
+        manifest = self.delivery_pipeline.manifest_for_job(
+            job_id=job_id, package_root=package, delivery_id=delivery_id)
+        identity = self.delivery_pipeline._identity(job)
+        if (manifest.get("status") != "READY"
+                or manifest.get("source_sha256") != sha256_file(source)
+                or manifest.get("prompt_id") != identity["prompt_id"]
+                or manifest.get("workflow_sha256") != identity["workflow_sha256"]
+                or manifest.get("runtime_identity") != identity["runtime_identity"]):
+            raise DeliveryError("DELIVERY_IDENTITY_MISMATCH")
+        root = (package / "delivery" / "outputs").resolve()
+        candidate = (root / f"{delivery_id}.mp4").resolve()
+        if not candidate.is_relative_to(root):
+            raise DeliveryError("DELIVERY_PATH_OUTSIDE_JOB_PACKAGE")
+        if (not candidate.is_file() or candidate.stat().st_size <= 0
+                or sha256_file(candidate) != manifest.get("output_sha256")):
+            raise DeliveryError("DELIVERY_OUTPUT_INTEGRITY_FAILED")
+        return candidate
 
     def _job_references(self, project_id: str, job: Dict[str, Any]) -> list[dict[str, Any]]:
         by_id = self.store.load_references(project_id)

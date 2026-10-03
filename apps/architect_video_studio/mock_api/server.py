@@ -454,6 +454,16 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             m = re.fullmatch(r"/api/jobs/([^/]+)/result", path)
             if m and method == "GET":
                 return self._ok(apis["output"].get_result(m.group(1)))
+            m = re.fullmatch(r"/api/jobs/([^/]+)/deliveries", path)
+            if m and method == "GET":
+                return self._ok(apis["output"].list_deliveries(m.group(1)))
+            if m and method == "POST":
+                return self._ok(apis["job"].create_delivery(m.group(1), body))
+            m = re.fullmatch(
+                r"/api/jobs/([^/]+)/deliveries/(delivery-[a-f0-9]{24})/media", path)
+            if m and method == "GET":
+                self._send_media(apis["output"].delivery_media_path(m.group(1), m.group(2)))
+                return
             m = re.fullmatch(r"/api/jobs/([^/]+)/media", path)
             if m and method == "GET":
                 job_id = m.group(1)

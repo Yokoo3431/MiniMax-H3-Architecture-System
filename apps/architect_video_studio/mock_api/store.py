@@ -304,6 +304,17 @@ class StudioStore:
         return rows
 
     def clear_package(self, project_id: str) -> None:
+        """Clear legacy shared package content without deleting Job packages.
+
+        Job-scoped results now own their output/delivery trees. Legacy mock
+        package refreshes must not erase those independent durable artifacts.
+        """
         d = self.package_dir(project_id)
         if d.is_dir():
-            shutil.rmtree(d)
+            for child in d.iterdir():
+                if child.name == "jobs":
+                    continue
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink(missing_ok=True)
