@@ -12,6 +12,7 @@ The UI never builds a ComfyUI payload; only the RuntimeAdapter does.
 
 from __future__ import annotations
 
+import copy
 import threading
 import time
 import shutil
@@ -183,7 +184,8 @@ class JobAPI:
                  comfy_input_dir: Optional[str] = None,
                  experimental_comfy_input_dir: Optional[str] = None,
                  runtime_paths: Optional[RuntimePathContract] = None,
-                 experimental_route_enabled: bool = False) -> None:
+                 experimental_route_enabled: bool = False,
+                 long_form_api=None) -> None:
         self.store = store
         from .output_api import OutputAPI
         self.output_api = output_api or OutputAPI(store)
@@ -195,6 +197,7 @@ class JobAPI:
         self.experimental_comfy_input_dir = experimental_comfy_input_dir
         self.runtime_paths = runtime_paths
         self.experimental_route_enabled = bool(experimental_route_enabled)
+        self.long_form_api = long_form_api
         self._threads: Dict[str, threading.Thread] = {}
         self._recovery_locks: Dict[str, threading.Lock] = {}
         self._idle_memory_since: Optional[float] = None
@@ -467,6 +470,7 @@ class JobAPI:
                    runtime_id: Optional[str] = None,
                    execution_purpose: Optional[str] = None,
                    director_execution: Optional[Dict[str, Any]] = None,
+                   long_form_execution: Optional[Dict[str, Any]] = None,
                    dry_run: bool = False) -> Dict[str, Any]:
         if runtime_target not in {"production", "experimental"}:
             raise ValueError("RUNTIME_TARGET_INVALID: choose production or experimental")
@@ -574,6 +578,64 @@ class JobAPI:
         if prompt.get("a4_profile") and prompt_bindings != selected_bindings:
             raise ValueError(
                 "REFERENCE_PROMPT_MISMATCH: 参考图角色或审批身份已变化，请重新生成 Prompt。")
+
+        continuity_binding = None
+        execution_project = project
+        if long_form_execution is not None:
+            if not isinstance(long_form_execution, Mapping) or not director_execution:
+                raise ValueError("LONG_FORM_DIRECTOR_EXECUTION_REQUIRED")
+            queue_id = str(long_form_execution.get("queue_id") or "")
+            long_form_shot_id = str(long_form_execution.get("shot_id") or "")
+            if long_form_shot_id != str(director_execution.get("shot_id") or ""):
+                raise ValueError("LONG_FORM_SHOT_IDENTITY_MISMATCH")
+            if self.long_form_api is None:
+                raise ValueError("LONG_FORM_RUNTIME_UNAVAILABLE")
+            prepared_long_form = self.long_form_api.prepare_for_job(
+                project_id, queue_id, long_form_shot_id)
+            continuity_binding = prepared_long_form.get("binding")
+            if (not isinstance(continuity_binding, Mapping)
+                    or continuity_binding.get("shot_id") != long_form_shot_id
+                    or continuity_binding.get("queue_id") != queue_id):
+                raise ValueError("LONG_FORM_BINDING_IDENTITY_INVALID")
+            modes = list(continuity_binding.get("continuity_modes") or [])
+            if "LOCK_PROJECT_IDENTITY" in modes:
+                selected_by_id = {str(item.get("asset_id") or ""): item
+                                  for item in selected_bindings}
+                identity = list(continuity_binding.get("reference_bindings") or [])
+                if not identity or any(
+                        str(item.get("asset_id") or "") not in selected_by_id
+                        or str(selected_by_id[str(item.get("asset_id") or "")]
+                                .get("sha256") or "").lower()
+                        != str(item.get("content_sha256") or "").lower()
+                        for item in identity):
+                    raise ValueError("LONG_FORM_PROJECT_IDENTITY_SELECTION_MISMATCH")
+            derived_reference = prepared_long_form.get("reference")
+            if "CONTINUE_VISUALLY" in modes:
+                if (not isinstance(derived_reference, Mapping)
+                        or derived_reference.get("state") != "APPROVED"
+                        or derived_reference.get("role") != "first_frame"):
+                    raise ValueError("LONG_FORM_DERIVED_REFERENCE_UNAVAILABLE")
+                if str(prompt.get("mode") or "") == "Ref2VA":
+                    raise ValueError("LONG_FORM_CONTINUITY_REF2VA_UNSUPPORTED")
+                refs_by_id = dict(refs_by_id)
+                derived_id = str(derived_reference.get("id") or "")
+                refs_by_id[derived_id] = dict(derived_reference)
+                execution_project = copy.deepcopy(project)
+                selected_ids = dict(execution_project.get(
+                    "selected_reference_asset_ids") or {})
+                selected_ids["first_frame"] = derived_id
+                execution_project["selected_reference_asset_ids"] = selected_ids
+                approved = resolve_selected_references(
+                    project_id, execution_project, refs_by_id, prompt.get("workflow"),
+                    require_approved=True,
+                    reference_root=self.store.input_dir(project_id),
+                    include_ref2va_roles=False)
+                selected_bindings = reference_bindings(approved)
+                prompt = copy.deepcopy(prompt)
+                prompt["reference_bindings"] = copy.deepcopy(selected_bindings)
+            director_execution = copy.deepcopy(director_execution)
+            director_execution["continuity_binding"] = copy.deepcopy(
+                continuity_binding)
 
         try:
             normalized_motion = normalize_camera_motion(prompt["workflow"], camera_motion)
@@ -698,8 +760,9 @@ class JobAPI:
             director_compilation = DirectorAPI(
                 self.store, output_api=self.output_api).prepare_for_job(
                     project_id, director_execution, prompt, params,
-                    runtime_target=runtime_target, project=project,
-                    references=refs_by_id)
+                    runtime_target=runtime_target, project=execution_project,
+                    references=refs_by_id,
+                    continuity_binding=continuity_binding)
             prompt = director_compilation["prompt"]
             params = director_compilation["generation_parameters"]
             if int(params.get("frame_count", 0)) != int(profile_context[
@@ -837,8 +900,43 @@ class JobAPI:
                 guide_bindings, job, runtime_adapter, preflight_result,
                 execution_purpose=execution_purpose, guide_prompt=guide_prompt)
         jobs = self.store.load_jobs(project_id)
+        if long_form_execution is not None:
+            try:
+                # Reserve the exact queue slot before persisting a Job. The
+                # per-queue lock makes concurrent clicks fail closed.
+                self.long_form_api.reserve_job(
+                    project_id,
+                    str(long_form_execution.get("queue_id") or ""),
+                    str(long_form_execution.get("shot_id") or ""),
+                    job)
+            except Exception as exc:  # noqa: BLE001 - do not create a duplicate
+                raise ValueError("LONG_FORM_QUEUE_RESERVATION_FAILED") from exc
         jobs[job_id] = job
         self.store.save_jobs(project_id, jobs)
+        if long_form_execution is not None:
+            try:
+                # Persist the queue association before a runtime worker can
+                # submit /prompt. A lost response is recoverable from the
+                # immutable long_form_execution Job provenance.
+                self.long_form_api.bind_job(
+                    project_id,
+                    str(long_form_execution.get("queue_id") or ""),
+                    str(long_form_execution.get("shot_id") or ""),
+                    job_id)
+            except Exception as exc:  # noqa: BLE001 - fail closed before GPU
+                persisted_jobs = self.store.load_jobs(project_id)
+                failed_job = persisted_jobs.get(job_id)
+                if failed_job:
+                    failed_job.update(
+                        state="FAILED",
+                        failure_reason="LONG_FORM_QUEUE_BIND_FAILED",
+                        submission_attempted=False,
+                        submission_state="NOT_STARTED",
+                        lifecycle_state="FAILED_BEFORE_SUBMISSION")
+                    persisted_jobs[job_id] = failed_job
+                    self.store.save_jobs(project_id, persisted_jobs)
+                raise ValueError(
+                    "LONG_FORM_QUEUE_BIND_FAILED_BEFORE_SUBMISSION") from exc
         if director_compilation:
             from .director_api import DirectorAPI
             DirectorAPI(self.store, output_api=self.output_api).mark_job(

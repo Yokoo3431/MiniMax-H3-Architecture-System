@@ -302,6 +302,30 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             if m and method == "POST":
                 return self._ok(apis["director"].create_retake(
                     m.group(1), m.group(2), body))
+            m = re.fullmatch(r"/api/projects/([^/]+)/long-form", path)
+            if m and method == "GET":
+                return self._ok(apis["long_form"].list(m.group(1)))
+            if m and method == "POST":
+                return self._ok(apis["long_form"].create(m.group(1), body))
+            m = re.fullmatch(r"/api/projects/([^/]+)/long-form/([^/]+)/resume", path)
+            if m and method == "POST":
+                return self._ok(apis["long_form"].resume(m.group(1), m.group(2)))
+            m = re.fullmatch(r"/api/projects/([^/]+)/long-form/([^/]+)/assemble", path)
+            if m and method == "POST":
+                return self._ok(apis["long_form"].assemble(m.group(1), m.group(2)))
+            m = re.fullmatch(r"/api/projects/([^/]+)/long-form/([^/]+)/media", path)
+            if m and method == "GET":
+                self._send_media(apis["long_form"].media_path(m.group(1), m.group(2)))
+                return
+            m = re.fullmatch(
+                r"/api/projects/([^/]+)/long-form/([^/]+)/shots/([^/]+)/jobs/([^/]+)",
+                path)
+            if m and method == "POST":
+                return self._ok(apis["long_form"].bind_job(
+                    m.group(1), m.group(2), m.group(3), m.group(4)))
+            m = re.fullmatch(r"/api/projects/([^/]+)/long-form/([^/]+)", path)
+            if m and method == "GET":
+                return self._ok(apis["long_form"].get(m.group(1), m.group(2)))
             if method == "GET" and path == "/api/capabilities/multiframe-guides":
                 return self._ok(apis["guide"].capabilities())
             if method == "GET" and path == "/api/system/runtime-registry":
@@ -417,6 +441,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     runtime_id=body.get("runtime_id"),
                     execution_purpose=body.get("execution_purpose"),
                     director_execution=body.get("director_execution"),
+                    long_form_execution=body.get("long_form_execution"),
                     dry_run=True,
                 ))
             if m and method == "GET":
@@ -432,6 +457,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     runtime_id=body.get("runtime_id"),
                     execution_purpose=body.get("execution_purpose"),
                     director_execution=body.get("director_execution"),
+                    long_form_execution=body.get("long_form_execution"),
                 ))
             m = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if m and method == "GET":
@@ -562,6 +588,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
     from .reference_api import ReferenceAPI
     from .study_api import StudyAPI
     from .director_api import DirectorAPI
+    from .long_form_api import LongFormAPI
     from .system_api import SystemAPI
     from runtime.adapters.runtime_paths import resolve_runtime_paths
 
@@ -653,6 +680,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                            experimental_video_probe_python=(
                                experimental_config.get("python_executable")
                                if experimental_registry.get("valid") else None))
+    long_form_api = LongFormAPI(store, output_api=output_api)
     from runtime.adapters.comfyui_client import ComfyUIClient
     production_guide_client = runtime_adapter.client if runtime_adapter else None
     experimental_guide_client = ComfyUIClient(
@@ -668,6 +696,7 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                                 experimental_identity=experimental_public),
         "study": StudyAPI(store),
         "director": DirectorAPI(store, output_api=output_api),
+        "long_form": long_form_api,
         "intent": IntentAPI(store),
         "prompt": PromptAPI(store),
         "job": JobAPI(store, output_api=output_api,
@@ -678,7 +707,8 @@ def make_server(addr: Tuple[str, int], data_root: Path,
                       experimental_comfy_input_dir=experimental_input or None,
                       runtime_paths=runtime_paths,
                       experimental_route_enabled=(
-                          experimental_registry.get("valid") is True)),
+                          experimental_registry.get("valid") is True),
+                      long_form_api=long_form_api),
         "output": output_api,
         "system": SystemAPI(store),
     }

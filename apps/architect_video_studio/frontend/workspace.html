@@ -51,7 +51,7 @@
         <span id="director-summary-state" class="badge state">未创建序列</span>
       </summary>
       <div class="director-workbench">
-        <p class="muted small director-note">镜头按单独 H3 Job 编译；摄像机词汇是提示词意图，不是几何控制信号。长片剪辑留待 A9。</p>
+        <p class="muted small director-note">镜头按单独 H3 Job 编译；摄像机词汇是提示词意图，不是几何控制信号。A9 长片队列只复用已完成镜头；显式选择连续模式才会将上一镜末帧作为下一镜首帧。</p>
         <div class="director-toolbar">
           <label class="director-sequence-title">序列名称 <input id="director-title" class="avs-control" type="text" maxlength="120" value="建筑分镜"></label>
           <span id="director-revision" class="muted small">本地草稿</span>
@@ -73,6 +73,21 @@
           <pre id="director-compile-preview" class="director-compile-preview" hidden></pre>
           <div id="director-status" class="muted small" role="status" aria-live="polite"></div>
         </div>
+        <section class="a9-longform" id="a9-longform" hidden aria-label="长片队列">
+          <div class="a9-longform-head"><strong>A9 · 长片队列与装配</strong><span class="muted small">仅已有结果 CPU 装配；不会自动提交 H3</span></div>
+          <div class="a9-longform-controls">
+            <label>输出尺寸<select id="a9-resolution" class="avs-select"><option value="1344x768">原生 1344×768</option><option value="1920x1080">1080p</option><option value="2048x1152">2K</option></select></label>
+            <label>输出帧率<select id="a9-fps" class="avs-select"><option value="24">24 FPS</option><option value="48">48 FPS</option><option value="60">60 FPS</option></select></label>
+            <label>声音<select id="a9-audio" class="avs-select"><option value="KEEP_PER_SHOT_CUT">保留各镜头声音（硬切）</option><option value="MUTE">静音</option></select></label>
+            <button class="spectrum-Button btn" id="a9-create-queue" type="button">创建/刷新队列</button>
+            <select id="a9-queue-select" class="avs-select" aria-label="长片队列"></select>
+            <button class="spectrum-Button btn ghost" id="a9-refresh-queue" type="button">刷新队列</button>
+            <button class="spectrum-Button btn ghost" id="a9-resume-queue" type="button">检查续跑位置</button>
+            <button class="spectrum-Button btn primary" id="a9-assemble" type="button">装配已完成镜头</button>
+          </div>
+          <div id="a9-queue-status" class="muted small" role="status" aria-live="polite">尚未创建长片队列</div>
+          <video id="a9-result" class="director-result" controls preload="metadata" hidden aria-label="长片装配结果"></video>
+        </section>
       </div>
     </details>
 

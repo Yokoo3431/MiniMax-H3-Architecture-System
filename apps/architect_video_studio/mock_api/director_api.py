@@ -138,7 +138,9 @@ class DirectorAPI:
     def prepare_for_job(self, project_id: str, execution: Mapping[str, Any],
                         prompt: Mapping[str, Any], generation_parameters: Mapping[str, Any],
                         *, runtime_target: str, project: Mapping[str, Any],
-                        references: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+                        references: Mapping[str, Mapping[str, Any]],
+                        continuity_binding: Mapping[str, Any] | None = None
+                        ) -> dict[str, Any]:
         sequence = self._require_sequence(project_id, execution)
         shot = self._find_shot(sequence, str(execution.get("shot_id") or ""))
         expected_revision = execution.get("sequence_revision")
@@ -147,6 +149,22 @@ class DirectorAPI:
         requirement = shot.get("runtime_requirement")
         if requirement not in {"any", runtime_target}:
             raise DirectorTimelineError("DIRECTOR_RUNTIME_REQUIREMENT_MISMATCH")
+        shot = copy.deepcopy(shot)
+        if continuity_binding is not None:
+            if (str(continuity_binding.get("shot_id") or "") != str(shot["shot_id"])
+                    or not str(continuity_binding.get("binding_sha256") or "")):
+                raise DirectorTimelineError("DIRECTOR_LONG_FORM_BINDING_MISMATCH")
+            modes = list(continuity_binding.get("continuity_modes") or [])
+            if "CONTINUE_VISUALLY" in modes:
+                bound_refs = list(prompt.get("reference_bindings") or [])
+                first_frame_ids = [str(item.get("asset_id") or "")
+                                   for item in bound_refs
+                                   if item.get("role") == "first_frame"]
+                if len(first_frame_ids) != 1:
+                    raise DirectorTimelineError(
+                        "DIRECTOR_CONTINUITY_FIRST_FRAME_CONTRACT_UNSUPPORTED")
+                shot["reference_asset_ids"] = [
+                    str(item.get("asset_id") or "") for item in bound_refs]
         guides = list(project.get("guide_frames") or [])
         compiled = compile_shot(
             prompt, shot, generation_parameters,
@@ -164,6 +182,18 @@ class DirectorAPI:
             }),
             "workflow_id": prompt.get("workflow"),
         }
+        if continuity_binding is not None:
+            provenance["long_form_execution"] = {
+                "queue_id": str(continuity_binding.get("queue_id") or ""),
+                "shot_id": str(continuity_binding.get("shot_id") or ""),
+                "ordinal": int(continuity_binding.get("ordinal", -1)),
+                "continuity_modes": list(
+                    continuity_binding.get("continuity_modes") or []),
+                "binding_sha256": str(
+                    continuity_binding.get("binding_sha256") or ""),
+                "reference_bindings": copy.deepcopy(list(
+                    continuity_binding.get("reference_bindings") or [])),
+            }
         return {**compiled, "provenance": provenance, "shot": copy.deepcopy(shot)}
 
     def create_retake(self, project_id: str, shot_id: str,

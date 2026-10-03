@@ -1095,6 +1095,16 @@ input[type=text], select, textarea { padding: 5px 8px; }
 .director-actions select { min-width:220px; }
 .director-compile-preview { max-height:220px; overflow:auto; white-space:pre-wrap; margin:10px 0 0; padding:12px; border:1px solid #3a4d56; border-radius:5px; background:#12181b; color:#d9e1e3; font:12px/1.5 ui-monospace,Consolas,monospace; }
 .director-status { min-height:18px; margin-top:6px; }
+.a9-longform { margin-top:14px; padding:12px; border:1px solid #52636b; border-radius:7px; background:rgba(28,39,43,.72); }
+.a9-longform[hidden] { display:none !important; }
+.a9-longform-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.a9-longform-head strong { font-size:13px; }
+.a9-longform-controls { display:flex; align-items:end; flex-wrap:wrap; gap:8px; }
+.a9-longform-controls label { display:grid; gap:4px; min-width:130px; color:var(--muted); font-size:11px; }
+.a9-longform-controls select { min-height:32px; }
+.a9-longform-controls #a9-queue-select { min-width:190px; }
+#a9-queue-status { min-height:18px; margin-top:9px; overflow-wrap:anywhere; }
+#a9-result { max-width:min(640px,100%); max-height:360px; }
 @media (max-width:900px) {
   .director-shot-grid { grid-template-columns:repeat(2,minmax(120px,1fr)); }
   .director-retake-row { grid-template-columns:1fr 1fr; }

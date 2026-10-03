@@ -40,7 +40,7 @@
     {
       "path": "tests/test_a7_director_timeline.py",
       "tracked_status": "tracked",
-      "sha256": "C415B826612DC4746AC9628B1F583A7913DF15A8B675AADE3BD463C413DFAFD3",
+      "sha256": "3245CC1534ECD65449C149B2FC7C077F41475E493360FB2B2F6F63519DDCBE7C",
       "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
@@ -49,6 +49,13 @@
       "tracked_status": "tracked",
       "sha256": "659FB81C347E22D0FCF2F12BE8A0CBCFBD01E5EB9723130B4AD42205B0088BCB",
       "discovered_test_count": 9,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_a9_long_form.py",
+      "tracked_status": "tracked",
+      "sha256": "0BAC64E6B3719E35E5274990DB2D5F6DD0C69A1E33D4A267C2798229AF1CF766",
+      "discovered_test_count": 20,
       "classification": "CORE_REGRESSION"
     },
     {

@@ -29,6 +29,8 @@ let latestJob = null;
 let capabilities = null;
 let director = null;
 let directorJobs = [];
+let longFormQueues = [];
+let longFormModes = Object.create(null);
 let directorRequestBusy = false;
 let selectedDirectorShotId = null;
 
@@ -114,11 +116,12 @@ async function refreshStudy() {
 }
 
 async function loadAll() {
-  const [detail, c, system, guides, directorState] = await Promise.all([
+  const [detail, c, system, guides, directorState, longFormState] = await Promise.all([
     get(`/api/projects/${projectId}`), get('/api/catalog'),
     get('/api/capabilities').catch(() => null),
     get(`/api/projects/${projectId}/guide-frames`).catch(() => ({guide_frames: [], capabilities: null})),
     get(`/api/projects/${projectId}/director`).catch(() => ({sequence: null})),
+    get(`/api/projects/${projectId}/long-form`).catch(() => ({queues: []})),
   ]);
   capabilities = system?.a4_profiles || null;
   project = detail.project || detail; catalog = c;
@@ -127,6 +130,7 @@ async function loadAll() {
   guideFrames = guides?.guide_frames || [];
   guideCapabilities = guides?.capabilities || null;
   director = directorState?.sequence || null;
+  longFormQueues = longFormState?.queues || [];
   intent = detail.intent || null;
   prompt = detail.prompt || null;
   if (intent && intent.natural_language) document.getElementById('intent-text').value = intent.natural_language;
@@ -296,6 +300,12 @@ function renderDirector() {
       : '';
     const cameraSelect = cameraOptions.map(([id, label]) =>
       `<option value="${id}" ${shot.camera_intent === id ? 'selected' : ''}>${label}</option>`).join('');
+    const continuityMode = longFormModes[shot.shot_id] || 'INDEPENDENT';
+    const continuitySelect = `<select class="avs-select" data-continuity-mode="${esc(shot.shot_id)}" ${locked ? 'disabled' : ''}>
+      <option value="INDEPENDENT" ${continuityMode === 'INDEPENDENT' ? 'selected' : ''}>独立镜头</option>
+      <option value="CONTINUE_VISUALLY" ${continuityMode === 'CONTINUE_VISUALLY' ? 'selected' : ''} ${index === 0 ? 'disabled' : ''}>接续上一镜末帧</option>
+      <option value="LOCK_PROJECT_IDENTITY" ${continuityMode === 'LOCK_PROJECT_IDENTITY' ? 'selected' : ''}>锁定 Study 身份参考</option>
+    </select>`;
     const runtimeState = guideCapabilities?.experimental?.available === true
       && guideCapabilities?.experimental_job_route_enabled === true
       ? '已就绪' : '当前不可用';
@@ -333,6 +343,7 @@ function renderDirector() {
         <label>建筑保持<input class="avs-control" data-field="preservation_intent" value="${esc(shot.preservation_intent || '')}" ${locked ? 'disabled' : ''}></label>
         <label class="wide">声音意图（可选）<input class="avs-control" data-field="audio_intent" value="${esc(shot.audio_intent || '')}" ${locked ? 'disabled' : ''}></label>
         <label>本镜头运行时${runtimeSelect}</label>
+        <label>长片连续策略${continuitySelect}</label>
       </div>
       <div class="director-binding-line"><span>Study 参考 ${refCount}</span><span>时间线引导 ${guideCount}</span><span>Native H3 24 FPS</span><span>摄像机语义 PROMPT_CAMERA_INTENT</span></div>
       <p class="director-runtime-note">${guideCount
@@ -346,6 +357,127 @@ function renderDirector() {
   shotList.innerHTML = cards.join('');
   if (!shots.some((shot) => shot.shot_id === selectedDirectorShotId)) selectedDirectorShotId = shots[0]?.shot_id || null;
   select.innerHTML = shots.map((shot, index) => `<option value="${esc(shot.shot_id)}" ${shot.shot_id === selectedDirectorShotId ? 'selected' : ''}>${String(index + 1).padStart(2, '0')} · ${esc(shot.title || '未命名镜头')}</option>`).join('');
+  const queuePanel = document.getElementById('a9-longform');
+  if (queuePanel) queuePanel.hidden = !sequence;
+  renderLongForm();
+}
+
+function renderLongForm() {
+  const select = document.getElementById('a9-queue-select');
+  const status = document.getElementById('a9-queue-status');
+  if (!select || !status) return;
+  const previous = select.value || '';
+  select.innerHTML = longFormQueues.map((queue) =>
+    `<option value="${esc(queue.queue_id)}">${esc(queue.queue_id)} · ${esc(queue.status || 'PENDING')}</option>`
+  ).join('');
+  if (longFormQueues.some((queue) => queue.queue_id === previous)) select.value = previous;
+  const queue = longFormQueues.find((item) => item.queue_id === select.value);
+  const resumeButton = document.getElementById('a9-resume-queue');
+  const assembleButton = document.getElementById('a9-assemble');
+  const generateButton = document.getElementById('director-generate-btn');
+  if (!queue) {
+    status.textContent = '尚未创建长片队列；逐镜头生成仍由你明确点击，不会后台自动生成。';
+    if (resumeButton) resumeButton.disabled = true;
+    if (assembleButton) assembleButton.disabled = true;
+    if (generateButton) generateButton.textContent = '生成所选镜头';
+    return;
+  }
+  const shotText = (queue.shots || []).map((shot) =>
+    `${Number(shot.ordinal) + 1}:${shot.state}${shot.job_id ? `(${shot.job_id})` : ''}`
+  ).join(' · ');
+  const assembly = queue.assembly || {};
+  status.textContent = `${queue.status} · ${shotText || '无镜头'} · ${queue.target?.width || '—'}×${queue.target?.height || '—'} @ ${queue.target?.fps || '—'} FPS${assembly.error_code ? ` · ${assembly.error_code}` : ''}`;
+  if (resumeButton) resumeButton.disabled = false;
+  if (generateButton) generateButton.textContent = '生成并绑定队列下一镜头';
+  if (assembleButton) assembleButton.disabled = !(queue.shots?.length >= 3
+    && queue.shots.every((shot) => ['RESULT_READY', 'READY'].includes(shot.state)));
+  const video = document.getElementById('a9-result');
+  if (video) {
+    const url = assembly.status === 'READY' ? assembly.media_url : '';
+    video.hidden = !url;
+    if (url && video.getAttribute('src') !== url) video.setAttribute('src', url);
+  }
+}
+
+async function refreshLongFormQueues() {
+  const result = await get(`/api/projects/${projectId}/long-form`);
+  longFormQueues = result.queues || [];
+  renderLongForm();
+  return longFormQueues;
+}
+
+async function createLongFormQueue() {
+  if (!director || directorRequestBusy) return;
+  const status = document.getElementById('a9-queue-status');
+  try {
+    if (!(await saveDirectorSequence())) return;
+    const modes = Object.fromEntries((director.shots || []).map((shot) =>
+      [shot.shot_id, longFormModes[shot.shot_id] || 'INDEPENDENT']));
+    const needsIdentity = Object.values(modes).some((value) =>
+      String(value).includes('LOCK_PROJECT_IDENTITY'));
+    const identities = needsIdentity ? (prompt?.reference_bindings || []).map((item) => ({
+      asset_id: item.asset_id, role: item.role,
+      content_sha256: item.sha256,
+      approval_state: item.approval_state,
+    })) : [];
+    const [width, height] = document.getElementById('a9-resolution').value.split('x').map(Number);
+    const queue = await post(`/api/projects/${projectId}/long-form`, {
+      continuity_modes: modes,
+      project_identity_bindings: identities,
+      target_resolution: {width, height},
+      target_fps: Number(document.getElementById('a9-fps').value),
+      audio_policy: document.getElementById('a9-audio').value,
+      transition_policy: 'CUT',
+    });
+    await refreshLongFormQueues();
+    document.getElementById('a9-queue-select').value = queue.queue_id;
+    renderLongForm();
+    if (status) status.textContent = `${queue.status} · 队列已保存；当前续跑决策不会自动提交生成。`;
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    showErr(friendlyError(error, '长片队列创建失败'));
+  }
+}
+
+async function inspectLongFormResume() {
+  const queueId = document.getElementById('a9-queue-select').value;
+  const status = document.getElementById('a9-queue-status');
+  if (!queueId) return;
+  try {
+    const result = await post(`/api/projects/${projectId}/long-form/${encodeURIComponent(queueId)}/resume`, {});
+    const next = result.resume || {};
+    status.textContent = `续跑建议：${next.action || 'UNKNOWN'}${next.shot_id ? ` · ${next.shot_id}` : ''}${next.job_id ? ` · ${next.job_id}` : ''} · 自动提交：否`;
+    await refreshLongFormQueues();
+  } catch (error) {
+    status.textContent = error.message;
+    showErr(friendlyError(error, '长片续跑状态读取失败'));
+  }
+}
+
+async function assembleLongFormQueue() {
+  const queueId = document.getElementById('a9-queue-select').value;
+  const status = document.getElementById('a9-queue-status');
+  const button = document.getElementById('a9-assemble');
+  if (!queueId || !button || button.disabled) return;
+  button.disabled = true;
+  status.textContent = '正在 CPU 装配已有结果；没有 H3 推理…';
+  try {
+    const result = await post(`/api/projects/${projectId}/long-form/${encodeURIComponent(queueId)}/assemble`, {});
+    await refreshLongFormQueues();
+    const video = document.getElementById('a9-result');
+    if (video && result.assembly?.media_url) {
+      video.src = result.assembly.media_url;
+      video.hidden = false;
+      video.load();
+    }
+    status.textContent = `装配完成 · ${result.assembly?.media?.width}×${result.assembly?.media?.height} · ${result.assembly?.media?.fps} FPS · ${result.assembly?.media?.duration_seconds}s · 仅复用既有 Job`;
+  } catch (error) {
+    status.textContent = error.message;
+    showErr(friendlyError(error, '长片装配失败；现有镜头 Job 未重跑'));
+  } finally {
+    button.disabled = false;
+    renderLongForm();
+  }
 }
 
 async function createDirectorSequence() {
@@ -474,7 +606,7 @@ async function compileDirectorShot() {
   }
 }
 
-async function submitDirectorShot(shot, sequence = director) {
+async function submitDirectorShot(shot, sequence = director, longFormQueueId = '') {
   const seedValue = directorGenerationParameters(shot).seed;
   if (!Number.isInteger(seedValue) || seedValue < 0) throw new Error('Seed 需为非负整数或留空');
   if (!document.getElementById('risk-check').checked) throw new Error('请先确认参考图与生成设置');
@@ -495,6 +627,12 @@ async function submitDirectorShot(shot, sequence = director) {
       shot_id: shot.shot_id,
     },
   };
+  if (longFormQueueId) {
+    request.long_form_execution = {
+      queue_id: longFormQueueId,
+      shot_id: shot.shot_id,
+    };
+  }
   if (runtimeTarget === 'experimental') {
     request.runtime_id = 'experimental-h3-8190';
     request.execution_purpose = 'A7_DIRECTOR_VALIDATION';
@@ -538,14 +676,34 @@ async function preflightDirectorShot() {
 
 async function generateDirectorShot() {
   if (!director || directorRequestBusy) return;
+  const button = document.getElementById('director-generate-btn');
   try {
     if (!(await saveDirectorSequence())) return;
+    directorRequestBusy = true;
+    if (button) button.disabled = true;
     const shot = directorShotById(document.getElementById('director-shot-select').value);
     if (!shot) throw new Error('请先选择一个镜头');
-    const created = await submitDirectorShot(shot);
+    const selectedQueueId = document.getElementById('a9-queue-select')?.value || '';
+    const queue = longFormQueues.find((item) => item.queue_id === selectedQueueId);
+    const queueShot = queue?.shots?.find((item) => item.shot_id === shot.shot_id);
+    let queueId = '';
+    if (queueShot) {
+      if (queueShot.state !== 'PENDING' || queueShot.job_id) {
+        throw new Error('该队列镜头已有任务或正在执行；先刷新队列，不会重复提交。');
+      }
+      queueId = selectedQueueId;
+    }
+    const created = await submitDirectorShot(shot, director, queueId);
     const job = created && (created.job || created);
+    if (job?.id && queueId) {
+      await refreshLongFormQueues();
+    }
     if (job?.id) location.href = `jobs.html?project=${encodeURIComponent(projectId)}&job=${encodeURIComponent(job.id)}`;
   } catch (error) { showErr(friendlyError(error, 'Director 镜头任务提交失败')); }
+  finally {
+    directorRequestBusy = false;
+    if (button) button.disabled = false;
+  }
 }
 
 async function createDirectorRetake(shotId, button) {
@@ -1550,7 +1708,11 @@ function syncDirectorField(event) {
   else shot[input.dataset.field] = input.value;
 }
 document.getElementById('director-shot-list').addEventListener('input', syncDirectorField);
-document.getElementById('director-shot-list').addEventListener('change', syncDirectorField);
+document.getElementById('director-shot-list').addEventListener('change', (event) => {
+  syncDirectorField(event);
+  const mode = event.target.closest('[data-continuity-mode]');
+  if (mode) longFormModes[mode.dataset.continuityMode] = mode.value;
+});
 document.getElementById('director-shot-list').addEventListener('click', (event) => {
   const card = event.target.closest('.director-shot');
   const shotId = card?.dataset.shotId;
@@ -1561,6 +1723,11 @@ document.getElementById('director-shot-list').addEventListener('click', (event) 
   else if (event.target.closest('.director-remove')) removeDirectorShot(shotId);
   else if (event.target.closest('.director-retake')) createDirectorRetake(shotId, event.target.closest('.director-retake'));
 });
+document.getElementById('a9-create-queue').addEventListener('click', createLongFormQueue);
+document.getElementById('a9-refresh-queue').addEventListener('click', () => refreshLongFormQueues().catch((error) => showErr(error.message)));
+document.getElementById('a9-queue-select').addEventListener('change', renderLongForm);
+document.getElementById('a9-resume-queue').addEventListener('click', inspectLongFormResume);
+document.getElementById('a9-assemble').addEventListener('click', assembleLongFormQueue);
 document.getElementById('risk-check').addEventListener('change', updateGate);
 document.getElementById('rename-study-btn').addEventListener('click', async () => {
   const name = window.prompt('Study 名称', project?.name || '');

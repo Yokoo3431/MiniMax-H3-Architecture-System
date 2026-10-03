@@ -349,6 +349,9 @@ class DirectorHTTPAndJobIntegrationTests(unittest.TestCase):
                 self.assertFalse(compile_result["submission_performed"])
                 self.assertEqual(compile_result["director_provenance"]["resolved_frame_count"], 107)
 
+                queue = request_json(
+                    base + f"/api/projects/{project_id}/long-form", "POST", {})
+
                 created = request_json(base + f"/api/projects/{project_id}/jobs", "POST", {
                     "seed": 42, "risk_reviewed": True,
                     "generation_parameters": {
@@ -359,6 +362,9 @@ class DirectorHTTPAndJobIntegrationTests(unittest.TestCase):
                         "sequence_revision": sequence["revision"],
                         "shot_id": shot["shot_id"],
                     },
+                    "long_form_execution": {
+                        "queue_id": queue["queue_id"], "shot_id": shot["shot_id"],
+                    },
                 })
                 job = created.get("job", created)
                 self.assertEqual(job["runtime"], "mock")
@@ -368,6 +374,13 @@ class DirectorHTTPAndJobIntegrationTests(unittest.TestCase):
                 self.assertEqual(job["execution_trace"]["director_execution"][
                     "camera_intent_type"], "PROMPT_CAMERA_INTENT")
                 self.assertEqual(job["submission_state"], "NOT_STARTED")
+                bound_queue = request_json(
+                    base + f"/api/projects/{project_id}/long-form/{queue['queue_id']}")
+                self.assertEqual(bound_queue["shots"][0]["job_id"], job["id"])
+                self.assertEqual(bound_queue["shots"][0]["state"], "PREFLIGHT")
+                self.assertEqual(
+                    job["director_execution"]["long_form_execution"]["queue_id"],
+                    queue["queue_id"])
                 saved = request_json(base + f"/api/projects/{project_id}/director")
                 self.assertEqual(saved["sequence"]["shots"][0]["last_job_id"], job["id"])
                 self.assertEqual(saved["sequence"]["shots"][0][
