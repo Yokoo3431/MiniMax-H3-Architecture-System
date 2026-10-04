@@ -2,6 +2,10 @@
 
 import sys
 import unittest
+import json
+import io
+import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,9 +14,11 @@ sys.path.insert(0, str(ROOT))
 from scripts.owner_acceptance import (  # noqa: E402
     ApiClient,
     build_parser,
+    capture_gate,
     job_evidence,
     redact_prompt_record,
     redact_provider_catalog,
+    safe_evidence_file,
     safe_path,
 )
 
@@ -23,6 +29,37 @@ class OwnerAcceptanceHarnessTests(unittest.TestCase):
         self.assertEqual(value["name"], "renders")
         self.assertNotIn("Owner", value)
         self.assertEqual(len(value["path_sha256"]), 64)
+
+    def test_evidence_file_identity_never_contains_the_path(self):
+        path = r"D:\Users\Owner\Private\synthetic-screen.png"
+        value = safe_evidence_file(path)
+        self.assertEqual(value["provided"], True)
+        self.assertNotIn(path, str(value))
+        self.assertNotIn("Owner", str(value))
+        self.assertEqual(len(value["path_sha256"]), 64)
+
+    def test_evidence_file_absence_stays_absent(self):
+        self.assertIsNone(safe_evidence_file(None))
+
+    def test_capture_gate_redacts_evidence_path_in_persisted_report(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report_root = Path(temp)
+            report_dir = report_root / "synthetic-session"
+            report_dir.mkdir()
+            (report_dir / "session.json").write_text("{}", encoding="utf-8")
+            owner_path = str(report_root / "Owner Data" / "screen.png")
+            args = build_parser().parse_args([
+                "--report-dir", str(report_root), "capture",
+                "--session-id", "synthetic-session", "--gate", "e",
+                "--evidence-file", owner_path,
+            ])
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(capture_gate(args), 0)
+            record = json.loads((report_dir / "gate_e.json").read_text(encoding="utf-8"))
+            self.assertNotIn(owner_path, json.dumps(record))
+            self.assertNotIn("Owner Data", json.dumps(record))
+            self.assertEqual(
+                len(record["evidence"]["owner_evidence_file"]["path_sha256"]), 64)
 
     def test_prompt_redaction_removes_content(self):
         value = redact_prompt_record({

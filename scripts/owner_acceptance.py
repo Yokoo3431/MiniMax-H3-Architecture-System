@@ -69,6 +69,19 @@ def safe_path(path: Any) -> Optional[Dict[str, Any]]:
     return {"name": name, "absolute": is_absolute, "path_sha256": sha256_text(raw)}
 
 
+def safe_evidence_file(path: Any) -> Optional[Dict[str, Any]]:
+    """Persist only a one-way identity for owner-supplied evidence paths."""
+    if not path:
+        return None
+    raw = str(path)
+    try:
+        is_absolute = Path(raw).is_absolute()
+    except (OSError, TypeError, ValueError):
+        is_absolute = False
+    return {"provided": True, "absolute": is_absolute,
+            "path_sha256": sha256_text(raw)}
+
+
 def safe_identifier(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -366,7 +379,7 @@ def capture_gate(args: argparse.Namespace) -> int:
                     "requested_provider": selected,
                     "real_process_observed": bool(args.process_observed),
                     "fallback_used": args.fallback_used,
-                    "owner_evidence_file": args.evidence_file}
+                    "owner_evidence_file": safe_evidence_file(args.evidence_file)}
         verdict = "PASS" if args.process_observed and args.fallback_used is False else "OWNER_ACTION_REQUIRED"
         record = gate_record("A_REAL_CLI_PROVIDER", "select provider, test connection, return evidence",
                              session.get("provider_catalog"), redact_provider_catalog(providers.get("data")), evidence, verdict)
@@ -381,14 +394,15 @@ def capture_gate(args: argparse.Namespace) -> int:
         evidence = {"job_a": job_evidence(first) if first else None, "job_b": job_evidence(second) if second else None,
                     "loaded_job_id": safe_identifier(loaded_id), "loaded_workflow_sha": safe_identifier(loaded_sha),
                     "backend_snapshot_available": bool(data), "return_control_ok": args.return_control_ok,
-                    "webview_capture": args.evidence_file}
+                    "webview_capture": safe_evidence_file(args.evidence_file)}
         verdict = "PASS" if identity and args.return_control_ok is not False else "OWNER_ACTION_REQUIRED"
         record = gate_record("B_NATIVE_COMFY_JOB_SWITCH", "open Job A and Job B workflow in AVS WebView",
                              {"job_a": job_evidence(first) if first else None}, evidence, evidence, verdict)
     elif args.gate == "c":
         eta = estimate_evidence(studio, project_id)
         evidence = {"eta": eta, "numeric_ws_progress": args.numeric_ws_progress,
-                    "unknown_progress_ui": args.unknown_progress_ui, "ui_evidence_file": args.evidence_file}
+                    "unknown_progress_ui": args.unknown_progress_ui,
+                    "ui_evidence_file": safe_evidence_file(args.evidence_file)}
         verdict = "PASS" if eta.get("status") == "PASS" and args.unknown_progress_ui is True else "OWNER_ACTION_REQUIRED"
         record = gate_record("C_PROGRESS_ETA", "change duration, resolution, steps and capture packaged UI",
                              None, eta, evidence, verdict)
@@ -399,19 +413,20 @@ def capture_gate(args: argparse.Namespace) -> int:
         same = bool(expected and persisted and expected["path_sha256"] == persisted.get("path_sha256"))
         evidence = {"selected_directory": expected, "persisted_directory": persisted,
                     "reload_persisted": args.reload_persisted, "native_picker_observed": args.native_picker_observed,
-                    "synthetic_collector": args.synthetic_collector}
+                    "synthetic_collector": args.synthetic_collector,
+                    "owner_evidence_file": safe_evidence_file(args.evidence_file)}
         verdict = "PASS" if same and args.reload_persisted and args.native_picker_observed and args.synthetic_collector else "OWNER_ACTION_REQUIRED"
         record = gate_record("D_FOLDER_PICKER", "select a folder in the native Windows picker",
                              None, current, evidence, verdict)
     elif args.gate == "e":
         evidence = {"keep_outputs": args.keep_outputs, "delete_outputs": args.delete_outputs,
-                    "owner_evidence_file": args.evidence_file}
+                    "owner_evidence_file": safe_evidence_file(args.evidence_file)}
         verdict = "OWNER_ACTION_REQUIRED"
         record = gate_record("E_STUDY_DELETE", "delete two disposable synthetic studies",
                              None, None, evidence, verdict)
     elif args.gate == "f":
         evidence = {"system_browser_opened": args.system_browser_opened,
-                    "owner_evidence_file": args.evidence_file}
+                    "owner_evidence_file": safe_evidence_file(args.evidence_file)}
         verdict = "PASS" if args.system_browser_opened is False else "OWNER_ACTION_REQUIRED"
         record = gate_record("F_SYSTEM_BROWSER", "launch packaged AVS and observe browser processes",
                              None, None, evidence, verdict)
