@@ -585,6 +585,21 @@ class LongFormAssemblySafetyTests(unittest.TestCase):
                     audio_policy="MUTE", output_path=self.output)
         run.assert_not_called()
 
+    def test_assembly_low_disk_reserve_blocks_before_ffmpeg(self):
+        self.assembler.min_free_bytes = 1
+        with patch("runtime.long_form_assembly.shutil.disk_usage",
+                   return_value=SimpleNamespace(free=0)), \
+                patch("runtime.long_form_assembly.subprocess.run") as run:
+            with self.assertRaisesRegex(
+                    LongFormAssemblyError,
+                    "LONG_FORM_INSUFFICIENT_DISK_RESERVE"):
+                self.assembler.assemble(
+                    self.sources, self.probes, width=320, height=180, fps=24,
+                    audio_policy="MUTE", output_path=self.output)
+        run.assert_not_called()
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.output.parent.glob("*.partial.mp4")), [])
+
     def test_media_assembly_rejects_output_overwriting_a_source(self):
         with self.assertRaisesRegex(LongFormAssemblyError, "OUTPUT_MUST_BE_DISTINCT"):
             self.assembler.assemble(

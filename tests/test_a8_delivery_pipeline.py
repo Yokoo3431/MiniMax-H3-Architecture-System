@@ -193,6 +193,20 @@ class A8DeliveryFixture(unittest.TestCase):
         self.assertEqual(self.alignment_calls, 1)
         self.assertEqual(calls["count"], 2)
 
+    def test_low_disk_reserve_blocks_delivery_before_processing(self):
+        with patch("runtime.a8_delivery.shutil.disk_usage",
+                   return_value=SimpleNamespace(free=0)):
+            with self.assertRaisesRegex(
+                    DeliveryError, "DELIVERY_INSUFFICIENT_DISK_RESERVE"):
+                self._create("ULTRA_1080", 48)
+
+        self.assertEqual(self.interpolation_calls, 0)
+        self.assertEqual(self.alignment_calls, 0)
+        self.assertEqual(self.encode_calls, 0)
+        output_root = self.store.job_package_dir(
+            self.project["id"], self.job_id) / "delivery" / "outputs"
+        self.assertEqual(list(output_root.glob("*.mp4")), [])
+
     def test_interpolation_validation_failure_preserves_observed_probe(self):
         original_probe = self.pipeline._probe
 

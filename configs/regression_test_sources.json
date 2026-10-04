@@ -47,15 +47,15 @@
     {
       "path": "tests/test_a8_delivery_pipeline.py",
       "tracked_status": "tracked",
-      "sha256": "D7AB78BE379CFD8B86344D33DF005460564F27E87CA8A0BF1DA30821D9E89B54",
-      "discovered_test_count": 12,
+      "sha256": "E721655109E17F1F224B83962701DDA32A02F766C2C80B8D32F078E1F452B63C",
+      "discovered_test_count": 13,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_a9_long_form.py",
       "tracked_status": "tracked",
-      "sha256": "29E2CC2231C6DC1B5F2EEB5C66F4273D9CE8BB644D00D88BAF3EB5BF8BF51138",
-      "discovered_test_count": 21,
+      "sha256": "E496FFF6B5844A4C7300B33C46D4CCBB8EF9B512EAB70B3FB397308D8AB64C84",
+      "discovered_test_count": 22,
       "classification": "CORE_REGRESSION"
     },
     {
