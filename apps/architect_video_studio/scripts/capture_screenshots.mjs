@@ -1,22 +1,50 @@
-// PATCH2.6-B - capture prototype page screenshots via headless Chrome + CDP.
-// Usage: node capture_screenshots.mjs <base_url> <out_dir> <project_a> <job_a> <project_b>
+// Capture UX screenshots only from an isolated loopback synthetic fixture.
+// Usage: node capture_screenshots.mjs <mock_loopback_url> <out_dir> <fixture-project-a> <fixture-job-a> <fixture-project-b>
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const BASE = process.argv[2] ?? 'http://127.0.0.1:8788';
-const OUT = process.argv[3] ?? 'screenshots';
-const PROJ_A = process.argv[4];
-const JOB_A = process.argv[5];
-const PROJ_B = process.argv[6];
+const [baseArg, outArg, projectAArg, jobAArg, projectBArg] = process.argv.slice(2);
+let BASE;
+let OUT;
+let PROJ_A;
+let JOB_A;
+let PROJ_B;
+try {
+  if (![baseArg, outArg, projectAArg, jobAArg, projectBArg].every(Boolean)) {
+    throw new Error('explicit loopback mock URL, output directory, and fixture IDs are required');
+  }
+  const target = new URL(baseArg);
+  if (target.protocol !== 'http:' ||
+      !['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) ||
+      !target.port || target.port === '8788' || target.username || target.password ||
+      !['', '/'].includes(target.pathname) || target.search || target.hash) {
+    throw new Error('target must be an isolated loopback mock server, not the Studio service');
+  }
+  const fixtureId = /^(?:fixture|synthetic)-[A-Za-z0-9_-]{1,80}$/;
+  if (![projectAArg, jobAArg, projectBArg].every((value) => fixtureId.test(value))) {
+    throw new Error('project and Job identifiers must be synthetic fixture IDs');
+  }
+  BASE = target.origin;
+  OUT = outArg;
+  PROJ_A = projectAArg;
+  JOB_A = jobAArg;
+  PROJ_B = projectBArg;
+} catch (e) {
+  console.error('UNSAFE_SCREENSHOT_TARGET', e.message);
+  process.exit(2);
+}
 const CDP_PORT = 9444;
 
 mkdirSync(OUT, { recursive: true });
-const profileDir = join(tmpdir(), `avs-shot-${Date.now()}`);
+const profileDir = join(tmpdir(), `avs-shot-${randomUUID()}`);
 let chrome = null;
+let browserWs = null;
+let cdp = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -96,12 +124,12 @@ async function open(cdp, url, waitMs = 1800) {
 
 async function main() {
   const version = await launchChrome();
-  const browserWs = await CDP.connect(version.webSocketDebuggerUrl);
+  browserWs = await CDP.connect(version.webSocketDebuggerUrl);
   const { targetId } = await browserWs.send('Target.createTarget', { url: 'about:blank' });
   await sleep(500);
   const targets = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
   const page = targets.find((t) => t.id === targetId) ?? targets.find((t) => t.type === 'page');
-  const cdp = await CDP.connect(page.webSocketDebuggerUrl);
+  cdp = await CDP.connect(page.webSocketDebuggerUrl);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
 
@@ -128,14 +156,32 @@ async function main() {
   await sleep(300);
   await shot(cdp, 'workspace_b_risk_reviewed');
 
-  cdp.close();
-  browserWs.close();
-  chrome.kill();
   console.log('DONE');
+}
+
+async function cleanup() {
+  if (cdp) cdp.close();
+  if (browserWs) browserWs.close();
+  if (chrome && chrome.exitCode === null) {
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 5000);
+      chrome.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      chrome.kill();
+    });
+  }
+  try {
+    // This directory is unique to this invocation and contains only its
+    // temporary Chrome profile/cache; screenshots remain in OUT.
+    rmSync(profileDir, { recursive: true, force: true });
+  } catch (e) {
+    console.error('PROFILE_CLEANUP_FAILED', e?.code ?? 'UNKNOWN');
+  }
 }
 
 main().catch((e) => {
   console.error('CAPTURE_FAILED', e);
-  if (chrome) chrome.kill();
-  process.exit(1);
-});
+  process.exitCode = 1;
+}).finally(cleanup);
