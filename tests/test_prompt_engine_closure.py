@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import unittest
 from unittest import mock
 
+from runtime.a4_profiles import apply_architecture_profile
+from runtime.adapters.golden_workflow_binding import (
+    bind_golden_workflow,
+    canonical_payload_sha256,
+    load_golden_registry,
+)
 from runtime.h3_prompt_engine import (
     CLIReasoningProvider,
     OfflineH3Compiler,
@@ -13,6 +20,41 @@ from runtime.h3_prompt_engine import (
     UniversalPromptEngine,
 )
 from runtime.prompt_provenance import is_current_prompt, prompt_input_hash
+from runtime.reference_contract import required_reference_roles
+
+
+GOLDEN_PROMPT_CORPUS = (
+    {
+        "workflow_id": "01_Exterior_Hero",
+        "camera_motion": "slow_push",
+        "intent": "Create a subtle exterior reveal while preserving building massing and facade openings.",
+        "camera_fragment": "The camera pushes in",
+    },
+    {
+        "workflow_id": "02_Day_Night_Transition",
+        "camera_motion": "static",
+        "intent": "Transition from daylight to night while keeping the architecture and composition unchanged.",
+        "camera_fragment": "The camera holds a static shot",
+    },
+    {
+        "workflow_id": "03_Material_Detail",
+        "camera_motion": "static",
+        "intent": "Show a close material detail without changing the building geometry.",
+        "camera_fragment": "The camera holds a static shot",
+    },
+    {
+        "workflow_id": "04_Drone_Aerial",
+        "camera_motion": "aerial_reveal",
+        "intent": "Reveal the full site from an elevated view while preserving its spatial layout.",
+        "camera_fragment": "The camera rises and reveals the wider site",
+    },
+    {
+        "workflow_id": "05_Slow_Walkthrough",
+        "camera_motion": "walkthrough",
+        "intent": "Move from the interior toward the exterior at a slightly faster controlled pace.",
+        "camera_fragment": "The camera tracks forward",
+    },
+)
 
 
 class PromptEngineClosureTests(unittest.TestCase):
@@ -143,6 +185,79 @@ class PromptEngineClosureTests(unittest.TestCase):
             skill_hash=identity["skill_hash"],
             skill_version=identity["skill_version"],
         ))
+
+    def test_golden_prompt_corpus_is_deterministic_and_matches_execution_binding(self):
+        registry = load_golden_registry()["workflows"]
+        corpus_ids = {case["workflow_id"] for case in GOLDEN_PROMPT_CORPUS}
+        self.assertEqual(corpus_ids, set(registry))
+        compiler = OfflineH3Compiler()
+
+        for case in GOLDEN_PROMPT_CORPUS:
+            workflow_id = case["workflow_id"]
+            entry = registry[workflow_id]
+            roles = required_reference_roles(workflow_id)
+            self.assertEqual(len(roles), entry["required_reference_count"])
+            request = PromptReasoningRequest(
+                mode=entry["mode"],
+                duration=4.0,
+                user_intent=case["intent"],
+                reference_count=len(roles),
+                workflow_id=workflow_id,
+                camera_motion=case["camera_motion"],
+            )
+
+            first = compiler.compile(request)
+            second = compiler.compile(request)
+            self.assertEqual(first["provider"], "OFFLINE_COMPILER", workflow_id)
+            self.assertEqual(first["engine_mode"], "OFFLINE_COMPILER", workflow_id)
+            self.assertTrue(first["validator_result"]["pass"], first)
+            self.assertEqual(first["prompt"], second["prompt"], workflow_id)
+
+            execution_prompt = apply_architecture_profile(
+                first["prompt"], workflow_id)
+            self.assertIn(case["camera_fragment"], execution_prompt, workflow_id)
+            self.assertIn("integrated_multimodal_description:", execution_prompt)
+            self.assertIn("overall_soundscape:", execution_prompt)
+            self.assertIn("non_diegetic_music:", execution_prompt)
+
+            references = [
+                {
+                    "asset_id": f"synthetic-{workflow_id}-{index}",
+                    "project_id": "synthetic-study",
+                    "role": role,
+                    "approval_state": "APPROVED",
+                    "sha256": hashlib.sha256(
+                        f"{workflow_id}:{role}".encode("utf-8")).hexdigest(),
+                    "path_or_ref": f"synthetic-{workflow_id}-{index}.png",
+                }
+                for index, role in enumerate(roles)
+            ]
+            binding_request = {
+                "study_id": "synthetic-study",
+                "reference_assets": references,
+                "generation_parameters": {
+                    "quality": "NATIVE_HIGH", "duration": 4.0,
+                    "fps": 24, "seed": 42,
+                },
+                "prompt_payload": {"prompt": execution_prompt},
+            }
+            bound = bind_golden_workflow(binding_request, workflow_id)
+            generation_nodes = [
+                node for node in bound.values()
+                if node.get("class_type") == "MiniMaxH3ImageToVideo"
+            ]
+            self.assertEqual(len(generation_nodes), 1, workflow_id)
+            self.assertEqual(
+                generation_nodes[0]["inputs"]["prompt"], execution_prompt,
+                workflow_id,
+            )
+
+            second_bound = bind_golden_workflow(binding_request, workflow_id)
+            self.assertEqual(
+                canonical_payload_sha256(bound),
+                canonical_payload_sha256(second_bound),
+                workflow_id,
+            )
 
 
 if __name__ == "__main__":

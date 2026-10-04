@@ -705,8 +705,8 @@
     {
       "path": "tests/test_prompt_engine_closure.py",
       "tracked_status": "tracked",
-      "sha256": "D979BCA90AF5BE695B758623A4E881B56E9BF2C8156578DCC40BFF0E7C754831",
-      "discovered_test_count": 7,
+      "sha256": "C2C534ED6ED27E744FA277F45648AADFEBA3CEAD5A0F1CF02AE8697B398DD26B",
+      "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
     {
