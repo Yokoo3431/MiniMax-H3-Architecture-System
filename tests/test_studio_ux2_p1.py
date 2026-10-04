@@ -30,8 +30,10 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("localStorage", theme)
 
     def test_all_primary_pages_have_shared_shell_and_navigation(self):
+        viewport = '<meta name="viewport" content="width=device-width, initial-scale=1">'
         for name, body_class in PAGES.items():
             source = self.read(name)
+            self.assertIn(viewport, source, name)
             self.assertIn('data-ux2="on"', source, name)
             self.assertIn('js/ux2_shell.js', source, name)
             self.assertIn(f'class="app-shell {body_class}"', source, name)
