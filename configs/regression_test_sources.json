@@ -152,8 +152,8 @@
     {
       "path": "tests/test_comfyui_submission_reconciliation.py",
       "tracked_status": "tracked",
-      "sha256": "82B9725F4448CCB40512EC13784E798C2666F76D4F199E0979732550DEA8F5F0",
-      "discovered_test_count": 10,
+      "sha256": "361D2386C6D0FDBEFA957820A40E7477290B2E8216C87DEAD96A15CE38D24CE4",
+      "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
     {

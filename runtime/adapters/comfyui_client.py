@@ -862,7 +862,8 @@ class ComfyUIClient:
             while time.time() < deadline:
                 try:
                     state = self.get_status(prompt_id)
-                except (ComfyUICommunicationTimeout, ComfyProtocolError):
+                except (ComfyUICommunicationTimeout, ComfyUIOfflineError,
+                        ComfyProtocolError):
                     if on_event is not None:
                         on_event({"type": "syncing", "prompt_id": prompt_id,
                                   "message": "生成中 · 正在同步任务状态"})

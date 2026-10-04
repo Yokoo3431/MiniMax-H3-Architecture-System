@@ -13,6 +13,7 @@ from apps.architect_video_studio.mock_api.store import StudioStore
 from runtime.adapters.comfyui_client import (
     ComfyUIClient,
     ComfyUICommunicationTimeout,
+    ComfyUIOfflineError,
     ComfyUISubmissionUnknown,
 )
 from runtime.a4_2_quality_acceptance import _mark_submission_boundary
@@ -65,6 +66,28 @@ class TestTimeoutPolicies(unittest.TestCase):
                 mock.patch("runtime.adapters.comfyui_client.time.sleep"):
             result = client.wait_completion("p1", timeout_seconds=5, poll_interval=0)
         self.assertEqual(result["status"], "COMPLETED")
+
+    def test_offline_observation_reconnects_same_prompt_without_resubmission(self):
+        client = ComfyUIClient()
+        observed_prompts = []
+
+        def get_status(prompt_id):
+            observed_prompts.append(prompt_id)
+            if len(observed_prompts) == 1:
+                raise ComfyUIOfflineError("ComfyUI temporarily unavailable")
+            return {"status": "COMPLETED", "prompt_id": prompt_id,
+                    "event": {"type": "execution_success"}}
+
+        with mock.patch.object(client, "get_status", side_effect=get_status), \
+                mock.patch.object(client, "submit_workflow") as submit, \
+                mock.patch("runtime.adapters.comfyui_client.time.sleep"):
+            result = client.wait_completion(
+                "persisted-prompt-1", timeout_seconds=5, poll_interval=0)
+
+        self.assertEqual(result["status"], "COMPLETED")
+        self.assertEqual(result["prompt_id"], "persisted-prompt-1")
+        self.assertEqual(observed_prompts, ["persisted-prompt-1"] * 2)
+        submit.assert_not_called()
 
 
 class TestReconciliation(unittest.TestCase):
