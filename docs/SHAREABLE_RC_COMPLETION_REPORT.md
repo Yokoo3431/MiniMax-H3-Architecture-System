@@ -1,5 +1,12 @@
 # Architect Video Studio — Shareable RC Completion Report
 
+> **Historical snapshot only — not a current release approval.** This report
+> describes an earlier RC candidate based on source commit
+> `37525f3d7f4310a1ab233b02ab3e408b966a1c7c`. Subsequent closeout work may
+> change package contents and acceptance status. Do not distribute or describe
+> the artifacts referenced below as the latest release; rebuild and re-verify
+> from the final reviewed commit after all remaining gates pass.
+
 ## INSTALLER
 
 Built a Windows self-extracting installer:
@@ -110,13 +117,14 @@ Validation completed without model loading or inference:
 - canonical regression: `736 run, 698 PASS, 38 expected skips, 0 FAIL`
 - inventory guard: `ADDED 0`, `REMOVED 0`, `SKIP_CHANGED 0`
 - PowerShell installer parser: `PASS`
-- lightweight host probe: RTX 5070, driver `591.86`, managed torch `2.13.0+cu130`, CUDA `13.0`, `torch.cuda.is_available()=true`; policy is `EXPERIMENTAL` for 12-GB-class hardware, while CUDA readiness is `READY`
+- lightweight CUDA host probe passed at the time; machine-specific GPU, driver,
+  and runtime telemetry is intentionally omitted from this shareable report
 - packaged desktop EXE smoke: WebView2 x64 loader, backend health, CoreWebView2 creation, Home navigation, DOM `readyState="complete"`, and taskbar-shell second-launch mutex all `PASS`; startup markers APP-01 through APP-09 are written to the local shell log
 - release package audit: `241 ZIP entries` / `238 manifest payload files`, exactly five production workflows, formal Studio entry present, native WebView2 desktop shell and icon assets present, environment probe and existing-environment discovery source present, no model weights, screenshot scripts, private userdata, or developer-path hits
 
-The clean-install tests use isolated synthetic fixtures and verify runtime adoption, resumable download behavior, checksum rejection, path safety, workflow registration, and setup-to-ready transitions. A physical clean Windows installation has not been executed in this turn because it would perform the authorized external runtime download and installation; the artifact and fixture acceptance harness are ready for owner execution.
+The clean-install tests use isolated synthetic fixtures and verify runtime adoption, resumable download behavior, checksum rejection, path safety, workflow registration, and setup-to-ready transitions. At the time of this historical snapshot, a physical clean Windows installation had not been executed; the artifact and fixture acceptance harness were ready for a later owner test.
 
-## HARDWARE SUPPORT
+## HARDWARE SUPPORT (POLICY AT THE TIME OF THIS SNAPSHOT)
 
 - Supported baseline: NVIDIA CUDA GPU with 24 GB or more VRAM
 - Recommended: 24-GB-class or larger NVIDIA GPU, 64 GB system RAM or more, and ample SSD space
@@ -148,8 +156,10 @@ The package contains application source/configuration and installer logic, not m
 
 No push, tag, release, force-push, or history rewrite was performed. The existing worktree remains preserved for owner review. Public release still requires owner approval of licensing and publication metadata.
 
-## FINAL CLASSIFICATION
+## FINAL CLASSIFICATION (HISTORICAL)
 
-`READY_FOR_OWNER_MANUAL_RC_TEST`
+`HISTORICAL_RC_CANDIDATE_ONLY — NOT CURRENTLY RELEASE-READY`
 
-All non-GPU release work is complete and the downloadable package is built. The next action is owner manual RC testing; GPU product acceptance and public release remain explicitly pending owner authorization.
+The checks and package hashes above are historical evidence for the earlier
+candidate only and do not describe current closeout status. The package must be
+rebuilt from the final reviewed commit before any new distribution.

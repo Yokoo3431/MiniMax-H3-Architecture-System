@@ -66,16 +66,45 @@ Agreement 的适用范围和使用条件约束。两者不是同一许可，也�
 上游许可替代 H3 权重许可。固定下载 revision 与权重清单见
 `models/manifest.json` 和 `configs/installation_manifest.yaml`。
 
-## 4. Python 依赖（运行时使用）
+## 4. Python 依赖（生产运行时）
 
-| 包 | License（常见） | 用途 |
-| --- | --- | --- |
-| torch | BSD-3-Clause | GPU 张量/推理 |
-| safetensors | Apache-2.0 | 模型权重加载（PREAD 后端） |
-| opencv-python | Apache-2.0 | 参考图质量卡 |
-| numpy | BSD-3-Clause | 图像/数值处理 |
-| PyYAML | MIT | 契约/配置解析 |
-| ffmpeg / ffprobe | LGPL/GPL（二进制分发需注意） | 视频探测/封装验证 |
+下表列出当前生产 support-layer manifest 中明确 pin 的包。ComfyUI
+portable archive 内的 PyTorch/CUDA 核心栈按该归档整体固定；其版本及随附
+第三方 notices 应以安装时验证过的官方归档为准，不在此猜测独立 pip 版本。
+
+| 包 | 固定版本 | License / 许可说明 | 用途 |
+| --- | --- | --- | --- |
+| `transformers` | `5.8.1` | Apache-2.0 | H3 文本编码器运行支持 |
+| `tokenizers` | `0.22.2` | Apache-2.0 | tokenizer 支持 |
+| `accelerate` | `1.14.0` | Apache-2.0 | H3 模型加载支持 |
+| `safetensors` | `0.8.0` | Apache-2.0 | 安全张量/权重加载 |
+| `numpy` | `2.4.6` | BSD-3-Clause | 数值处理 |
+| `sentencepiece` | `0.2.1` | Apache-2.0 | tokenizer 支持 |
+| `einops` | `0.8.2` | MIT | 张量维度操作 |
+| `Pillow` | `12.2.0` | MIT-CMU | 图像处理 |
+| `opencv-python` | `5.0.0.93` | wrapper 为 MIT；OpenCV 为 Apache-2.0；官方 wheel 内 FFmpeg 为 LGPL-2.1，其他二进制依赖见其 notices | 参考图处理 |
+| `imageio-ffmpeg` | `0.6.0` | Python package 为 BSD-2-Clause；捆绑 FFmpeg 二进制的许可取决于具体构建 | VHS 的隔离 FFmpeg 可执行文件 |
+| `comfy-kitchen` | `0.2.16` | Apache-2.0 | ComfyUI 原生 H3 支持层依赖 |
+
+版本来源：`configs/support_layer_manifest.yaml`。上游许可证声明参考：
+[transformers](https://github.com/huggingface/transformers/blob/main/LICENSE)、
+[tokenizers](https://github.com/huggingface/tokenizers)、
+[accelerate](https://github.com/huggingface/accelerate/blob/main/LICENSE)、
+[safetensors](https://github.com/safetensors/safetensors/blob/main/LICENSE)、
+[NumPy](https://github.com/numpy/numpy/blob/main/LICENSE.txt)、
+[SentencePiece](https://github.com/google/sentencepiece/blob/master/LICENSE)、
+[einops](https://github.com/arogozhnikov/einops/blob/main/LICENSE)、
+[Pillow](https://github.com/python-pillow/Pillow/blob/main/LICENSE)、
+[opencv-python 与 wheel notices](https://github.com/opencv/opencv-python#licensing)、
+[imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg/blob/main/LICENSE)、
+[comfy-kitchen](https://github.com/Comfy-Org/comfy-kitchen/blob/main/LICENSE)。
+以上为上游项目声明页，不是本产品的法律意见；具体分发仍须随实际 pinned
+artifact 核验其附带 notices。该清单不代表第三方许可证已由本项目重新授权。
+
+`torch`、`torchvision`、`torchaudio`、CUDA runtime 与 ComfyUI core 属于冻结的
+portable runtime；安装器按官方 ComfyUI 归档 SHA-256 校验，不单独升级或替换。
+`PyYAML` 不属于上述 production support-layer manifest 的显式 pin，故不在此
+列为产品固定版本。
 
 ## 5. VideoHelperSuite
 
@@ -104,6 +133,25 @@ requirement explicit rather than silently assuming a global binary.
 These frontend assets are vendored for local/offline desktop use. AVS uses the
 components only as presentation primitives; they do not own Study, Job,
 engine, provider, or generation state.
+
+The vendored Tabler selection has no verified upstream release/commit identifier
+in the repository history. To make the shipped bytes auditable without inventing
+an upstream pin, the current local files are identified by SHA-256:
+
+| File | SHA-256 |
+| --- | --- |
+| `briefcase.svg` | `FFE1DBC475B4B75D3AFDF2B42CBD672816CEFF6658E5B6E52987DDA21D57720B` |
+| `copy.svg` | `AAA6BAEC777F05DFCBB72F8B59931E70E129CAAF3B0AF4648DB26E4A236B7B14` |
+| `dots.svg` | `B59959AF13CDEB1E633636AF444EEDC4D812B8CABFBCA4A18681E5DCD415C1B6` |
+| `file-description.svg` | `54FB97979D8FBC94D28E7EEF6A3E9A694B2433C728616FC541FD7C4A1DB3F867` |
+| `home.svg` | `54176A0A2409D90B00CCBFDEE27339E7A58C8169E895870C4E486962B38C1111` |
+| `photo.svg` | `8ADEDF6F2C24C68ABFC109260ED8AE5C6B45F09DFB5A4B68DBBA2305D7B8D6FB` |
+| `player-play.svg` | `99974097AE153BEA9D2802B5DDBCA914B01475382B180245EE26C61DE4E58579` |
+| `plus.svg` | `B87F14E060FD74BC2B008D609063F35BF4DE523AAFA17C06FDCC300F99775EE8` |
+| `refresh.svg` | `A7E271B87F67044F879939281AEE9E9B1157880AF06080F75FE7A1D3FC6D93C8` |
+| `settings.svg` | `FE17A5A8B646678A39EC9D8969C10B37EC75F43F75DA541DB906CC54A49FA1C6` |
+| `trash.svg` | `3622D02D66EFE5CF7BCABC48D4F0643781887055681344DB003FAC9127DE0896` |
+| `LICENSE` | `DBFA6CFF2E8426878267C6719FF68DCD8BC3DADAFFB2207F5C46CE939C4BECD3` |
 ## 6.1 Adobe Spectrum CSS
 
 | Component | License | Source / version | Included files |
