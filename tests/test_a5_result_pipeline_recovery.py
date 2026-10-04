@@ -576,6 +576,23 @@ class TestResultRecovery(unittest.TestCase):
             self.assertEqual(hashlib.sha256(package_video.read_bytes()).hexdigest(),
                              original_hash)
 
+            # A non-empty but corrupted package must not be mistaken for a
+            # valid Result. Recovery may rebuild it only from the exact,
+            # already-associated runtime artifact; no generation is retried.
+            package_video.write_bytes(b"corrupted-package-media")
+            project_id, job = harness.store.find_job(harness.job_id)
+            job["final_output_path"] = ""
+            job["output_path"] = ""
+            harness.store.save_jobs(project_id, {harness.job_id: job})
+            self.assertIsNone(harness.output_api._package_video_path(project_id, job))
+            self.assertIsNone(harness.output_api._job_media_path(project_id, job))
+            repaired_corrupt_package = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(repaired_corrupt_package["id"], completed["id"])
+            self.assertEqual(hashlib.sha256(package_video.read_bytes()).hexdigest(),
+                             original_hash)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+
     def test_completed_package_without_stage_event_gets_one_reconciled_pass(self):
         with RecoveryHarness() as harness:
             harness.jobs.recover_result(harness.job_id)
@@ -700,20 +717,28 @@ class TestResultRecovery(unittest.TestCase):
 
     def test_packaging_failure_recovers_from_same_runtime_file_without_history_retry(self):
         harness = RecoveryHarness()
-        original = harness.output_api.build_real_output_package
+        import shutil
+
+        original_copy = shutil.copy2
         attempts = 0
 
-        def fail_once(*args, **kwargs):
+        def fail_after_partial_copy_once(source, destination, *args, **kwargs):
             nonlocal attempts
-            attempts += 1
-            if attempts == 1:
-                raise OSError("synthetic packaging failure")
-            return original(*args, **kwargs)
+            destination = Path(destination)
+            if destination.name.startswith(".video.") and destination.suffix == ".partial":
+                attempts += 1
+                if attempts == 1:
+                    destination.write_bytes(b"synthetic partial media")
+                    raise OSError(28, "No space left on device")
+            return original_copy(source, destination, *args, **kwargs)
 
         try:
-            harness.output_api.build_real_output_package = fail_once
-            with self.assertRaisesRegex(OSError, "synthetic packaging"):
-                harness.jobs.recover_result(harness.job_id)
+            package = harness.store.job_package_dir(
+                harness.project_id, harness.job_id)
+            with patch("shutil.copy2", side_effect=fail_after_partial_copy_once):
+                with self.assertRaisesRegex(OSError, "No space left on device"):
+                    harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(list((package / "output").glob(".video.*.partial")), [])
             failed = harness.store.find_job(harness.job_id)[1]
             self.assertEqual(failed["state"], "FAILED")
             self.assertEqual(failed["result_pipeline"]["current_stage"], "RECOVERY")

@@ -38,6 +38,7 @@ class OutputAPI:
         self.experimental_video_probe_python = experimental_video_probe_python
         self.delivery_pipeline = DeliveryPipeline(
             store=store, runtime_paths=runtime_paths)
+        self._verified_media_digests: dict[tuple[str, int, int, str], bool] = {}
 
     def list_deliveries(self, job_id: str) -> Dict[str, Any]:
         """List only Job-bound A8 delivery derivatives; native Result is unchanged."""
@@ -374,11 +375,18 @@ class OutputAPI:
         packaged_video = package / "output" / "video.mp4"
         if video_path.resolve() != packaged_video.resolve():
             staged_video = package / "output" / f".video.{uuid.uuid4().hex}.partial"
-            shutil.copy2(video_path, staged_video)
-            if staged_video.stat().st_size != video_path.stat().st_size:
+            try:
+                shutil.copy2(video_path, staged_video)
+                if staged_video.stat().st_size != video_path.stat().st_size:
+                    raise ValueError(
+                        "PACKAGING_COPY_FAILURE: media size verification failed")
+                os.replace(staged_video, packaged_video)
+            finally:
+                # Disk exhaustion and interrupted copies must not leave a
+                # potentially very large partial artifact behind.  Successful
+                # os.replace removes the staging path, so this is safe after
+                # both success and failure.
                 staged_video.unlink(missing_ok=True)
-                raise ValueError("PACKAGING_COPY_FAILURE: media size verification failed")
-            os.replace(staged_video, packaged_video)
         if sha256_file(packaged_video) != media_sha256:
             raise ValueError("PACKAGING_COPY_FAILURE: media hash verification failed")
 
@@ -577,12 +585,8 @@ class OutputAPI:
                             job: Dict[str, Any]) -> Path | None:
         """Return a packaged MP4 only from the matching Job package."""
         package = self._package_dir_for_job(project_id, job)
-        report_path = package / "report" / "generation_report.json"
-        try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-        if not self._report_matches_job(report, job):
+        report = self._matching_package_report(project_id, job, package)
+        if report is None:
             return None
         output_root = (package / "output").resolve()
         candidate = (output_root / "video.mp4").resolve()
@@ -590,9 +594,48 @@ class OutputAPI:
             candidate.relative_to(output_root)
         except ValueError:
             return None
-        if candidate.is_file() and candidate.stat().st_size > 0:
-            return candidate
-        return None
+        try:
+            if not candidate.is_file() or candidate.stat().st_size <= 0:
+                return None
+        except OSError:
+            return None
+        # New packages carry a content digest. A present but malformed or
+        # mismatching digest makes the artifact untrusted; old packages without
+        # this field retain their existing identity-only compatibility path.
+        if ("media_sha256" in report
+                and not self._media_matches_digest(
+                    candidate, report.get("media_sha256"))):
+            return None
+        return candidate
+
+    def _matching_package_report(self, project_id: str, job: Dict[str, Any],
+                                 package: Path | None = None) -> dict | None:
+        package = package or self._package_dir_for_job(project_id, job)
+        report_path = package / "report" / "generation_report.json"
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return report if self._report_matches_job(report, job) else None
+
+    def _media_matches_digest(self, path: Path, expected: Any) -> bool:
+        digest = str(expected or "").lower()
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            return False
+        try:
+            resolved = Path(path).resolve()
+            stat = resolved.stat()
+            key = (str(resolved), int(stat.st_size), int(stat.st_mtime_ns), digest)
+            if self._verified_media_digests.get(key):
+                return True
+            valid = stat.st_size > 0 and sha256_file(resolved).lower() == digest
+        except OSError:
+            return False
+        if valid:
+            if len(self._verified_media_digests) >= 128:
+                self._verified_media_digests.clear()
+            self._verified_media_digests[key] = True
+        return valid
 
     def _job_media_path(self, project_id: str,
                         job: Dict[str, Any]) -> Path | None:
@@ -603,19 +646,34 @@ class OutputAPI:
             (package / "output").resolve(),
             self.store.output_directory(project).resolve(),
         ]
+        package_output_root = roots[0]
+        package_report = self._matching_package_report(project_id, job, package)
+        reported_digest = (package_report.get("media_sha256")
+                           if package_report is not None
+                           and "media_sha256" in package_report else None)
+        package_video = self._package_video_path(project_id, job)
         candidates = []
         for value in (job.get("final_output_path"), job.get("output_path")):
             if value:
                 candidates.append(Path(value).resolve())
-        package_video = self._package_video_path(project_id, job)
         if package_video is not None:
             candidates.append(package_video)
         for candidate in candidates:
             if candidate.suffix.lower() != ".mp4" or not candidate.is_file():
                 continue
-            if any(self._is_within(candidate, root) for root in roots):
-                if candidate.stat().st_size > 0:
+            if self._is_within(candidate, package_output_root):
+                # Job path fields may point directly into the package. Do not
+                # let them bypass the package report's content integrity gate.
+                if package_video is not None and candidate == package_video:
                     return candidate
+                continue
+            if self._is_within(candidate, roots[1]):
+                if candidate.stat().st_size <= 0:
+                    continue
+                if (reported_digest is not None
+                        and not self._media_matches_digest(candidate, reported_digest)):
+                    continue
+                return candidate
         return None
 
     @staticmethod

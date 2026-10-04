@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -240,6 +241,14 @@ class TestOutputManifestProbeWiring(unittest.TestCase):
             (package / "output").mkdir(parents=True)
             media = package / "output" / "video.mp4"
             media.write_bytes(b"fixture")
+            (package / "report").mkdir(parents=True, exist_ok=True)
+            (package / "report" / "generation_report.json").write_text(
+                json.dumps({
+                    "job_id": "job-exp-retry",
+                    "status": "COMPLETED",
+                    "media_sha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+                }),
+                encoding="utf-8")
             job = {
                 "id": "job-exp-retry", "runtime": "native",
                 "runtime_target": "experimental", "state": "COMPLETED",
