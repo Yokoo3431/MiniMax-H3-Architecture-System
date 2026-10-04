@@ -6,7 +6,10 @@ userdata / logs + README + models manifest consistency.
 """
 
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -87,6 +90,57 @@ class TestDistributionLayout(unittest.TestCase):
     def test_runtime_and_userdata_writable_areas(self):
         self.assertTrue((DIST / "userdata").is_dir())
         self.assertTrue((DIST / "logs").is_dir())
+
+    def test_uninstaller_is_packaged_and_plan_preserves_user_data(self):
+        script = SYSTEM_ROOT / "installer" / "Uninstall.ps1"
+        self.assertTrue(script.is_file())
+        uninstaller = script.read_text(encoding="utf-8")
+        builder = (SYSTEM_ROOT / "release" / "build_shareable_release.py").read_text(encoding="utf-8")
+        setup = (SYSTEM_ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        self.assertIn('"installer/Uninstall.ps1"', builder)
+        self.assertIn("installer\\Uninstall.ps1", setup)
+        cleanup_mode = uninstaller.split("if ($CleanupOnly) {", 1)[1].split("\nif (-not (Test-PathWithin", 1)[0]
+        self.assertLess(cleanup_mode.index("Remove-ManagedEntry"), cleanup_mode.index("Remove-Registration"))
+
+        powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+        with tempfile.TemporaryDirectory(prefix="avs-uninstall-contract-") as temp:
+            root = Path(temp)
+            (root / "launcher").mkdir(parents=True)
+            (root / "launcher" / "launcher.py").write_text("fixture", encoding="utf-8")
+            (root / "userdata" / "projects").mkdir(parents=True)
+            (root / "userdata" / "projects" / "keep.json").write_text("{}", encoding="utf-8")
+            (root / "Models" / "diffusion_models").mkdir(parents=True)
+            (root / "Models" / "diffusion_models" / "keep.bin").write_bytes(b"fixture")
+            (root / "models_env.path").write_text(str(root / "Models"), encoding="utf-8")
+            (root / "app-owned.txt").write_text("remove", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                 str(script), "-InstallRoot", str(root), "-PlanOnly"],
+                cwd=SYSTEM_ROOT, capture_output=True, text=True, timeout=15,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            report = json.loads(result.stdout.strip().splitlines()[-1])
+            self.assertEqual(report["status"], "PLAN_ONLY")
+            self.assertTrue(report["user_data_preserved"])
+            self.assertTrue(any(item.casefold() == "models" for item in report["preserved_roots"]))
+            self.assertGreater(report["app_entries_to_remove"], 0)
+            self.assertFalse(report["absolute_paths_emitted"])
+            self.assertNotIn(str(root), result.stdout)
+            self.assertTrue((root / "userdata" / "projects" / "keep.json").is_file())
+            self.assertTrue((root / "Models" / "diffusion_models" / "keep.bin").is_file())
+
+            cleanup = subprocess.run(
+                [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                 str(script), "-InstallRoot", str(root), "-CleanupOnly", "-TestFixture"],
+                cwd=SYSTEM_ROOT, capture_output=True, text=True, timeout=15,
+            )
+            self.assertEqual(cleanup.returncode, 0, cleanup.stderr or cleanup.stdout)
+            self.assertFalse((root / "app-owned.txt").exists())
+            self.assertTrue((root / "userdata" / "projects" / "keep.json").is_file())
+            self.assertTrue((root / "Models" / "diffusion_models" / "keep.bin").is_file())
 
 
 if __name__ == "__main__":

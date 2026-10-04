@@ -489,7 +489,12 @@ function Register-WindowsApplication([string]$InstallRoot, [string]$Version = "0
     Set-ItemProperty -Path $uninstall -Name 'Publisher' -Value 'Architect Video Studio'
     Set-ItemProperty -Path $uninstall -Name 'InstallLocation' -Value $InstallRoot
     Set-ItemProperty -Path $uninstall -Name 'DisplayIcon' -Value $exe
-    Set-ItemProperty -Path $uninstall -Name 'UninstallString' -Value (Join-Path $InstallRoot 'Uninstall.exe')
+    $uninstaller = Join-Path $InstallRoot 'installer\Uninstall.ps1'
+    $powershell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path -LiteralPath $powershell)) { $powershell = 'powershell.exe' }
+    $uninstallCommand = '"{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}" -InstallRoot "{2}"' -f `
+        $powershell, $uninstaller, $InstallRoot
+    Set-ItemProperty -Path $uninstall -Name 'UninstallString' -Value $uninstallCommand
     Write-Host "Registered Architect Video Studio in Start Menu and Installed apps."
 }
 

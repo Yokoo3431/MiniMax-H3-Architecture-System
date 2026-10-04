@@ -467,8 +467,8 @@
     {
       "path": "tests/test_patch28c_distribution.py",
       "tracked_status": "tracked",
-      "sha256": "169274D27BE050D95ED5CF9AF33ED5F4A9CEB5C25A12DEE294BDDE9771673D23",
-      "discovered_test_count": 10,
+      "sha256": "D427D9FE855932A6D139348A80B7BB8D0C3EC190CEDC6B34451902350B3E44E5",
+      "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
     {

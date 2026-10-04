@@ -55,6 +55,7 @@ HARDENING_FILES = (
     "patches/support_layers/minimax_h3_nvfp4_native_loader.patch",
     "patches/support_layers/minimax_h3_production_windows.patch",
     "scripts/reconcile_h3_runtime_unification.py",
+    "installer/Uninstall.ps1",
 )
 EXCLUDED_PARTS = {
     ".git", "__pycache__", "userdata", "Logs", "logs", "screenshots",

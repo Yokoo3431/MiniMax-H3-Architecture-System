@@ -367,6 +367,51 @@ internal static class SetupLauncher
                 BeginInvoke((Action)(() => AppendLog(args.Data)));
         }
 
+        private static void DeleteTemporaryTreeWithoutFollowingLinks(string path)
+        {
+            foreach (var entry in Directory.EnumerateFileSystemEntries(path))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    if ((attributes & FileAttributes.Directory) != 0) Directory.Delete(entry, false);
+                    else File.Delete(entry);
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    DeleteTemporaryTreeWithoutFollowingLinks(entry);
+                    Directory.Delete(entry, false);
+                }
+                else
+                {
+                    File.Delete(entry);
+                }
+            }
+            Directory.Delete(path, false);
+        }
+
+        private static void CleanupSetupPayload(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path)) return;
+            var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var tempPath = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var directory = new DirectoryInfo(fullPath);
+            const string prefix = "ArchitectVideoStudio-";
+            Guid ignored;
+            if (directory.Parent == null ||
+                !String.Equals(Path.GetFullPath(directory.Parent.FullName).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    tempPath, StringComparison.OrdinalIgnoreCase) ||
+                !directory.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                !Guid.TryParseExact(directory.Name.Substring(prefix.Length), "N", out ignored) ||
+                !directory.Exists || (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException("Refusing to clean a setup folder outside its generated temporary location.");
+            }
+            DeleteTemporaryTreeWithoutFollowingLinks(fullPath);
+        }
+
         private void ProcessExited(object sender, EventArgs args)
         {
             if (IsDisposed) return;
@@ -380,6 +425,20 @@ internal static class SetupLauncher
                 if (code == 0)
                 {
                     RememberInstallRoot(pathBox.Text.Trim().Trim('"'));
+                    try
+                    {
+                        if (!String.IsNullOrWhiteSpace(workRoot) && Directory.Exists(workRoot))
+                        {
+                            CleanupSetupPayload(workRoot);
+                            AppendLog("Temporary setup payload cleaned.");
+                        }
+                    }
+                    catch
+                    {
+                        // A successful install must not be reported as failed
+                        // just because Windows temporarily holds a setup file.
+                        AppendLog("Temporary setup files could not be fully cleaned; the application installed successfully.");
+                    }
                     status.Text = "Installation complete";
                     AppendLog("Setup complete. Environment Center is launching without a console window.");
                     closeTimer = new System.Windows.Forms.Timer { Interval = 1200 };
