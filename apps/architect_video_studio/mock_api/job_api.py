@@ -578,6 +578,16 @@ class JobAPI:
         if prompt.get("a4_profile") and prompt_bindings != selected_bindings:
             raise ValueError(
                 "REFERENCE_PROMPT_MISMATCH: 参考图角色或审批身份已变化，请重新生成 Prompt。")
+        # Study state is authoritative for current intent, approved
+        # references, profile and pinned Skill identity. Enforce that same
+        # freshness gate here: a saved USER_CONFIRM state can outlive a local
+        # Skill-bundle change without an intent mutation. Run it after the
+        # more specific workflow/profile/reference identity gates so those
+        # diagnostics remain actionable.
+        study = build_study_state(self.store, project_id)
+        if not study.get("prompt_current"):
+            raise ValueError(
+                "PROMPT_STALE: 当前提示词与意图、参考图或 Skill 版本不一致，请重新编译。")
 
         continuity_binding = None
         execution_project = project

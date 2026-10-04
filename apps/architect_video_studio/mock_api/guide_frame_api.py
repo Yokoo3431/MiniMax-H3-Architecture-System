@@ -12,7 +12,7 @@ from runtime.reference_contract import ref2va_schema_capabilities
 from runtime.adapters.ref2va_workflow_binding import REF2VA_MODEL
 from runtime.multiframe_guides import (
     GUIDE_ROLE, GuideFrameError, NATIVE_H3_FPS, ROUNDING_POLICY,
-    resolve_guide_bindings,
+    compile_timeline_guide_prompt, resolve_guide_bindings,
 )
 
 
@@ -255,7 +255,7 @@ class GuideFrameAPI:
                     "native_generation_fps": NATIVE_H3_FPS,
                     "rounding_policy": ROUNDING_POLICY,
                     "guides": self._public_rows(project.get("guide_frames") or [], refs)}
-        return {
+        result = {
             "valid": True,
             "target_frame_count": int(target_count),
             "native_generation_fps": NATIVE_H3_FPS,
@@ -267,6 +267,24 @@ class GuideFrameAPI:
                 "source_identity", "comfy_filename")}
                 for guide in bindings],
         }
+        prompt = self.store.load_prompt(project_id)
+        if bindings and prompt:
+            from .study_state import build_study_state
+
+            if build_study_state(self.store, project_id).get("prompt_current"):
+                compiled = compile_timeline_guide_prompt(
+                    str(prompt.get("prompt") or ""), bindings,
+                    fps=NATIVE_H3_FPS)
+                result.update({
+                    "execution_prompt_preview": compiled["prompt"],
+                    "execution_prompt_sha256": compiled[
+                        "execution_prompt_sha256"],
+                    "source_prompt_hash": prompt.get("prompt_hash"),
+                    "guide_prompt_compilation": {
+                        key: value for key, value in compiled.items()
+                        if key != "prompt"},
+                })
+        return result
 
     def _save(self, project_id: str, project: dict, rows: list[dict], event: str) -> None:
         for ordinal, row in enumerate(rows, start=1):

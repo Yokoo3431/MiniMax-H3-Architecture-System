@@ -348,6 +348,11 @@ class DirectorHTTPAndJobIntegrationTests(unittest.TestCase):
                     })
                 self.assertFalse(compile_result["submission_performed"])
                 self.assertEqual(compile_result["director_provenance"]["resolved_frame_count"], 107)
+                self.assertEqual(compile_result["execution_prompt"],
+                                 compile_result["compiled_prompt"])
+                self.assertEqual(compile_result["source_prompt_hash"],
+                                 server.apis["prompt"].store.load_prompt(
+                                     project_id)["prompt_hash"])
 
                 queue = request_json(
                     base + f"/api/projects/{project_id}/long-form", "POST", {})
@@ -369,6 +374,8 @@ class DirectorHTTPAndJobIntegrationTests(unittest.TestCase):
                 job = created.get("job", created)
                 self.assertEqual(job["runtime"], "mock")
                 self.assertEqual(job["director_execution"]["shot_id"], shot["shot_id"])
+                self.assertEqual(job["prompt_snapshot"]["prompt"],
+                                 compile_result["execution_prompt"])
                 self.assertIn("Director shot:", job["prompt_snapshot"]["prompt"])
                 self.assertIn("Timeline:", job["prompt_snapshot"]["prompt"])
                 self.assertEqual(job["execution_trace"]["director_execution"][

@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import struct
 import tempfile
 import unittest
+import zlib
 from types import SimpleNamespace
 from pathlib import Path
 import sys
@@ -12,8 +14,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from apps.architect_video_studio.mock_api.guide_frame_api import GuideFrameAPI
+from apps.architect_video_studio.mock_api.intent_api import IntentAPI
 from apps.architect_video_studio.mock_api.job_api import JobAPI
 from apps.architect_video_studio.mock_api.project_api import ProjectAPI
+from apps.architect_video_studio.mock_api.prompt_api import PromptAPI
 from apps.architect_video_studio.mock_api.reference_api import ReferenceAPI
 from apps.architect_video_studio.mock_api.server import _experimental_io_isolated
 from apps.architect_video_studio.mock_api.store import StudioStore
@@ -36,6 +40,18 @@ ADD_GUIDE_INFO = {
                      "audio_vae": ["VAE"], "audio": ["AUDIO"]},
     },
 }
+
+
+def _tiny_png_base64(color: tuple[int, int, int]) -> str:
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        payload = struct.pack(">I", len(data)) + tag + data
+        return payload + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    scanline = b"\x00" + bytes(color)
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+           + chunk(b"IDAT", zlib.compress(scanline)) + chunk(b"IEND", b""))
+    return base64.b64encode(png).decode("ascii")
 
 
 class MultiFrameGuideTests(unittest.TestCase):
@@ -228,12 +244,19 @@ class MultiFrameGuideTests(unittest.TestCase):
             project = ProjectAPI(store).create_project("Guide Contract Study")
             project_id = project["id"]
             ref_api = ReferenceAPI(store)
+            ref_api.upload_and_approve(
+                project_id, "endpoint.png", role="first_frame",
+                data_base64=_tiny_png_base64((255, 0, 0)))
+            state_before_guide = store.load_project(project_id)["state"]
             result = ref_api.upload_and_approve(
                 project_id, "guide.png", role="timeline_guide",
-                data_base64=base64.b64encode(b"single approved guide image").decode())
+                data_base64=_tiny_png_base64((0, 255, 0)))
             self.assertEqual(result["reference"]["state"], "APPROVED")
-            self.assertEqual(result["project"]["state"], "CREATED")
-            self.assertFalse(result["selected_reference_asset_ids"])
+            self.assertEqual(result["project"]["state"], state_before_guide)
+            self.assertNotIn("timeline_guide", result["selected_reference_asset_ids"])
+            IntentAPI(store).analyze_intent(
+                project_id, "做一个建筑外观主视角展示视频")
+            prompt = PromptAPI(store).generate_prompt(project_id)
             guide_api = GuideFrameAPI(store)
             added = guide_api.add(project_id, result["reference"]["id"], 1.5)
             self.assertEqual(len(added["guide_frames"]), 1)
@@ -244,13 +267,24 @@ class MultiFrameGuideTests(unittest.TestCase):
             self.assertTrue(resolved["valid"])
             self.assertEqual(resolved["target_frame_count"], 107)
             self.assertEqual(resolved["guides"][0]["resolved_frame_idx"], 36)
+            expected_execution_prompt = compile_timeline_guide_prompt(
+                prompt["prompt"], resolved["guides"], fps=24)
+            self.assertEqual(resolved["execution_prompt_preview"],
+                             expected_execution_prompt["prompt"])
+            self.assertIn("frame 36", resolved["execution_prompt_preview"])
+            self.assertEqual(resolved["execution_prompt_sha256"],
+                             hashlib.sha256(resolved[
+                                 "execution_prompt_preview"].encode("utf-8")).hexdigest())
+            self.assertEqual(resolved["source_prompt_hash"], prompt["prompt_hash"])
+            self.assertNotIn(str(store.input_dir(project_id)),
+                             json.dumps(resolved))
 
             second = ref_api.upload_and_approve(
                 project_id, "guide-2.png", role="timeline_guide",
-                data_base64=base64.b64encode(b"second approved guide image").decode())
+                data_base64=_tiny_png_base64((0, 0, 255)))
             third = ref_api.upload_and_approve(
                 project_id, "guide-3.png", role="timeline_guide",
-                data_base64=base64.b64encode(b"third approved guide image").decode())
+                data_base64=_tiny_png_base64((255, 255, 0)))
             guide_api.add(project_id, second["reference"]["id"], 2.5)
             guide_api.add(project_id, third["reference"]["id"], 3.0)
             guide_api.remove(project_id, added["guide_frames"][0]["guide_id"])

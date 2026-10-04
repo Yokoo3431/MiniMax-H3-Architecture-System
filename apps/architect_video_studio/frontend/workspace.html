@@ -70,6 +70,7 @@
             <button class="spectrum-Button btn ghost" id="director-preflight-btn" type="button">仅预检（不生成）</button>
             <button class="spectrum-Button btn primary" id="director-generate-btn" type="button">生成所选镜头</button>
           </div>
+          <div id="director-preview-label" class="muted small" hidden>本镜头实际执行 Prompt（未提交任务）</div>
           <pre id="director-compile-preview" class="director-compile-preview" hidden></pre>
           <div id="director-status" class="muted small" role="status" aria-live="polite"></div>
         </div>
@@ -148,6 +149,11 @@
             </div>
             <div id="guide-list" class="guide-list" aria-live="polite"></div>
             <div id="guide-validation" class="guide-validation muted small">尚未添加引导帧。</div>
+            <details id="guide-execution-prompt-preview" class="guide-execution-prompt-preview" hidden>
+              <summary>查看实际执行 Prompt（含分镜时间条件）</summary>
+              <div id="guide-execution-prompt-meta" class="muted small"></div>
+              <pre id="guide-execution-prompt-text" class="prompt"></pre>
+            </details>
             <p class="guide-runtime-status muted small">时间点是期望的分镜切换位置；H3 可能提前或延后显现目标视角，不代表可精确控制的连续镜头轨迹。</p>
           </section>
           <details class="control-section reference-section a6-reference-board" id="a6-reference-board">
@@ -212,7 +218,7 @@
                       <label class="check-row small"><input type="checkbox" id="prompt-image-consent"> 本次允许将参考图发送给选定 AI 服务</label>
                       <button class="spectrum-Button btn ghost full" id="analyze-btn" type="button">重新生成优化提示词</button>
                       <div id="prompt-skill-card" class="prompt-skill-card" style="display:none"></div>
-                      <details id="prompt-details" class="prompt-details" style="display:none"><summary>查看优化提示词</summary>
+                      <details id="prompt-details" class="prompt-details" style="display:none"><summary>查看基础优化 Prompt（Director 镜头会另行编译）</summary>
                         <div id="prompt-detail-content"></div>
                       </details>
           </details>

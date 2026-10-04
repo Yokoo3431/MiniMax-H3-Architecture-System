@@ -251,6 +251,7 @@ function newDirectorShot(title = '新镜头') {
 }
 
 function renderDirector() {
+  invalidateDirectorPreview();
   const sequence = director;
   const summary = document.getElementById('director-summary-state');
   const createButton = document.getElementById('director-create-btn');
@@ -360,6 +361,16 @@ function renderDirector() {
   const queuePanel = document.getElementById('a9-longform');
   if (queuePanel) queuePanel.hidden = !sequence;
   renderLongForm();
+}
+
+function invalidateDirectorPreview() {
+  const preview = document.getElementById('director-compile-preview');
+  const label = document.getElementById('director-preview-label');
+  if (preview) {
+    preview.hidden = true;
+    preview.textContent = '';
+  }
+  if (label) label.hidden = true;
 }
 
 function renderLongForm() {
@@ -610,6 +621,7 @@ async function compileDirectorShot() {
   const shot = directorShotById(shotId);
   if (!shot) return;
   if (!shot.last_job_id && !(await saveDirectorSequence())) return;
+  invalidateDirectorPreview();
   const preview = document.getElementById('director-compile-preview');
   const status = document.getElementById('director-status');
   try {
@@ -618,9 +630,20 @@ async function compileDirectorShot() {
       shot_id: shot.shot_id,
       generation_parameters: directorGenerationParameters(shot),
     });
-    preview.textContent = result.compiled_prompt;
+    if (!study?.prompt_current || !prompt?.prompt_hash
+        || result.source_prompt_hash !== prompt.prompt_hash
+        || result.sequence_id !== director.sequence_id
+        || Number(result.sequence_revision) !== Number(director.revision)
+        || shot.shot_id !== document.getElementById('director-shot-select').value) {
+      throw new Error('DIRECTOR_PREVIEW_STALE: 当前分镜或 Prompt 已变化，请重新编译。');
+    }
+    preview.textContent = result.execution_prompt || result.compiled_prompt;
     preview.hidden = false;
-    status.textContent = `编译通过 · ${result.director_provenance.resolved_frame_count} 帧 · ${result.director_provenance.effective_duration_seconds}s · Prompt SHA ${result.prompt_sha256.slice(0, 12)}… · 未提交任务`;
+    document.getElementById('director-preview-label').hidden = false;
+    preview.dataset.sourcePromptHash = result.source_prompt_hash || '';
+    preview.dataset.sequenceRevision = String(result.sequence_revision);
+    preview.dataset.shotId = shot.shot_id;
+    status.textContent = `编译通过 · ${result.director_provenance.resolved_frame_count} 帧 · ${result.director_provenance.effective_duration_seconds}s · 执行 Prompt SHA ${(result.execution_prompt_sha256 || result.prompt_sha256).slice(0, 12)}… · 未提交任务`;
   } catch (error) {
     status.textContent = error.message;
     showErr(friendlyError(error, '分镜编译预览失败'));
@@ -1057,6 +1080,9 @@ function previewPending(file) {
 }
 
 function renderGuideFrames() {
+  // Any rerender can follow a timeline, duration, workflow or prompt change;
+  // never leave a Director preview visible across a changed execution contract.
+  invalidateDirectorPreview();
   const runtime = document.getElementById('guide-runtime-status');
   const production = guideCapabilities?.production;
   const experimental = guideCapabilities?.experimental;
@@ -1151,6 +1177,29 @@ function renderGuideFrames() {
     validation.textContent = `${guideFrames.length} 个引导帧通过静态时间线校验 · 目标 ${guideResolution.target_frame_count} 帧 · 原生 24 FPS · ${guideResolution.rounding_policy}`;
     validation.dataset.state = 'ready';
   }
+  renderGuideExecutionPromptPreview();
+}
+
+function renderGuideExecutionPromptPreview() {
+  const panel = document.getElementById('guide-execution-prompt-preview');
+  const text = document.getElementById('guide-execution-prompt-text');
+  const meta = document.getElementById('guide-execution-prompt-meta');
+  if (!panel || !text || !meta) return;
+  const compiled = guideResolution?.execution_prompt_preview;
+  const sourceHash = String(guideResolution?.source_prompt_hash || '').toLowerCase();
+  const promptHash = String(prompt?.prompt_hash || '').toLowerCase();
+  const fresh = !!(guideFrames.length && guideResolution?.valid
+    && study?.prompt_current && prompt?.verified?.pass
+    && promptHash && sourceHash && promptHash === sourceHash
+    && prompt.workflow === currentWorkflow());
+  panel.hidden = !fresh || typeof compiled !== 'string';
+  if (!fresh || typeof compiled !== 'string') {
+    text.textContent = '';
+    meta.textContent = '';
+    return;
+  }
+  text.textContent = compiled;
+  meta.textContent = `${guideFrames.length} 个 guide · 帧 ${(guideResolution.guides || []).map((item) => item.resolved_frame_idx).join(', ')} · 执行 Prompt SHA ${guideResolution.execution_prompt_sha256}`;
 }
 
 async function refreshGuideResolution() {
@@ -1311,7 +1360,12 @@ async function uploadRolePending(role) {
 function renderPrompt() {
   const card = document.getElementById('prompt-skill-card');
   const details = document.getElementById('prompt-details');
-  if (!prompt) { card.style.display = 'none'; details.style.display = 'none'; return; }
+  if (!prompt) {
+    card.style.display = 'none'; details.style.display = 'none';
+    renderGuideExecutionPromptPreview();
+    invalidateDirectorPreview();
+    return;
+  }
   const mode = prompt.engine_mode || 'OFFLINE_COMPILER';
   const reasoning = (mode === 'TEXT_REASONING_H3' || mode === 'MULTIMODAL_H3')
     && prompt.skill_invoked === true && prompt.invocation_result === 'PASS';
@@ -1337,6 +1391,8 @@ function renderPrompt() {
     <div class="prompt-detail-row"><span>Prompt Engine</span><span class="mono small">${esc(`${mode} · ${prompt.provider || '—'}${prompt.model ? ` · ${prompt.model}` : ''}`)}</span></div>
     <div class="prompt-detail-row"><span>Skill specification</span><span>${esc(prompt.skill_source || '—')} · ${esc(prompt.skill_version || '—')}</span></div>
     <div class="prompt-detail-row"><span>更新时间</span><span>${esc(prompt.completed_at || prompt.generated_at || '—')}</span></div>`;
+  renderGuideExecutionPromptPreview();
+  invalidateDirectorPreview();
 }
 
 async function refreshPrompt() {
@@ -1367,6 +1423,7 @@ async function refreshPrompt() {
     if (requestSerial !== promptRequestSerial) return;
     [project, study] = await Promise.all([get(`/api/projects/${projectId}`), refreshStudy()]);
     clearErr(); renderPrompt(); renderHeader(); updateGate();
+    if (guideFrames.length) await refreshGuideResolution();
   } catch (e) {
     if (requestSerial === promptRequestSerial) {
       prompt = {status: 'FAILED', skill_invoked: false, invocation_result: 'FAILED',
@@ -1718,15 +1775,18 @@ document.getElementById('director-generate-btn').addEventListener('click', gener
 document.getElementById('director-preflight-btn').addEventListener('click', preflightDirectorShot);
 document.getElementById('director-title').addEventListener('input', (event) => {
   if (director) director.title = event.target.value;
+  invalidateDirectorPreview();
 });
 document.getElementById('director-shot-select').addEventListener('change', (event) => {
   selectedDirectorShotId = event.target.value;
+  invalidateDirectorPreview();
 });
 function syncDirectorField(event) {
   const card = event.target.closest('.director-shot');
   const shot = card && directorShotById(card.dataset.shotId);
   const input = event.target.closest('[data-field]');
   if (!shot || !input || shot.last_job_id) return;
+  invalidateDirectorPreview();
   if (input.dataset.field === 'duration_seconds') shot.duration_seconds = Number(input.value);
   else if (input.dataset.field === 'quality') shot.generation_settings.quality = input.value;
   else shot[input.dataset.field] = input.value;

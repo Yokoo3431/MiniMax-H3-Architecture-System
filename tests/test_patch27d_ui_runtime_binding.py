@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 import zlib
+from unittest import mock
 from pathlib import Path
 
 SYSTEM_ROOT = Path(__file__).resolve().parent.parent
@@ -137,6 +138,24 @@ class Harness:
 
 
 class TestApiContract(unittest.TestCase):
+    def test_job_api_rejects_prompt_that_study_marks_stale_after_skill_change(self):
+        h = Harness()
+        try:
+            pid = h.full_project()
+            changed_skill = {
+                "skill_hash": "F" * 64,
+                "version": "changed-skill-fixture",
+            }
+            with mock.patch("runtime.h3_prompt_engine.official_skill_bundle",
+                            return_value=changed_skill):
+                self.assertFalse(build_study_state(h.store, pid)["prompt_current"])
+                with self.assertRaisesRegex(ValueError, "PROMPT_STALE"):
+                    h.job_api.submit_job(pid, risk_reviewed=True)
+            self.assertEqual(h.store.load_jobs(pid), {})
+            self.assertIsNone(h.adapter.last_request)
+        finally:
+            h.close()
+
     def test_study_marks_prompt_stale_when_skill_bundle_identity_changes_or_is_missing(self):
         h = Harness()
         try:

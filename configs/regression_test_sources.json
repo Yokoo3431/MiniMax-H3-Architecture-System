@@ -40,7 +40,7 @@
     {
       "path": "tests/test_a7_director_timeline.py",
       "tracked_status": "tracked",
-      "sha256": "3245CC1534ECD65449C149B2FC7C077F41475E493360FB2B2F6F63519DDCBE7C",
+      "sha256": "B1CDAF11440378B034143F37ED03E2217AFFB6515AB5F88872E84CB4050B8208",
       "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
@@ -348,7 +348,7 @@
     {
       "path": "tests/test_multiframe_guides.py",
       "tracked_status": "tracked",
-      "sha256": "C1D95BA552FF2070E02BFDB9C0D294E28738F89AFF5EBA9B8162785E9B319E29",
+      "sha256": "EDF0EE109377802246BE0FAC50B48A80C7B5A418B848F7DB582C4002F2D856BC",
       "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
     },
@@ -453,8 +453,8 @@
     {
       "path": "tests/test_patch27d_ui_runtime_binding.py",
       "tracked_status": "tracked",
-      "sha256": "C8F5DC7A93B6B83768D0414C3392CF2CEB14E9FC58129FC9A8091B7F4E6CF82E",
-      "discovered_test_count": 16,
+      "sha256": "D5AC0020C02CFFB5028705379AEEE25EC0C3D13AD624B79F530859C18A96FDEB",
+      "discovered_test_count": 17,
       "classification": "CORE_REGRESSION"
     },
     {

@@ -12,6 +12,9 @@ from runtime.director_timeline import (
     CAMERA_INTENT_LABELS, DirectorTimelineError, compile_shot,
     normalize_sequence, new_shot, stable_sha256,
 )
+from runtime.multiframe_guides import (
+    NATIVE_H3_FPS, compile_timeline_guide_prompt, resolve_guide_bindings,
+)
 
 
 class DirectorAPI:
@@ -123,11 +126,26 @@ class DirectorAPI:
             prompt, shot, params, workflow_id=str(prompt.get("workflow") or ""),
             project_id=project_id, references=refs,
             guide_frames=list(project.get("guide_frames") or []))
+        guide_bindings = resolve_guide_bindings(
+            project_id, project.get("guide_frames") or [], refs,
+            target_frame_count=int(compiled["generation_parameters"]["frame_count"]),
+            fps=NATIVE_H3_FPS, workflow_id=str(prompt.get("workflow") or ""),
+            reference_root=self.store.input_dir(project_id))
+        execution_prompt = compile_timeline_guide_prompt(
+            str(compiled["prompt"].get("prompt") or ""), guide_bindings,
+            fps=NATIVE_H3_FPS)
         return {
             "sequence_id": sequence["sequence_id"],
             "sequence_revision": sequence["revision"],
             "shot": copy.deepcopy(shot),
             "compiled_prompt": compiled["prompt"].get("prompt"),
+            "execution_prompt": execution_prompt["prompt"],
+            "execution_prompt_sha256": execution_prompt[
+                "execution_prompt_sha256"],
+            "source_prompt_hash": prompt.get("prompt_hash"),
+            "guide_prompt_compilation": {
+                key: value for key, value in execution_prompt.items()
+                if key != "prompt"},
             "compiled_fragment": compiled["compiled_fragment"],
             "prompt_sha256": compiled["prompt"].get("prompt_hash"),
             "director_provenance": compiled["provenance"],

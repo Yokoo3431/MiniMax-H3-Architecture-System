@@ -687,6 +687,9 @@ pre.prompt {
 .guide-runtime-status, .guide-validation { padding:8px 10px; border:1px solid var(--line, #39434c); border-radius:6px; line-height:1.45; }
 .guide-runtime-status[data-state="ready"] { color:#9bd9b1; border-color:#37674a; }
 .guide-runtime-status[data-state="unavailable"], .guide-validation[data-state="invalid"] { color:#f2bd82; border-color:#76532f; }
+.guide-execution-prompt-preview { border:1px solid var(--line, #39434c); border-radius:6px; padding:8px 10px; min-width:0; }
+.guide-execution-prompt-preview > summary { cursor:pointer; }
+.guide-execution-prompt-preview pre { max-height:220px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; margin:8px 0 0; }
 .guide-add-row { display:grid; gap:6px; }
 .guide-add-row input, .guide-add-row select { min-width:0; }
 .guide-upload-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
