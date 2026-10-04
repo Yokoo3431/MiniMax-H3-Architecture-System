@@ -117,6 +117,7 @@ class Harness:
         path = self.root / "runtime.zip"
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("ComfyUI/main.py", "# fixture ComfyUI\n")
+            zf.writestr("ComfyUI/comfyui_version.py", '__version__ = "0.33.1"\n')
             zf.writestr("python_embeded/python.exe", "fixture python\n")
         return path.read_bytes()
 
@@ -299,9 +300,43 @@ class TestInstallerPlanning(unittest.TestCase):
         (self.h.native / "ComfyUI" / "custom_nodes" / "windows_safe_load").mkdir(parents=True)
         (self.h.native / "ComfyUI" / "main.py").parent.mkdir(parents=True, exist_ok=True)
         (self.h.native / "ComfyUI" / "main.py").write_text("main", encoding="utf-8")
+        (self.h.native / "ComfyUI" / "comfyui_version.py").write_text('__version__ = "0.33.1"\n', encoding="utf-8")
         plan = self.h.service.build_install_plan(native_root=str(self.h.native), verify_existing=False)
         runtime = next(x for x in plan["components"] if x["component_id"] == "comfyui_runtime")
         self.assertEqual(runtime["status"], "READY")
+
+    def test_unversioned_runtime_is_rejected_and_preserved(self):
+        comfy = self.h.native / "ComfyUI"
+        (comfy / "custom_nodes" / "windows_safe_load").mkdir(parents=True)
+        (comfy / "main.py").write_text("unknown runtime fixture", encoding="utf-8")
+        main_before = (comfy / "main.py").read_bytes()
+        state = self.h.service._runtime_state(self.h.native)
+        self.assertEqual(state["status"], "FAILED")
+        self.assertEqual(state["code"], "INCOMPATIBLE_RUNTIME")
+        with self.assertRaises(InstallerError) as ctx:
+            self.h.service.start_install({"confirmed": True, "native_root": str(self.h.native), "components": ["comfyui_runtime"]})
+        self.assertEqual(ctx.exception.code, "INCOMPATIBLE_RUNTIME")
+        self.assertEqual((comfy / "main.py").read_bytes(), main_before)
+        self.assertEqual(self.h.opener.ranges, [])
+
+    def test_runtime_marker_cannot_override_source_version(self):
+        comfy = self.h.native / "ComfyUI"
+        comfy.mkdir(parents=True)
+        (comfy / "main.py").write_text("runtime", encoding="utf-8")
+        (comfy / "comfyui_version.py").write_text('__version__ = "0.34.0"\n', encoding="utf-8")
+        (self.h.native / "runtime_version.json").write_text(json.dumps({"comfyui": "0.33.1"}), encoding="utf-8")
+        state = self.h.service._runtime_state(self.h.native)
+        self.assertEqual(state["status"], "FAILED")
+        self.assertEqual(state["code"], "INCOMPATIBLE_RUNTIME")
+
+    def test_runtime_marker_without_source_version_is_unverified(self):
+        comfy = self.h.native / "ComfyUI"
+        (comfy / "custom_nodes" / "windows_safe_load").mkdir(parents=True)
+        (comfy / "main.py").write_text("runtime", encoding="utf-8")
+        (self.h.native / "runtime_version.json").write_text(json.dumps({"comfyui": "0.33.1"}), encoding="utf-8")
+        state = self.h.service._runtime_state(self.h.native)
+        self.assertEqual(state["status"], "FAILED")
+        self.assertEqual(state["code"], "INCOMPATIBLE_RUNTIME")
 
     def test_incompatible_runtime_not_modified(self):
         (self.h.native / "ComfyUI").mkdir(parents=True)
@@ -444,6 +479,7 @@ class TestInstallerExecutionAndIntegration(unittest.TestCase):
         (self.h.native / "ComfyUI" / "custom_nodes" / "windows_safe_load").mkdir(parents=True)
         (self.h.native / "ComfyUI" / "main.py").parent.mkdir(parents=True, exist_ok=True)
         (self.h.native / "ComfyUI" / "main.py").write_text("existing", encoding="utf-8")
+        (self.h.native / "ComfyUI" / "comfyui_version.py").write_text('__version__ = "0.33.1"\n', encoding="utf-8")
         plan = self.h.service.build_install_plan(native_root=str(self.h.native), verify_existing=False)
         self.assertEqual(next(x for x in plan["components"] if x["component_id"] == "comfyui_runtime")["status"], "READY")
         self.assertEqual(self.h.opener.ranges, [])
@@ -476,6 +512,7 @@ class TestInstallerExecutionAndIntegration(unittest.TestCase):
         (self.h.native / "ComfyUI" / "custom_nodes" / "windows_safe_load").mkdir(parents=True)
         (self.h.native / "ComfyUI" / "main.py").parent.mkdir(parents=True, exist_ok=True)
         (self.h.native / "ComfyUI" / "main.py").write_text("ready", encoding="utf-8")
+        (self.h.native / "ComfyUI" / "comfyui_version.py").write_text('__version__ = "0.33.1"\n', encoding="utf-8")
         before = (self.h.native / "ComfyUI" / "main.py").read_bytes()
         plan = self.h.service.build_install_plan(native_root=str(self.h.native), verify_existing=False)
         self.assertEqual(next(x for x in plan["components"] if x["component_id"] == "comfyui_runtime")["status"], "READY")

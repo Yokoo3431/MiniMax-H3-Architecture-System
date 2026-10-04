@@ -37,10 +37,24 @@ function Test-RuntimeLayout([string]$Root) {
 function Test-RuntimeCompatibility([string]$Root, [string]$ExpectedVersion) {
     if (-not (Test-RuntimeLayout $Root)) { return $false }
     $versionFile = Join-Path $Root "runtime_version.json"
-    if (-not (Test-Path -LiteralPath $versionFile)) { return $true }
+    if (Test-Path -LiteralPath $versionFile) {
+        try {
+            $version = Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json
+            if ([string]$version.comfyui -ne [string]$ExpectedVersion) { return $false }
+        } catch {
+            return $false
+        }
+    }
+
+    # Never adopt a runtime based only on its directory layout. The marker can
+    # be absent on manually supplied runtimes, so independently verify the
+    # pinned ComfyUI source version before considering it compatible.
+    $sourceVersionFile = Join-Path $Root "ComfyUI\comfyui_version.py"
+    if (-not (Test-Path -LiteralPath $sourceVersionFile)) { return $false }
     try {
-        $version = Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json
-        return ([string]$version.comfyui -eq [string]$ExpectedVersion)
+        $source = Get-Content -LiteralPath $sourceVersionFile -Raw
+        $match = [regex]::Match($source, '__version__\s*=\s*["'']([^"'']+)["'']')
+        return $match.Success -and ([string]$match.Groups[1].Value -eq [string]$ExpectedVersion)
     } catch {
         return $false
     }
@@ -352,6 +366,10 @@ function Ensure-Runtime($Config, [string]$InstallRoot, [string]$Cache) {
     $runtime = Join-Path $InstallRoot "ArchitectVideoStudio_Runtime"
     if (Test-RuntimeCompatibility $runtime $Config.runtime.version) { return $runtime }
 
+    if (Test-Path -LiteralPath $runtime) {
+        throw "The runtime at the selected install target cannot be proven to match the pinned ComfyUI version. It was preserved; choose a clean install folder or verify the runtime first."
+    }
+
     $existing = Find-ExistingRuntime $InstallRoot $Config.runtime.version
     if ($existing) {
         Write-Host "Using existing compatible ComfyUI Runtime: $existing"
@@ -377,8 +395,11 @@ function Ensure-Runtime($Config, [string]$InstallRoot, [string]$Cache) {
                        (Test-Path (Join-Path $_.FullName "ComfyUI\main.py")) } |
         Select-Object -First 1
     if (-not $candidate) { throw "The runtime archive has no embedded Python layout." }
+    if (-not (Test-RuntimeCompatibility $candidate.FullName $Config.runtime.version)) {
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+        throw "The pinned runtime archive did not expose the expected ComfyUI source version. Staging files were removed."
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $runtime) | Out-Null
-    if (Test-Path -LiteralPath $runtime) { Remove-Item -LiteralPath $runtime -Recurse -Force }
     Move-Item -LiteralPath $candidate.FullName -Destination $runtime
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 

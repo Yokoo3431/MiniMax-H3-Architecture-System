@@ -324,18 +324,44 @@ class InstallationService:
         main = root / "ComfyUI" / "main.py"
         shim = root / "ComfyUI" / "custom_nodes" / "windows_safe_load"
         marker = root / "runtime_version.json"
+        expected_version = str(self.manifest()["runtime"]["comfyui"]["version"])
         version = None
         if marker.is_file():
             try:
                 version = json.loads(marker.read_text(encoding="utf-8")).get("comfyui")
             except Exception:
                 version = "UNVERIFIED"
-        if version and version != str(self.manifest()["runtime"]["comfyui"]["version"]):
+        if version is not None and version != expected_version:
             return {"status": "FAILED", "code": "INCOMPATIBLE_RUNTIME", "version": version}
+        if not main.is_file():
+            return {"status": "NOT_INSTALLED", "code": "NOT_INSTALLED", "version": version}
+
+        source_version = None
+        version_file = root / "ComfyUI" / "comfyui_version.py"
+        try:
+            source = version_file.read_text(encoding="utf-8")
+            match = re.search(r"__version__\s*=\s*[\"']([^\"']+)[\"']", source)
+            source_version = match.group(1) if match else None
+        except OSError:
+            source_version = None
+
+        # The generated installer marker is useful provenance, but is not a
+        # substitute for checking the runtime's own pinned source version.
+        if source_version != expected_version:
+            return {
+                "status": "FAILED", "code": "INCOMPATIBLE_RUNTIME",
+                "version": source_version or "UNVERIFIED",
+            }
         if main.is_file() and (shim.is_dir() or pread_compatible(root, os.environ)):
-            return {"status": "READY", "code": "READY", "version": version or "UNVERIFIED"}
-        if main.is_file() and not (shim.is_dir() or pread_compatible(root, os.environ)):
-            return {"status": "FAILED", "code": "INCOMPATIBLE_RUNTIME", "version": version or "UNVERIFIED"}
+            return {
+                "status": "READY", "code": "READY", "version": expected_version,
+                "version_source": (
+                    "runtime_version.json+comfyui_version.py"
+                    if version is not None else "comfyui_version.py"
+                ),
+            }
+        if main.is_file():
+            return {"status": "FAILED", "code": "INCOMPATIBLE_RUNTIME", "version": expected_version}
         return {"status": "NOT_INSTALLED", "code": "NOT_INSTALLED", "version": version}
 
     def _model_state(self, path: Path, meta: dict, verify: bool = True) -> dict:

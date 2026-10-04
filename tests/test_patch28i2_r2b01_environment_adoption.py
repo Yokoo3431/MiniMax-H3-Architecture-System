@@ -34,6 +34,7 @@ def _native(root: Path, support: bool = True) -> Path:
     (root / "python_embeded" / "python.exe").write_bytes(b"fixture")
     (root / "ComfyUI" / "main.py").parent.mkdir(parents=True, exist_ok=True)
     (root / "ComfyUI" / "main.py").write_text("main", encoding="utf-8")
+    (root / "ComfyUI" / "comfyui_version.py").write_text('__version__ = "0.33.1"\n', encoding="utf-8")
     custom = root / "ComfyUI" / "custom_nodes"
     (custom / "windows_safe_load").mkdir(parents=True, exist_ok=True)
     if support:
