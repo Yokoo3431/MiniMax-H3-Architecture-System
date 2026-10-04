@@ -210,12 +210,12 @@ class TestInstallerPlanning(unittest.TestCase):
         self.assertNotIn(r"C:\\Users", str(service._extractor or ""))
 
     def test_process_cache_environment_is_scoped_and_project_local(self):
-        base = {"TEMP": r"C:\\Users\\Pondsi\\AppData\\Local\\Temp",
-                "TMP": r"C:\\Users\\Pondsi\\AppData\\Local\\Temp",
+        base = {"TEMP": r"C:\\Users\\FixtureUser\\AppData\\Local\\Temp",
+                "TMP": r"C:\\Users\\FixtureUser\\AppData\\Local\\Temp",
                 "PIP_CACHE_DIR": "old-pip", "HF_HOME": "old-hf",
                 "HF_HUB_CACHE": "old-hub", "KEEP": "yes"}
         env = process_environment(SYSTEM_ROOT, base)
-        self.assertEqual(base["TEMP"], r"C:\\Users\\Pondsi\\AppData\\Local\\Temp")
+        self.assertEqual(base["TEMP"], r"C:\\Users\\FixtureUser\\AppData\\Local\\Temp")
         for key in ("TEMP", "TMP", "PIP_CACHE_DIR", "HF_HOME", "HF_HUB_CACHE"):
             self.assertTrue(env[key].startswith(str(SYSTEM_ROOT)))
         self.assertEqual(env["KEEP"], "yes")
