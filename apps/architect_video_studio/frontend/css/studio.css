@@ -1342,6 +1342,12 @@ sl-details::part(content) { padding: 0 10px 10px; }
 .app-output #delivery-form select { min-height: 34px; }
 .app-output .delivery-record { margin: 8px 0; padding: 10px; }
 .app-output #delivery-preview-meta { overflow-wrap: anywhere; }
+.app-output #output-technical-details,
+.app-output #record,
+.app-output #record .intent-card { min-width: 0; }
+.app-output #record .kv > span { min-width: 0; overflow-wrap: anywhere; }
+.app-output #record pre { max-width: 100%; overflow-x: auto; }
+.app-output .pkg-tree { max-width: 100%; overflow-wrap: anywhere; }
 
 @media (max-width: 760px) {
   .app-output .delivery-workspace { grid-template-columns: minmax(0, 1fr); }

@@ -39,8 +39,13 @@
         <div id="params" class="mt"></div>
       </div>
       <div class="panel">
-        <h3>生成记录</h3>
-        <div id="record" class="small"></div>
+        <h3>生成摘要</h3>
+        <details id="output-technical-details" class="mt">
+          <summary>生成记录与技术详情（可选）</summary>
+          <div id="record" class="small mt"></div>
+          <h4>输出文件组织</h4>
+          <div class="pkg-tree" id="pkg-tree"></div>
+        </details>
       </div>
     </div>
     <section class="panel mt" aria-labelledby="delivery-heading">
@@ -80,10 +85,6 @@
         </div>
       </div>
     </section>
-    <div class="panel mt">
-      <h3>Output Package 结构</h3>
-      <div class="pkg-tree" id="pkg-tree"></div>
-    </div>
   </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>

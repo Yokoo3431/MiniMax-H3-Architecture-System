@@ -545,6 +545,10 @@ body.app-shell {
   .app-shell .app-nav a { padding-inline: 6px; }
   .app-shell .app-nav a .avs-icon { display: none; }
   .app-shell .avs-theme-toggle { order: 3; }
+  .app-study .app-header { height: auto; min-height: 48px; flex-wrap: wrap; }
+  .app-study .app-header > .spacer { display: none; }
+  .app-study .study-header-context { min-width: 0; }
+  .app-study .app-header .app-nav { max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }

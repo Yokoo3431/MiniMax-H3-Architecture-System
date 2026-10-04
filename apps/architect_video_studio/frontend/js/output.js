@@ -64,6 +64,27 @@ function deliveryDescription(item) {
   return `${resolution} · ${item.delivery_fps} fps · ${methods}${alignment}`;
 }
 
+function deliveryFailureMessage(error) {
+  const raw = typeof error === 'string' ? error : (error && error.message ? String(error.message) : '');
+  if (raw.includes('DELIVERY_RUNTIME_IDENTITY_INCOMPLETE')) {
+    return '缺少可验证的运行环境信息，暂时无法生成交付副本；原生视频仍可正常查看。';
+  }
+  if (raw.includes('DELIVERY_IDENTITY_MISMATCH') || raw.includes('DELIVERY_SOURCE_IDENTITY_UNPROVEN')) {
+    return '无法确认交付视频与原任务对应，已安全停止处理；原生视频不受影响。';
+  }
+  if (/FFMPEG|ffmpeg/i.test(raw)) {
+    return '本机视频处理组件暂不可用，交付副本未生成；原生视频不受影响。';
+  }
+  return '交付记录暂不可用；原生视频仍可正常查看，请稍后重试。';
+}
+
+function deliveryItemFailureMessage(code) {
+  if (code === 'DELIVERY_RUNTIME_IDENTITY_INCOMPLETE') return '运行环境信息不足，暂不可处理';
+  if (code === 'DELIVERY_IDENTITY_MISMATCH' || code === 'DELIVERY_SOURCE_IDENTITY_UNPROVEN') return '来源校验未通过，已停止处理';
+  if (code && /FFMPEG/i.test(code)) return '本机视频处理组件暂不可用';
+  return code ? '处理未完成，可稍后重试' : '';
+}
+
 async function loadDeliveries(currentJobId) {
   const list = document.getElementById('delivery-list');
   const form = document.getElementById('delivery-form');
@@ -89,7 +110,7 @@ async function loadDeliveries(currentJobId) {
       const mediaUrl = item.status === 'READY' ? sameOriginMediaUrl(item.media_url) : '';
       const action = mediaUrl
         ? `<div class="row" style="gap:8px;"><button class="btn small ghost" type="button" data-delivery-id="${esc(item.delivery_id)}" data-delivery-url="${esc(mediaUrl)}">预览</button><a class="btn small primary" href="${esc(mediaUrl)}" download="${esc(mediaDownloadName('avs', currentJobId, item.delivery_id))}">下载交付视频</a></div>` : '';
-      const error = item.error_code ? `<span class="small muted">${esc(item.error_code)}</span>` : '';
+      const error = item.error_code ? `<span class="small muted">${esc(deliveryItemFailureMessage(item.error_code))}</span>` : '';
       return `<div class="intent-card delivery-record">
         <div class="kv"><span class="k">${esc(item.target_resolution || 'NATIVE')} · ${esc(item.delivery_fps)} fps</span><span>${esc(status)}</span></div>
         <div class="kv"><span class="k">输出</span><span>${esc(deliveryDescription(item))}</span></div>
@@ -137,7 +158,7 @@ async function loadDeliveries(currentJobId) {
       });
     }
   } catch (error) {
-    list.textContent = `交付记录暂不可用：${friendlyError(error, '请检查 Studio 服务。')}`;
+    list.textContent = deliveryFailureMessage(error);
     form.hidden = true;
     form.style.removeProperty('display');
     statusEl.textContent = '交付记录暂不可用；原生视频不受影响。';
@@ -205,26 +226,31 @@ async function load() {
     await loadDeliveries(jobId);
     document.getElementById('params').innerHTML = `
       <div class="intent-card">
-        <div class="kv"><span class="k">Workflow</span><span>${esc(result.workflow)}</span></div>
-        <div class="kv"><span class="k">分辨率 / fps</span><span>${esc(resolution)} / ${esc(fps || '—')}</span></div>
-        <div class="kv"><span class="k">时长 / 帧</span><span>${esc(duration)} / ${esc(frameCount)}（H3 帧格）</span></div>
-        <div class="kv"><span class="k">运行时</span><span>${esc(runtimeLabel(detail))}</span></div>
-        <div class="kv"><span class="k">Safe Load</span><span>pread（冻结）</span></div>
-        <div class="kv"><span class="k">最终视频</span><span class="small">${esc(media.filename || '—')}</span></div>
+        <div class="kv"><span class="k">工作流</span><span>${esc(result.workflow)}</span></div>
+        <div class="kv"><span class="k">画面 / 帧率</span><span>${esc(resolution)} / ${esc(fps || '—')}</span></div>
+        <div class="kv"><span class="k">目标时长 / 帧数</span><span>${esc(duration)} / ${esc(frameCount)}（H3 帧格）</span></div>
+        <div class="kv"><span class="k">视频文件</span><span class="small">${esc(media.filename || '—')}</span></div>
       </div>`;
 
     try {
       const report = await get(`/api/jobs/${jobId}/report`);
+      const approved = report.provenance?.user_reference_approved;
+      const approvalLabel = approved === true ? '已审批' : approved === false ? '未审批' : '未记录';
       document.getElementById('record').innerHTML = `
       <div class="intent-card">
         <div class="kv"><span class="k">项目</span><span>${esc(report.project_name)}</span></div>
-        <div class="kv"><span class="k">Prompt 哈希</span><span class="small">${esc(report.prompt_hash)}</span></div>
-        <div class="kv"><span class="k">参考哈希</span><span class="small">${esc(JSON.stringify(report.reference_hashes))}</span></div>
-        <div class="kv"><span class="k">Skill 版本</span><span>${esc(report.provenance?.official_skill_revision || '—')}</span></div>
-        <div class="kv"><span class="k">审批状态</span><span>${esc(report.provenance?.user_reference_approved ?? '—')}</span></div>
+        <div class="kv"><span class="k">参考图审批</span><span>${approvalLabel}</span></div>
+        <div class="kv"><span class="k">生成环境</span><span>${esc(runtimeLabel(detail))}</span></div>
       </div>
-      <p class="small muted mt">审计记录（最后 3 条）</p>
-      <pre class="small" style="white-space:pre-wrap;">${esc((report.audit_log || []).slice(-3).map((a) => `${a.at} ${a.event} ${a.from}→${a.to}`).join('\n'))}</pre>`;
+      <h4>技术溯源</h4>
+      <div class="intent-card">
+        <div class="kv"><span class="k">Prompt 哈希</span><span class="small">${esc(report.prompt_hash || '—')}</span></div>
+        <div class="kv"><span class="k">参考哈希</span><span class="small">${esc(JSON.stringify(report.reference_hashes || []))}</span></div>
+        <div class="kv"><span class="k">Skill 版本</span><span>${esc(report.provenance?.official_skill_revision || '—')}</span></div>
+        <div class="kv"><span class="k">参考审批记录</span><span>${esc(approved ?? '—')}</span></div>
+      </div>
+      <p class="small muted mt">最近的任务状态记录</p>
+      <pre class="small" style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc((report.audit_log || []).slice(-3).map((a) => `${a.at} ${a.event} ${a.from}→${a.to}`).join('\n'))}</pre>`;
     } catch (_) {
       document.getElementById('record').innerHTML = '<div class="notice-banner">视频可用；可选生成报告暂不可用。</div>';
     }
