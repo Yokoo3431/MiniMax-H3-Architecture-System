@@ -383,8 +383,8 @@
     {
       "path": "tests/test_owner_acceptance_harness.py",
       "tracked_status": "tracked",
-      "sha256": "D8E234B140D7D3CE5FF523B6783C4B38E88FCAE4FA5D3F4B735EDA8A886CD7A9",
-      "discovered_test_count": 6,
+      "sha256": "C991709C274604390D87605849E903B041201ADCC58587779BF6878E57758823",
+      "discovered_test_count": 9,
       "classification": "CORE_REGRESSION"
     },
     {
