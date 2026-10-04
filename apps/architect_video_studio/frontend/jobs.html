@@ -28,11 +28,12 @@
   <main id="main-content" class="wrap app-main">
     <h2 style="margin-top:0;">Job Center</h2>
     <div class="panel">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
-        <label style="margin:0;">项目</label>
-        <sl-select id="project-select" placeholder="请选择一个 Study" style="width:320px;"></sl-select>
+      <div class="project-selection-row" style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+        <label id="project-select-label" style="margin:0;">项目</label>
+        <sl-select id="project-select" aria-labelledby="project-select-label" placeholder="请选择一个 Study"></sl-select>
         <sl-button class="btn" id="refresh-btn">刷新</sl-button>
       </div>
+      <div id="selection-hint" class="selection-hint" role="status" aria-live="polite" hidden></div>
       <table class="table jobs-table">
         <thead><tr><th>Job</th><th>Workflow</th><th>状态</th><th>Seed</th><th>创建时间</th><th></th></tr></thead>
         <tbody id="jobs-body"></tbody>

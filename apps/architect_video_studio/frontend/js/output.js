@@ -68,15 +68,18 @@ async function loadDeliveries(currentJobId) {
   const list = document.getElementById('delivery-list');
   const form = document.getElementById('delivery-form');
   const submit = document.getElementById('delivery-submit');
+  const statusEl = document.getElementById('delivery-status');
   try {
     const state = await get(`/api/jobs/${encodeURIComponent(currentJobId)}/deliveries`);
     form.hidden = !state.available;
-    form.style.display = state.available ? 'flex' : 'none';
+    form.style.removeProperty('display');
     if (!state.available) {
       list.textContent = '当前运行环境未提供受管 FFmpeg 交付能力。';
+      statusEl.textContent = '当前运行环境暂不支持创建交付副本。';
       return;
     }
     const items = state.items || [];
+    statusEl.textContent = items.length ? '已有交付记录，可在下方查看或重试。' : '尚无交付副本。创建后会单独保存，不会改动原生视频。';
     if (!items.length) {
       list.innerHTML = '<p class="small muted">尚无后处理交付记录。</p>';
       return;
@@ -136,12 +139,18 @@ async function loadDeliveries(currentJobId) {
   } catch (error) {
     list.textContent = `交付记录暂不可用：${friendlyError(error, '请检查 Studio 服务。')}`;
     form.hidden = true;
-    form.style.display = 'none';
+    form.style.removeProperty('display');
+    statusEl.textContent = '交付记录暂不可用；原生视频不受影响。';
   }
 }
 
 async function load() {
   if (!jobId) {
+    const form = document.getElementById('delivery-form');
+    form.hidden = true;
+    form.style.removeProperty('display');
+    document.getElementById('delivery-status').textContent = '请先从 Jobs 打开一个已完成任务，之后可在此创建交付副本。';
+    document.getElementById('delivery-list').textContent = '从 Jobs 打开已完成任务后，这里会显示交付记录。';
     document.getElementById('job-id').textContent = '—';
     showContextState('请选择一个已有输出，或从 Jobs 中打开具体任务。');
     return;
@@ -156,6 +165,8 @@ async function load() {
       return;
     }
     if (detail.state !== 'COMPLETED') {
+      document.getElementById('delivery-form').hidden = true;
+      document.getElementById('delivery-status').textContent = '任务完成后才能创建交付副本。';
       showContextState(`该任务当前状态：${detail.status_label || detail.state || '未完成'}。完成后才能查看输出。`);
       return;
     }

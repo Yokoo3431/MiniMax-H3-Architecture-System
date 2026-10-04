@@ -107,7 +107,7 @@ class TestProductionJobUiContract(unittest.TestCase):
         self.assertIn("/detail", script)
         self.assertIn("/retry", script)
         self.assertIn("可复现设置", studio)
-        self.assertIn("Architecture Fidelity", studio)
+        self.assertIn("建筑保真度", studio)
         for retired in ("param-resolution", "param-sampler", "param-steps", "param-cache-dit"):
             self.assertNotIn(retired, studio)
         self.assertIn("开始生成", studio)

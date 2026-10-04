@@ -265,7 +265,7 @@ function renderDirector() {
   const select = document.getElementById('director-shot-select');
   if (!summary || !shotList) return;
   const shots = sequence?.shots || [];
-  summary.textContent = sequence ? `${shots.length} 镜头 · R${sequence.revision}` : '未创建序列';
+  summary.textContent = sequence ? `${shots.length} 个镜头` : '未创建序列';
   createButton.hidden = !!sequence;
   addButton.hidden = !sequence;
   saveButton.hidden = !sequence;
@@ -274,12 +274,12 @@ function renderDirector() {
   title.disabled = !sequence;
   if (!sequence) {
     shotList.innerHTML = '';
-    revision.textContent = 'Studio 独立保存；不会改写现有 Prompt/Job';
+    revision.textContent = '独立保存；不会改动已有任务和结果';
     select.innerHTML = '';
     return;
   }
   title.value = sequence.title || '建筑分镜';
-  revision.textContent = `序列修订 R${sequence.revision} · ${shots.length} 个独立镜头 Job`;
+  revision.textContent = `版本 ${sequence.revision} · ${shots.length} 个独立镜头`;
   const cameraOptions = [
     ['static', '固定镜头'], ['slow_push', '缓慢推进'], ['pull_back', '缓慢拉远'],
     ['orbit', '环绕'], ['pan', '水平摇镜'], ['tilt', '垂直摇镜'],
@@ -309,13 +309,13 @@ function renderDirector() {
     </select>`;
     const runtimeState = guideCapabilities?.experimental?.available === true
       && guideCapabilities?.experimental_job_route_enabled === true
-      ? '已就绪' : '当前不可用';
+      ? '已就绪' : '尚未就绪';
     const runtimeSelect = `<select class="avs-select" data-field="runtime_requirement" ${locked ? 'disabled' : ''}>
-      <option value="production" ${shot.runtime_requirement === 'production' ? 'selected' : ''} ${guideCount ? 'disabled' : ''}>生产 8189${guideCount ? '（含 guide 时不可用）' : ''}</option>
-      <option value="experimental" ${shot.runtime_requirement === 'experimental' ? 'selected' : ''}>隔离实验 8190（${runtimeState}）</option>
+      <option value="production" ${shot.runtime_requirement === 'production' ? 'selected' : ''} ${guideCount ? 'disabled' : ''}>生产环境${guideCount ? '（不支持分镜引导）' : ''}</option>
+      <option value="experimental" ${shot.runtime_requirement === 'experimental' ? 'selected' : ''}>隔离实验环境（${runtimeState}）</option>
     </select>`;
-    const status = job ? `${esc(job.state)} · Job ${esc(job.id)}`
-      : locked ? `Job ${esc(shot.last_job_id)} · 正在索引` : shot.lineage ? '待提交的定向重拍' : '草稿';
+    const status = job ? stateLabel(job.state)
+      : locked ? '正在载入任务记录' : shot.lineage ? '待重拍' : '草稿';
     const retake = job?.state === 'COMPLETED'
       ? `<div class="director-retake-row">
           <label>重拍镜头意图 <select class="avs-select" data-retake-camera="${esc(shot.shot_id)}">${cameraOptions.map(([id, label]) => `<option value="${id}" ${id === shot.camera_intent ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
@@ -325,7 +325,7 @@ function renderDirector() {
     const rendered = `<article class="director-shot ${locked ? 'is-executed' : ''}" data-shot-id="${esc(shot.shot_id)}">
       <header class="director-shot-head">
         <span class="director-shot-index">${String(index + 1).padStart(2, '0')}</span>
-        <div class="director-shot-heading"><strong>${esc(shot.title || `镜头 ${index + 1}`)}</strong><span class="muted small">序列位置 ${timelineOffset.toFixed(2)}s · ${effective.toFixed(3)}s 实际长度 · ${frames} 帧</span></div>
+        <div class="director-shot-heading"><strong>${esc(shot.title || `镜头 ${index + 1}`)}</strong><span class="muted small">时间线位置 ${timelineOffset.toFixed(2)} 秒 · 实际片长 ${effective.toFixed(2)} 秒 · ${frames} 帧</span></div>
         <span class="badge state">${status}</span>
         <div class="director-shot-actions">
           <button class="spectrum-Button btn ghost director-move-up" type="button" aria-label="上移镜头" ${index === 0 ? 'disabled' : ''}>↑</button>
@@ -346,10 +346,10 @@ function renderDirector() {
         <label>本镜头运行时${runtimeSelect}</label>
         <label>长片连续策略${continuitySelect}</label>
       </div>
-      <div class="director-binding-line"><span>Study 参考 ${refCount}</span><span>时间线引导 ${guideCount}</span><span>Native H3 24 FPS</span><span>摄像机语义 PROMPT_CAMERA_INTENT</span></div>
+      <div class="director-binding-line"><span>已批准参考图 ${refCount}</span><span>分镜引导图 ${guideCount}</span><span>原生 24 FPS</span><span>镜头运动为文字意图</span></div>
       <p class="director-runtime-note">${guideCount
-        ? `该镜头含 ${guideCount} 个已配置时间线 guide，必须明确选用隔离 8190（${runtimeState}）；不会回退到生产 8189。`
-        : '此镜头使用生产路由；若显式改用实验运行时，将进行独立身份与能力校验。'}</p>
+        ? `该镜头含 ${guideCount} 张分镜引导图，需要使用隔离实验环境（${runtimeState}）；当前不可用时不会自动切换环境。`
+        : '此镜头使用生产环境；如切换到隔离实验环境，系统会重新检查环境身份与功能支持情况。'}</p>
       ${video}${retake}
     </article>`;
     timelineOffset += effective;
@@ -373,13 +373,39 @@ function invalidateDirectorPreview() {
   if (label) label.hidden = true;
 }
 
+function longFormStatusLabel(status) {
+  return ({
+    READY: '已就绪', ASSEMBLY_PENDING: '待合成', RUNNING: '有镜头正在处理',
+    PARTIAL_FAILED: '部分镜头失败', PARTIAL_CANCELLED: '部分镜头已取消',
+    PENDING: '等待处理',
+  })[status] || '状态已更新';
+}
+
+function longFormQueueLabel(queue, index) {
+  return `长片队列 ${index + 1} · ${longFormStatusLabel(queue.status)}`;
+}
+
+function longFormQueueSummary(queue) {
+  const shots = queue.shots || [];
+  const completed = shots.filter((shot) => ['RESULT_READY', 'READY'].includes(shot.state)).length;
+  const failed = shots.filter((shot) => ['FAILED', 'CANCELLED'].includes(shot.state)).length;
+  const progress = shots.length ? `${completed}/${shots.length} 个镜头已完成` : '尚无镜头';
+  const target = queue.target || {};
+  const canvas = Number(target.width) && Number(target.height)
+    ? `${target.width}×${target.height}` : '';
+  const fps = Number(target.fps) ? `${target.fps} FPS` : '';
+  const assembly = queue.assembly?.status === 'READY' ? '合成视频已就绪' : '';
+  return [longFormStatusLabel(queue.status), progress,
+    failed ? `${failed} 个镜头需要检查` : '', canvas, fps, assembly].filter(Boolean).join(' · ');
+}
+
 function renderLongForm() {
   const select = document.getElementById('a9-queue-select');
   const status = document.getElementById('a9-queue-status');
   if (!select || !status) return;
   const previous = select.value || '';
-  select.innerHTML = longFormQueues.map((queue) =>
-    `<option value="${esc(queue.queue_id)}">${esc(queue.queue_id)} · ${esc(queue.status || 'PENDING')}</option>`
+  select.innerHTML = longFormQueues.map((queue, index) =>
+    `<option value="${esc(queue.queue_id)}">${esc(longFormQueueLabel(queue, index))}</option>`
   ).join('');
   if (longFormQueues.some((queue) => queue.queue_id === previous)) select.value = previous;
   const queue = longFormQueues.find((item) => item.queue_id === select.value);
@@ -403,11 +429,9 @@ function renderLongForm() {
     }
     return;
   }
-  const shotText = (queue.shots || []).map((shot) =>
-    `${Number(shot.ordinal) + 1}:${shot.state}${shot.job_id ? `(${shot.job_id})` : ''}`
-  ).join(' · ');
   const assembly = queue.assembly || {};
-  status.textContent = `${queue.status} · ${shotText || '无镜头'} · ${queue.target?.width || '—'}×${queue.target?.height || '—'} @ ${queue.target?.fps || '—'} FPS${assembly.error_code ? ` · ${assembly.error_code}` : ''}`;
+  status.textContent = longFormQueueSummary(queue)
+    + (assembly.error_code ? ' · 视频合成暂未完成，请检查后重试。' : '');
   if (resumeButton) resumeButton.disabled = false;
   if (generateButton) generateButton.textContent = '生成并绑定队列下一镜头';
   if (assembleButton) assembleButton.disabled = !(queue.shots?.length >= 3
@@ -464,7 +488,7 @@ async function createLongFormQueue() {
     await refreshLongFormQueues();
     document.getElementById('a9-queue-select').value = queue.queue_id;
     renderLongForm();
-    if (status) status.textContent = `${queue.status} · 队列已保存；当前续跑决策不会自动提交生成。`;
+    if (status) status.textContent = `${longFormStatusLabel(queue.status)} · 队列已保存；不会自动开始生成。`;
   } catch (error) {
     if (status) status.textContent = error.message;
     showErr(friendlyError(error, '长片队列创建失败'));
@@ -478,7 +502,17 @@ async function inspectLongFormResume() {
   try {
     const result = await post(`/api/projects/${projectId}/long-form/${encodeURIComponent(queueId)}/resume`, {});
     const next = result.resume || {};
-    status.textContent = `续跑建议：${next.action || 'UNKNOWN'}${next.shot_id ? ` · ${next.shot_id}` : ''}${next.job_id ? ` · ${next.job_id}` : ''} · 自动提交：否`;
+    const selectedQueue = longFormQueues.find((item) => item.queue_id === queueId);
+    const nextShotIndex = selectedQueue?.shots?.findIndex((shot) => shot.shot_id === next.shot_id) ?? -1;
+    const nextShot = nextShotIndex >= 0 ? `镜头 ${nextShotIndex + 1}` : '';
+    const nextStep = ({
+      GENERATE_NEXT_SHOT: `下一步可手动生成${nextShot ? ` ${nextShot}` : '下一镜头'}`,
+      WAIT_EXISTING_JOB: `${nextShot || '有镜头'}仍在处理中，请刷新状态`,
+      RETRY_FAILED_SHOT_EXPLICITLY: `${nextShot || '有镜头'}未成功，可检查后手动重拍`,
+      RESTART_CANCELLED_SHOT_EXPLICITLY: `${nextShot || '有镜头'}已取消，可确认后手动重拍`,
+      ASSEMBLE: '所有镜头已完成，可以合成视频',
+    })[next.action] || '队列状态已检查';
+    status.textContent = `${nextStep}；不会自动开始生成。`;
     await refreshLongFormQueues();
   } catch (error) {
     status.textContent = error.message;
@@ -492,7 +526,7 @@ async function assembleLongFormQueue() {
   const button = document.getElementById('a9-assemble');
   if (!queueId || !button || button.disabled) return;
   button.disabled = true;
-  status.textContent = '正在 CPU 装配已有结果；没有 H3 推理…';
+  status.textContent = '正在合成已完成的视频；不会重新生成镜头…';
   try {
     const result = await post(`/api/projects/${projectId}/long-form/${encodeURIComponent(queueId)}/assemble`, {});
     await refreshLongFormQueues();
@@ -502,10 +536,10 @@ async function assembleLongFormQueue() {
       video.hidden = false;
       video.load();
     }
-    status.textContent = `装配完成 · ${result.assembly?.media?.width}×${result.assembly?.media?.height} · ${result.assembly?.media?.fps} FPS · ${result.assembly?.media?.duration_seconds}s · 仅复用既有 Job`;
+    status.textContent = `合成完成 · ${result.assembly?.media?.width}×${result.assembly?.media?.height} · ${result.assembly?.media?.fps} FPS · 实际片长 ${Number(result.assembly?.media?.duration_seconds || 0).toFixed(2)} 秒`;
   } catch (error) {
-    status.textContent = error.message;
-    showErr(friendlyError(error, '长片装配失败；现有镜头 Job 未重跑'));
+    status.textContent = friendlyError(error, '视频合成失败；已完成的镜头不会重新生成。');
+    showErr(friendlyError(error, '视频合成失败；已完成的镜头不会重新生成。'));
   } finally {
     button.disabled = false;
     renderLongForm();
@@ -548,7 +582,7 @@ async function saveDirectorSequence() {
       expected_revision: director.revision, sequence: director,
     });
     director = result.sequence;
-    if (status) status.textContent = `已保存 R${director.revision} · 已执行镜头保持不可变`;
+    if (status) status.textContent = '分镜已保存 · 已完成的镜头保持不变';
     renderDirector();
     return true;
   } catch (error) {
@@ -659,7 +693,7 @@ async function submitDirectorShot(shot, sequence = director, longFormQueueId = '
     throw new Error('该镜头的运行时选择无效。');
   }
   if (runtimeTarget === 'production' && (project?.guide_frames || []).length) {
-    throw new Error('本 Study 含时间线 guide；请在镜头卡中明确选择隔离实验 8190。');
+    throw new Error('本 Study 含分镜引导图；请在镜头卡中选择隔离实验环境。');
   }
   const params = directorGenerationParameters(shot);
   const request = {
@@ -693,7 +727,7 @@ async function preflightDirectorShot() {
     const shot = directorShotById(document.getElementById('director-shot-select').value);
     if (!shot) throw new Error('请先选择一个镜头');
     if ((shot.runtime_requirement || 'production') !== 'experimental') {
-      throw new Error('带 guide 的 Director 镜头须先明确选择隔离实验 8190。');
+      throw new Error('含分镜引导图的镜头须先选择隔离实验环境。');
     }
     const seedValue = directorGenerationParameters(shot).seed;
     if (!Number.isInteger(seedValue) || seedValue < 0) throw new Error('Seed 需为非负整数或留空');
@@ -708,10 +742,10 @@ async function preflightDirectorShot() {
       director_execution: {sequence_id: director.sequence_id,
         sequence_revision: director.revision, shot_id: shot.shot_id},
     });
-    status.textContent = `A7 CPU 预检通过 · ${result.guide_count} guides · 帧 ${result.guide_frame_indexes.join(', ')} · workflow ${result.workflow_sha256.slice(0, 12)}… · ${result.expected_output_prefix} · 未提交 /prompt`;
+    status.textContent = `检查通过 · ${result.guide_count} 张分镜引导图和时间位置已确认 · 尚未开始生成`;
   } catch (error) {
-    status.textContent = error.message;
-    showErr(friendlyError(error, 'A7 CPU 预检未通过；未提交 /prompt。'));
+    status.textContent = friendlyError(error, '检查未通过 · 尚未开始生成');
+    showErr(friendlyError(error, '检查未通过 · 尚未开始生成'));
   } finally {
     button.disabled = false;
     button.textContent = '仅预检（不生成）';
@@ -1095,18 +1129,18 @@ function renderGuideFrames() {
   if (experimentOption) {
     experimentOption.disabled = !canRouteExperiment;
     experimentOption.textContent = canRouteExperiment
-      ? '隔离实验 8190（显式选择）' : '隔离实验 8190（未配置/不可用）';
+      ? '隔离实验环境（明确选择）' : '隔离实验环境（尚未就绪）';
   }
   if (runtime) {
     const prodText = production?.available
-      ? `生产 8189：${production.version} · 原生多帧可用`
-      : `生产 8189：${production?.version || '未知'} · 不支持原生多帧`;
+      ? '生产环境：支持多张分镜引导图'
+      : '生产环境：暂不支持多张分镜引导图';
     const expText = !experimentPurposeAvailable
-      ? '隔离实验 8190：仅限显式 A5 Guide / A6 Ref2VA Job'
+      ? '隔离实验环境：此功能尚未开放'
       : canRouteExperiment
-      ? `隔离实验 8190：${experimental.version} · 可显式选择；A5/A6 能力分别校验`
-      : `隔离实验 8190：${experimental?.available ? '节点存在，但 Studio 未配置此 Job 路由' : '未运行或不可用'}`;
-    runtime.textContent = `${prodText}；${expText}。有分镜引导时不会自动切换运行时。`;
+      ? '隔离实验环境：已就绪，可在明确选择后使用'
+      : `隔离实验环境：${experimental?.available ? '尚未为此功能启用' : '尚未就绪或当前不可用'}`;
+    runtime.textContent = `${prodText}。${expText}。使用分镜引导时不会自动切换环境。`;
     runtime.dataset.state = canRouteExperiment ? 'ready' : 'unavailable';
   }
 
@@ -1174,7 +1208,7 @@ function renderGuideFrames() {
     validation.textContent = `时间线未通过：${guideResolution.reason}`;
     validation.dataset.state = 'invalid';
   } else {
-    validation.textContent = `${guideFrames.length} 个引导帧通过静态时间线校验 · 目标 ${guideResolution.target_frame_count} 帧 · 原生 24 FPS · ${guideResolution.rounding_policy}`;
+    validation.textContent = `${guideFrames.length} 个分镜引导已通过检查 · 共 ${guideResolution.target_frame_count} 帧 · H3 原生 24 FPS`;
     validation.dataset.state = 'ready';
   }
   renderGuideExecutionPromptPreview();
@@ -1480,51 +1514,51 @@ function updateGate() {
   else if (!approved) note.textContent = (study.gate_reasons || [])[0] || '参考图尚未满足当前视频类型的角色与审批要求';
   else {
     if (requiresRef2VA && currentWorkflow() === '02_Day_Night_Transition') {
-      note.textContent = 'Day / Night 保持既有 first_frame + last_frame FL2VA 语义；请先移除 A6 角色绑定。';
+      note.textContent = '日夜变化镜头沿用现有首帧和末帧设置；请先移除多参考角色绑定。';
       button.disabled = true;
       return;
     }
     if (requiresRef2VA && guideFrames.length) {
-      note.textContent = '当前不支持将 Ref2VA 多参考与 A5 时间线引导组合；请先移除其中一类。';
+      note.textContent = '当前不能同时使用多参考角色和分镜引导图，请先移除其中一类。';
       button.disabled = true;
       return;
     }
     if (requiresRef2VA && runtimeTarget !== 'experimental') {
-      note.textContent = '已绑定 A6 多参考角色；请显式选择隔离实验 8190。不会回退到生产 8189。';
+      note.textContent = '已添加多参考角色；请先选择隔离实验环境。系统不会自动切换环境。';
       button.disabled = true;
       return;
     }
     if (requiresRef2VA && (!runtimeReady || !ref2vaReady)) {
-      note.textContent = 'A6 Ref2VA 尚未就绪：需要隔离运行时路由、原生节点、官方 Ref2VA 权重和 Video VAE；不会创建生成任务。';
+      note.textContent = '多参考功能尚未就绪；请检查隔离实验环境和所需组件。现在不会开始生成。';
       button.disabled = true;
       return;
     }
     if (requiresRef2VA) {
-      note.textContent = 'A6 Ref2VA 使用已批准的角色参考图；现有首/末帧不作为精确端点条件。可先运行 CPU 实验路由预检。';
+      note.textContent = '多参考功能会使用已批准的角色图片；现有首帧和末帧不会被当作精确的镜头端点。可先进行不生成内容的环境检查。';
     }
     if (runtimeTarget === 'experimental' && !guideFrames.length && !requiresRef2VA) {
-      note.textContent = '隔离运行时仅用于显式 A5 Guide 或 A6 Ref2VA 验收；普通视频继续使用生产 8189。';
+      note.textContent = '隔离实验环境仅用于明确选择的高级分镜或多参考功能；普通视频请使用生产环境。';
       button.disabled = true;
       return;
     }
     if (runtimeTarget === 'experimental' && !runtimeReady) {
-      note.textContent = '隔离实验运行时未显式配置或不可用；不会回退到生产运行时';
+      note.textContent = '隔离实验环境尚未就绪；任务不会自动改用其他环境。';
       button.disabled = true;
       return;
     }
     if (runtimeTarget === 'experimental' && !guideFrames.length && !requiresRef2VA) {
-      note.textContent = '隔离实验运行时仅用于显式 A5 多帧引导验证；请先添加并批准分镜引导图';
+      note.textContent = '隔离实验环境用于高级分镜功能；请先添加并批准分镜引导图。';
       button.disabled = true;
       return;
     }
     if (guideFrames.length) {
       if (runtimeTarget !== 'experimental') {
-        note.textContent = '当前生产 8189 不支持原生分镜引导；请显式选择已启用的隔离 8190，系统不会静默丢弃引导帧';
+        note.textContent = '当前生产环境不支持多张分镜引导图；请选择已启用的隔离实验环境。引导图不会被忽略。';
         button.disabled = true;
         return;
       }
       if (!runtimeReady) {
-        note.textContent = '隔离 8190 尚未就绪；引导帧不会被移交给生产 8189';
+        note.textContent = '隔离实验环境尚未就绪；不会将分镜引导图转交给生产环境。';
         button.disabled = true;
         return;
       }

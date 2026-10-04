@@ -53,24 +53,26 @@ async function loadTasks() {
           const wf = (intent && intent.selected_workflow) || (prompt && prompt.workflow) || null;
           const displayState = study && study.current_state || p.state;
           return `
-          <div class="task-card" onclick="location.href='workspace.html?project=${esc(p.id)}'">
-            <div class="ttl">
-              <span>${esc(p.name)}</span>
-              ${stateBadge(displayState)}
-            </div>
-            <div class="tags">
-              ${wf ? `<sl-tag size="small" class="tag">${esc(WF_LABEL[wf] || wf)}</sl-tag>` : '<sl-tag size="small" class="tag">未选工作流</sl-tag>'}
-            </div>
-            <div class="foot">
-              <span>${esc(p.updated_at)}</span>
-              ${prompt ? `<span class="mono">#${esc(prompt.prompt_hash.slice(0, 8))}</span>` : ''}
-            </div>
-            <div class="task-actions" onclick="event.stopPropagation()">
+          <article class="task-card">
+            <a class="task-card-main" href="workspace.html?project=${encodeURIComponent(p.id)}" aria-label="打开 Study：${esc(p.name)}">
+              <div class="ttl">
+                <span>${esc(p.name)}</span>
+                ${stateBadge(displayState)}
+              </div>
+              <div class="tags">
+                ${wf ? `<sl-tag size="small" class="tag">${esc(WF_LABEL[wf] || wf)}</sl-tag>` : '<sl-tag size="small" class="tag">未选工作流</sl-tag>'}
+              </div>
+              <div class="foot">
+                <span>${esc(p.updated_at)}</span>
+                ${prompt ? `<span class="mono">#${esc(prompt.prompt_hash.slice(0, 8))}</span>` : ''}
+              </div>
+            </a>
+            <div class="task-actions">
               <sl-button class="btn small ghost" data-action="rename" data-project="${esc(p.id)}">重命名</sl-button>
               <sl-button class="btn small ghost" data-action="duplicate" data-project="${esc(p.id)}">复制</sl-button>
               <sl-button class="btn small ghost danger" data-action="delete" data-project="${esc(p.id)}">删除</sl-button>
             </div>
-          </div>`;
+          </article>`;
         }).join('')
       : '<div class="muted">还没有 Study，点击 "+ New Study" 开始。</div>';
     tasksEl.querySelectorAll('[data-action]').forEach((button) => {

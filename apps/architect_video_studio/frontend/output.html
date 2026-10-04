@@ -48,7 +48,7 @@
           <h3 id="delivery-heading" style="margin-top:0;">交付副本 · 后处理</h3>
           <p class="small muted">原生 H3 成片保持不变。交付版本单独生成并记录缩放、插帧与探测结果；不会重新运行生成。</p>
         </div>
-        <form id="delivery-form" class="row" style="gap:8px;align-items:end;flex-wrap:wrap;">
+        <form id="delivery-form" class="row" style="gap:8px;align-items:end;flex-wrap:wrap;" hidden>
           <label class="small">交付画布
             <select id="delivery-resolution" name="target_resolution">
               <option value="NATIVE">保持原生画布</option>
@@ -66,7 +66,7 @@
           <button id="delivery-submit" class="btn primary" type="submit">生成交付副本</button>
         </form>
       </div>
-      <p id="delivery-status" class="small muted" aria-live="polite">交付副本尚未生成。</p>
+      <p id="delivery-status" class="small muted" role="status" aria-live="polite">请先从 Jobs 打开一个已完成任务，之后可在此创建交付副本。</p>
       <div class="workspace delivery-workspace">
         <div>
           <h4>交付预览</h4>
@@ -75,7 +75,7 @@
         </div>
         <div>
           <h4>交付记录</h4>
-          <div id="delivery-list" class="small" aria-live="polite">正在读取…</div>
+          <div id="delivery-list" class="small" aria-live="polite">从 Jobs 打开已完成任务后，这里会显示交付记录。</div>
         </div>
       </div>
     </section>

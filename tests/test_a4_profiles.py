@@ -386,7 +386,7 @@ class TestA4Profiles(unittest.TestCase):
         js = (root / "apps/architect_video_studio/frontend/js/workspace.js").read_text(encoding="utf-8")
         for label in ("日夜过渡需要两张不同的图片", "选择首帧", "选择末帧",
                       "上传并审批首帧", "上传并审批末帧", "交付帧率",
-                      "Architecture Fidelity", "STANDARD · 720p-class · 保持候选",
+                      "建筑保真度", "STANDARD · 720p-class · 保持候选",
                       "原生画布 1248×704"):
             self.assertIn(label, html)
         for retired_id in ("param-resolution", "param-sampler", "param-steps",

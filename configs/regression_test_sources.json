@@ -12,7 +12,7 @@
     {
       "path": "tests/test_a4_profiles.py",
       "tracked_status": "tracked",
-      "sha256": "1CB71A0631F125519D064B8C546EEF0C8BAF0BFF61D5D8EE919680F9BCF0942D",
+      "sha256": "A0EBAE1CA715AB26498B7F3AA95FCBAB230FD5B4D01BB56E6AF8C4EE530FDBB8",
       "discovered_test_count": 10,
       "classification": "CORE_REGRESSION"
     },
@@ -236,7 +236,7 @@
     {
       "path": "tests/test_final_product_job_path_and_ux.py",
       "tracked_status": "tracked",
-      "sha256": "5FCDAC2BB9935EBB281628F5D7AE08FE4DB985576C122FDC8245FC93A3175F40",
+      "sha256": "C2A8DF7328768ABA60EA9BA0C32025E2F083B80869643FDFB85E177BEE4E33EF",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
@@ -768,7 +768,7 @@
     {
       "path": "tests/test_studio_ux2_p1.py",
       "tracked_status": "tracked",
-      "sha256": "3F121F4F57667D72A15C125D05B94E1FC9F9B653DB0E879D2B392AA88B6FDD8B",
+      "sha256": "AD0FB30738D49A56E9AA2398945665184EDB24BA24720CCB0ACD8F8FDF6B1BF4",
       "discovered_test_count": 10,
       "classification": "CORE_REGRESSION"
     },

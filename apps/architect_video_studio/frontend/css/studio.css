@@ -171,10 +171,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 14px;
-  cursor: pointer;
   transition: border-color .12s ease, box-shadow .12s ease;
 }
 .task-card:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(60,45,20,.08); }
+.app-home .task-card-main { display: block; color: inherit; text-decoration: none; }
+.app-home .task-card-main:focus-visible { outline: 3px solid var(--avs-focus); outline-offset: 4px; border-radius: 2px; }
 .task-card .ttl { font-size: 15px; font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
 .task-card .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .task-card .foot { color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; }
@@ -648,6 +649,7 @@ pre.prompt {
   object-fit: contain;
   background: var(--viewport);
 }
+.video-box video[hidden] { display: none !important; }
 
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); font-size: 12px; }
@@ -655,6 +657,12 @@ pre.prompt {
 .mb { margin-bottom: 10px; }
 .small { font-size: 12px; }
 .error-banner { background: #f8e0dc; border: 1px solid var(--err); color: #7c241b; border-radius: 5px; padding: 10px; margin: 10px 0; }
+.app-jobs .selection-hint { color: var(--avs-text-secondary); background: var(--avs-surface-1); border-inline-start: 3px solid var(--avs-accent); border-radius: 3px; padding: 9px 12px; margin: 8px 0 12px; }
+.app-jobs .selection-hint[hidden] { display: none !important; }
+.app-jobs .project-selection-row { flex-wrap: wrap; }
+.app-jobs #project-select-label { flex: 0 0 auto; white-space: nowrap; }
+.app-jobs #project-select { flex: 1 1 180px; width: min(320px, 100%); min-width: 0; }
+.app-jobs #refresh-btn { flex: 0 0 auto; }
 .notice-banner { background: #e4f3e7; border: 1px solid var(--ok); color: #245b31; border-radius: 5px; padding: 10px; margin: 10px 0; }
 .ok-banner { background: #e0f0e2; border: 1px solid var(--ok); color: #24592f; border-radius: 5px; padding: 10px; margin: 10px 0; }
 
@@ -1327,6 +1335,7 @@ sl-details::part(content) { padding: 0 10px 10px; }
 }
 
 .app-output .delivery-workspace { grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); }
+.app-output [hidden] { display: none !important; }
 .app-output #delivery-form { display: flex; gap: 8px; align-items: end; }
 .app-output #delivery-form[hidden] { display: none !important; }
 .app-output #delivery-form label { display: grid; gap: 5px; min-width: 150px; }

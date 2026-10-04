@@ -4,8 +4,14 @@ const initialProjectId = qs('project');
 const initialJobId = qs('job');
 let activeProjectId = initialProjectId || '';
 const errEl = document.getElementById('err');
+const selectionHintEl = document.getElementById('selection-hint');
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = friendlyError(msg); }
+function showProjectHint(msg) {
+  if (!selectionHintEl) return;
+  selectionHintEl.textContent = msg;
+  selectionHintEl.hidden = !msg;
+}
 function jobIsTerminal(job) { return !!(job && job.is_terminal); }
 function jobIsActive(job) { return !!(job && job.is_active); }
 const RESULT_RECOVERY_FAILURE_STAGES = new Set([
@@ -110,9 +116,12 @@ async function loadProjects() {
   if (selected) {
     // Do not depend on the custom element having reflected its value yet.
     sel.value = selected;
+    showProjectHint('');
     await loadJobs(selected);
   } else {
-    showErr('暂无可用 Study，请先创建或选择一个 Study。');
+    showProjectHint(projects.length
+      ? '请选择一个 Study 查看任务。'
+      : '还没有 Study，请先在 Home 创建一个 Study。');
   }
   sel.addEventListener('change', () => {
     activeProjectId = sel.value || activeProjectId;
@@ -121,7 +130,7 @@ async function loadProjects() {
 }
 
 async function loadJobs(pid) {
-  if (!pid) { showErr('请先选择一个 Study。'); return; }
+  if (!pid) { showProjectHint('请先选择一个 Study 查看任务。'); return; }
   try {
     const body = document.getElementById('jobs-body');
     body.innerHTML = '<tr><td colspan="6" class="muted">正在加载任务…</td></tr>';

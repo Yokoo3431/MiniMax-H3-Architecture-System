@@ -47,11 +47,11 @@
 
     <details class="panel director-panel" id="director-panel">
       <summary class="director-summary">
-        <span><span class="eyebrow">A7 · DIRECTOR</span><strong>建筑分镜与重拍</strong></span>
+        <span><span class="eyebrow">分镜导演</span><strong>建筑分镜与重拍</strong></span>
         <span id="director-summary-state" class="badge state">未创建序列</span>
       </summary>
       <div class="director-workbench">
-        <p class="muted small director-note">镜头按单独 H3 Job 编译；摄像机词汇是提示词意图，不是几何控制信号。A9 长片队列只复用已完成镜头；显式选择连续模式才会将上一镜末帧作为下一镜首帧。</p>
+        <p class="muted small director-note">每个镜头单独生成。镜头运动描述用于引导画面表达，不代表可精确控制摄像机轨迹。长片合成只使用已完成的视频；开启连续模式后，才会衔接前一镜的最后画面。</p>
         <div class="director-toolbar">
           <label class="director-sequence-title">序列名称 <input id="director-title" class="avs-control" type="text" maxlength="120" value="建筑分镜"></label>
           <span id="director-revision" class="muted small">本地草稿</span>
@@ -63,7 +63,7 @@
         <div id="director-shot-list" class="director-shot-list" aria-live="polite"></div>
         <div id="director-empty" class="director-empty muted small">创建序列后添加建筑镜头；现有 Job 与结果只读保留。</div>
         <div class="director-footer" id="director-footer" hidden>
-          <div class="director-runtime-note">相机意图：仅作为 H3 文本条件 · 原生帧数按 17k+5 解析 · 每镜头一条独立任务</div>
+          <div class="director-runtime-note">镜头运动描述用于引导画面，不代表精确的摄像机轨迹。每个镜头会单独生成，视频实际片长按生成帧数计算。</div>
           <div class="director-actions">
             <select id="director-shot-select" class="avs-select" aria-label="预览或生成的镜头"></select>
             <button class="spectrum-Button btn ghost" id="director-compile-btn" type="button">编译预览</button>
@@ -75,7 +75,7 @@
           <div id="director-status" class="muted small" role="status" aria-live="polite"></div>
         </div>
         <section class="a9-longform" id="a9-longform" hidden aria-label="长片队列">
-          <div class="a9-longform-head"><strong>A9 · 长片队列与装配</strong><span class="muted small">仅已有结果 CPU 装配；不会自动提交 H3</span></div>
+          <div class="a9-longform-head"><strong>长片合成</strong><span class="muted small">只合成已完成的视频，不会自动重新生成镜头。</span></div>
           <div class="a9-longform-controls">
             <label>输出尺寸<select id="a9-resolution" class="avs-select"><option value="1344x768">原生 1344×768</option><option value="1920x1080">1080p</option><option value="2048x1152">2K</option></select></label>
             <label>输出帧率<select id="a9-fps" class="avs-select"><option value="24">24 FPS</option><option value="48">48 FPS</option><option value="60">60 FPS</option></select></label>
@@ -83,8 +83,8 @@
             <button class="spectrum-Button btn" id="a9-create-queue" type="button">创建/刷新队列</button>
             <select id="a9-queue-select" class="avs-select" aria-label="长片队列"></select>
             <button class="spectrum-Button btn ghost" id="a9-refresh-queue" type="button">刷新队列</button>
-            <button class="spectrum-Button btn ghost" id="a9-resume-queue" type="button">检查续跑位置</button>
-            <button class="spectrum-Button btn primary" id="a9-assemble" type="button">装配已完成镜头</button>
+            <button class="spectrum-Button btn ghost" id="a9-resume-queue" type="button">查看下一步建议</button>
+            <button class="spectrum-Button btn primary" id="a9-assemble" type="button">合成已完成镜头</button>
           </div>
           <div id="a9-queue-status" class="muted small" role="status" aria-live="polite">尚未创建长片队列</div>
           <video id="a9-result" class="director-result" controls preload="metadata" hidden aria-label="长片装配结果"></video>
@@ -133,7 +133,7 @@
           </section>
           <section class="control-section reference-section timeline-guide-section" aria-labelledby="timeline-guides-title">
             <div class="section-title"><span id="timeline-guides-title">分镜引导帧</span><span id="guide-count" class="badge state">0</span></div>
-            <p class="muted small">首帧/末帧继续使用现有边界参考；这里只添加中间时间点的单张已审批图片。帧号按实际 H3 帧数预检，不按“秒 × FPS”估算。</p>
+            <p class="muted small">首尾画面继续使用已批准的边界参考图；在此添加中间分镜图。系统会根据本次视频的实际片长安排时间位置。</p>
             <div id="guide-runtime-status" class="guide-runtime-status muted small" role="status" aria-live="polite">正在检查原生引导能力…</div>
             <div class="guide-add-row">
               <label for="guide-asset-select">已审批引导图</label>
@@ -157,7 +157,7 @@
             <p class="guide-runtime-status muted small">时间点是期望的分镜切换位置；H3 可能提前或延后显现目标视角，不代表可精确控制的连续镜头轨迹。</p>
           </section>
           <details class="control-section reference-section a6-reference-board" id="a6-reference-board">
-            <summary class="section-title"><span>多参考角色 · A6</span><span class="badge state">实验能力</span></summary>
+            <summary class="section-title"><span>多参考图片</span><span class="badge state">实验功能</span></summary>
             <p class="muted small">首帧与末帧仍使用上方现有槽位。此处仅管理身份、风格、材质与场地图片；视频/音频参考尚未开放。选择仅绑定已批准的本 Study 图片，不会上传到外部服务。</p>
             <div id="a6-runtime-capability" class="guide-runtime-status muted small" role="status" aria-live="polite">正在检查 Ref2VA 能力…</div>
             <div id="a6-reference-list" class="a6-reference-list"></div>
@@ -242,7 +242,7 @@
               <option value="48" disabled title="需要帧插值后处理">48 FPS · 待后处理</option>
               <option value="60" disabled title="需要帧插值后处理">60 FPS · 待后处理</option>
             </select></div>
-            <div class="wide"><span class="field-label">Architecture Fidelity</span><div class="readonly-field" id="architecture-profile">Automatic · 按视频类型自动选择</div></div>
+            <div class="wide"><span class="field-label">建筑保真度</span><div class="readonly-field" id="architecture-profile">自动 · 按视频类型选择</div></div>
           </div>
           <details class="advanced-settings mt"><summary>可复现设置</summary>
             <div class="param-grid mt"><div><label for="param-seed">Seed（可选）</label><input class="spectrum-Textfield avs-control" type="text" id="param-seed" placeholder="留空则开始生成时随机"></div></div>
@@ -252,8 +252,8 @@
         <section class="control-section generate-section">
           <label for="runtime-target">执行运行时</label>
           <select id="runtime-target" class="avs-select">
-            <option value="production">生产 8189（默认）</option>
-            <option value="experimental" disabled>隔离实验 8190（未启用）</option>
+            <option value="production">生产环境（默认）</option>
+            <option value="experimental" disabled>隔离实验环境（未启用）</option>
           </select>
           <div id="gate-note" class="gate-note">请先上传并审批参考图</div>
           <div id="preflight-result" class="gate-note preflight-result" role="status" aria-live="polite" hidden></div>
