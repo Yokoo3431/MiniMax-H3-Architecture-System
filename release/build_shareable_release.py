@@ -84,7 +84,14 @@ EXCLUDED_PREFIXES = (
 # Model bodies are never bundled.  ``.bin`` is included as well because the
 # repository may contain tiny fixture placeholders with model-like names; the
 # installer must not present any such file as an installed model asset.
-EXCLUDED_SUFFIXES = {".safetensors", ".bin", ".mp4", ".avi", ".mov", ".pyc"}
+EXCLUDED_SUFFIXES = {
+    ".safetensors", ".bin", ".ckpt", ".pt", ".pth", ".gguf", ".ggml",
+    ".onnx", ".tflite", ".engine", ".weights", ".pb", ".h5", ".hdf5",
+    ".mp4", ".avi", ".mov", ".mkv", ".m4v", ".wmv", ".flv", ".mpeg",
+    ".mpg", ".webm", ".3gp", ".ts", ".wav", ".mp3", ".m4a", ".aac",
+    ".flac", ".ogg", ".opus", ".pyc",
+}
+MODEL_METADATA_SUFFIXES = {".md", ".json"}
 
 
 def _copy_file(source: Path, destination: Path) -> None:
@@ -94,58 +101,80 @@ def _copy_file(source: Path, destination: Path) -> None:
 
 def _allowed(relative: Path) -> bool:
     name = relative.name.lower()
+    if relative.parts and relative.parts[0].casefold() == "models" and \
+            relative.suffix.lower() not in MODEL_METADATA_SUFFIXES:
+        return False
     return not any(part in EXCLUDED_PARTS for part in relative.parts) and \
         relative.name not in EXCLUDED_NAMES and \
         not name.startswith(EXCLUDED_PREFIXES) and \
         relative.suffix.lower() not in EXCLUDED_SUFFIXES
 
 
-def _copy_tree(source: Path, destination: Path) -> int:
+def _tracked_source_paths() -> set[str]:
+    """Return the Git-index allowlist; packaging fails closed outside a checkout."""
+    try:
+        raw = subprocess.check_output(
+            ["git", "ls-files", "--cached", "-z"], cwd=ROOT
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("Shareable packaging requires a verified Git worktree.") from exc
+    return {item.decode("utf-8", errors="strict") for item in raw.split(b"\0") if item}
+
+
+def _copy_tracked_file(source: Path, destination: Path,
+                       tracked_paths: set[str]) -> bool:
+    """Copy a safe, tracked source file; never package local ignored/untracked data."""
+    try:
+        relative = source.relative_to(ROOT)
+    except ValueError:
+        return False
+    if source.is_symlink() or relative.as_posix() not in tracked_paths or \
+            not source.is_file() or not _allowed(relative):
+        return False
+    _copy_file(source, destination)
+    return True
+
+
+def _copy_tree(source: Path, destination: Path,
+               tracked_paths: set[str]) -> int:
     count = 0
     for item in source.rglob("*"):
-        if not item.is_file():
+        if item.is_symlink() or not item.is_file():
             continue
-        rel = item.relative_to(source)
-        if _allowed(rel):
-            _copy_file(item, destination / rel)
+        repository_relative = item.relative_to(ROOT)
+        if repository_relative.as_posix() in tracked_paths and \
+                _allowed(repository_relative):
+            _copy_file(item, destination / item.relative_to(source))
             count += 1
     return count
 
 
 def assemble_payload(stage: Path) -> int:
+    tracked_paths = _tracked_source_paths()
     payload = stage / "payload"
     count = 0
     for name in ROOT_FILES:
         source = ROOT / name
-        if source.is_file():
-            _copy_file(source, payload / name)
-            count += 1
+        count += int(_copy_tracked_file(source, payload / name, tracked_paths))
     for directory in DIRECTORIES:
         source = ROOT / directory
         if source.is_dir():
             if directory == "workflows":
                 for name in RELEASE_WORKFLOW_FILES:
                     workflow = source / name
-                    if workflow.is_file() and _allowed(workflow.relative_to(source)):
-                        _copy_file(workflow, payload / directory / name)
-                        count += 1
+                    count += int(_copy_tracked_file(
+                        workflow, payload / directory / name, tracked_paths))
             else:
-                count += _copy_tree(source, payload / directory)
+                count += _copy_tree(source, payload / directory, tracked_paths)
     for name in DOC_FILES:
         source = ROOT / name
-        if source.is_file():
-            _copy_file(source, payload / name)
-            count += 1
-    _copy_file(ROOT / "configs" / "installer_bootstrap.json",
-               payload / "configs" / "installer_bootstrap.json")
+        count += int(_copy_tracked_file(source, payload / name, tracked_paths))
     for relative in HARDENING_FILES:
         source = ROOT / relative
-        if source.is_file():
-            _copy_file(source, payload / relative)
-            count += 1
-    _copy_file(SETUP_CMD, stage / "Setup.cmd")
-    _copy_file(SETUP_PS1, stage / "Setup.ps1")
-    return count + 2
+        count += int(_copy_tracked_file(source, payload / relative, tracked_paths))
+    count += int(_copy_tracked_file(SETUP_CMD, stage / "Setup.cmd", tracked_paths))
+    count += int(_copy_tracked_file(SETUP_PS1, stage / "Setup.ps1", tracked_paths))
+    return count
 
 
 def _sha256(path: Path) -> str:
