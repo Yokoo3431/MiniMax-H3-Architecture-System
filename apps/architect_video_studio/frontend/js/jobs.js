@@ -76,7 +76,9 @@ function formatEtaRange(job) {
 }
 function formatJobEta(job) {
   if (job.state === 'COMPLETED') return '已完成';
-  if (['FAILED', 'GPU_FAILED', 'CANCELLED', 'SUBMISSION_LOST'].includes(job.state)) return '无需等待';
+  if (['FAILED', 'GPU_FAILED'].includes(job.state)) return '已停止';
+  if (job.state === 'CANCELLED') return '已取消';
+  if (job.state === 'SUBMISSION_LOST') return '提交状态待核验';
   const range = formatEtaRange(job);
   const etaSeconds = Number(job.eta_seconds);
   const live = Number.isFinite(etaSeconds) && etaSeconds > 0 ? '剩余约 ' + Math.ceil(etaSeconds) + 's' : '';
@@ -98,6 +100,17 @@ function progressText(job) {
   const p = job.state === 'SUBMISSION_LOST' || job.progress == null ? '—' : `${Math.round(job.progress)}%`;
   const stage = job.state === 'SUBMISSION_LOST' ? friendlyState(job) : (job.current_stage || friendlyState(job));
   const eta = formatJobEta(job);
+  if (['FAILED', 'GPU_FAILED'].includes(job.state)) {
+    const lastProgress = p === '—' ? '进度未知' : `失败前 ${p}`;
+    return `<div class="small">${esc(lastProgress)} · 最后记录阶段：${esc(stage)} · ${esc(eta)}</div>`;
+  }
+  if (job.state === 'CANCELLED') {
+    const lastProgress = p === '—' ? '取消时进度未知' : `取消时进度 ${p}`;
+    return `<div class="small">${esc(lastProgress)} · 最后记录阶段：${esc(stage)} · ${esc(eta)}</div>`;
+  }
+  if (job.state === 'SUBMISSION_LOST') {
+    return `<div class="small">${esc(eta)} · 不会自动重新提交</div>`;
+  }
   return `<div class="small">${esc(p)} · ${esc(stage)} · ${esc(eta)}</div>`;
 }
 

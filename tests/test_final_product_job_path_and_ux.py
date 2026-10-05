@@ -99,6 +99,15 @@ class TestCanonicalJobPaths(unittest.TestCase):
 
 
 class TestProductionJobUiContract(unittest.TestCase):
+    def test_terminal_failure_progress_is_not_presented_as_success(self):
+        script = (ROOT / "apps/architect_video_studio/frontend/js/jobs.js").read_text(encoding="utf-8")
+        progress = script.split("function progressText(job)", 1)[1].split("async function loadProjects()", 1)[0]
+        self.assertIn("失败前 ${p}", progress)
+        self.assertIn("最后记录阶段：${esc(stage)}", progress)
+        self.assertIn("return '已停止'", script)
+        self.assertIn("return '提交状态待核验'", script)
+        self.assertIn("不会自动重新提交", progress)
+
     def test_job_detail_and_simple_studio_assets_exist(self):
         jobs = (ROOT / "apps/architect_video_studio/frontend/jobs.html").read_text(encoding="utf-8")
         script = (ROOT / "apps/architect_video_studio/frontend/js/jobs.js").read_text(encoding="utf-8")

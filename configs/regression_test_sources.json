@@ -236,8 +236,8 @@
     {
       "path": "tests/test_final_product_job_path_and_ux.py",
       "tracked_status": "tracked",
-      "sha256": "C2A8DF7328768ABA60EA9BA0C32025E2F083B80869643FDFB85E177BEE4E33EF",
-      "discovered_test_count": 7,
+      "sha256": "1F0ADCE974B5CF9CF2C936FC40368F9AC3D8B7E9F38E2FF069574A3A84AAB58A",
+      "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
     {
