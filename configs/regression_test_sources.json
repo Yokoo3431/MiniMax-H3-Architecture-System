@@ -460,8 +460,8 @@
     {
       "path": "tests/test_patch27d_ui_runtime_binding.py",
       "tracked_status": "tracked",
-      "sha256": "D5AC0020C02CFFB5028705379AEEE25EC0C3D13AD624B79F530859C18A96FDEB",
-      "discovered_test_count": 17,
+      "sha256": "327AB50ADB882077B12A4959EA7C2872B4DB431097DF52D1C6E1C339F2E0EB33",
+      "discovered_test_count": 18,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -712,7 +712,7 @@
     {
       "path": "tests/test_prompt_engine_closure.py",
       "tracked_status": "tracked",
-      "sha256": "C2C534ED6ED27E744FA277F45648AADFEBA3CEAD5A0F1CF02AE8697B398DD26B",
+      "sha256": "EB8B0EE78CE26E61ECDF3BB4D54A5B3E9917559A06F0D95517EEBE5DDC8D1CC2",
       "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },

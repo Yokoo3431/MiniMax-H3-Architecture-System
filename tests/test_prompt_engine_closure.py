@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import sys
 import unittest
 from unittest import mock
 
@@ -137,6 +138,19 @@ class PromptEngineClosureTests(unittest.TestCase):
         payload = provider._request_text(self.request(), {"source": "public"})
         self.assertNotIn(r"C:\private", payload)
         self.assertIn('"reference_image_path": null', payload)
+
+        # Exercise the non-AGY stdin protocol too; it must use the same
+        # consent-gated request representation as the printed CLI prompt.
+        text_provider = CLIReasoningProvider(sys.executable, provider_name="CUSTOM_CLI")
+        completed = mock.Mock(returncode=0, stdout="compiled prompt", stderr="")
+        with mock.patch("runtime.h3_prompt_engine.subprocess.run", return_value=completed) as run:
+            text_provider.generate(self.request(), {"source": "public"})
+        sent = json.loads(run.call_args.kwargs["input"])
+        self.assertIsNone(sent["request"]["reference_image_path"])
+        self.assertEqual(sent["request"]["reference_image_paths"], [])
+        self.assertIsNone(sent["reference_image"])
+        self.assertEqual(sent["reference_images"], [])
+        self.assertNotIn(r"C:\private", json.dumps(sent))
 
     def test_skill_bundle_identity_is_part_of_prompt_freshness(self):
         identity = {

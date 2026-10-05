@@ -176,6 +176,38 @@ class TestApiContract(unittest.TestCase):
         finally:
             h.close()
 
+    def test_legacy_prompt_schema_requires_regeneration_before_job_submission(self):
+        """Do not silently bless pre-profile/pre-skill Prompt records on upgrade."""
+        h = Harness()
+        try:
+            pid = h.full_project()
+            prompt = h.store.load_prompt(pid)
+            prompt["input_hash"] = "legacy-prompt-input-hash"
+            for key in (
+                "a4_profile", "quality_profile_version", "prompt_profile_version",
+                "skill_hash", "skill_version", "prompt_engine_provider",
+            ):
+                prompt.pop(key, None)
+            provenance = dict(prompt.get("provenance") or {})
+            for key in (
+                "a4_profile", "quality_profile_version", "prompt_profile_version",
+                "skill_hash", "skill_version", "official_skill_hash",
+                "official_skill_revision",
+            ):
+                provenance.pop(key, None)
+            prompt["provenance"] = provenance
+            h.store.save_prompt(pid, prompt)
+
+            state = build_study_state(h.store, pid)
+            self.assertFalse(state["prompt_current"])
+            self.assertFalse(state["generate_allowed"])
+            with self.assertRaisesRegex(ValueError, "PROMPT_STALE"):
+                h.job_api.submit_job(pid, risk_reviewed=True)
+            self.assertEqual(h.store.load_jobs(pid), {})
+            self.assertIsNone(h.adapter.last_request)
+        finally:
+            h.close()
+
     def test_offline_prompt_can_record_standard_candidate_but_job_stays_blocked(self):
         h = Harness()
         try:

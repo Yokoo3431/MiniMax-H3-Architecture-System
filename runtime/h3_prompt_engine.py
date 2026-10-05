@@ -554,12 +554,18 @@ class CLIReasoningProvider(PromptReasoningProvider):
             raise ValueError("CLI provider returned no final prompt")
         return candidate, outer
 
-    def _request_text(self, request: PromptReasoningRequest, bundle: Mapping[str, Any]) -> str:
+    def _safe_request_data(self, request: PromptReasoningRequest) -> dict[str, Any]:
         request_data = dict(request.__dict__)
-        # Text-only providers must never receive a local image path.
+        # A local image path is sensitive metadata too. Expose it to a CLI
+        # provider only when both multimodal capability and explicit consent
+        # are present; otherwise strip it from every provider payload.
         if not self.multimodal_capable or not request.image_consent:
             request_data["reference_image_path"] = None
             request_data["reference_image_paths"] = ()
+        return request_data
+
+    def _request_text(self, request: PromptReasoningRequest, bundle: Mapping[str, Any]) -> str:
+        request_data = self._safe_request_data(request)
         return (
             "Follow the supplied official MiniMax H3 Skill specification. "
             "Return ONLY the final H3 prompt payload, with no explanation, "
@@ -599,7 +605,7 @@ class CLIReasoningProvider(PromptReasoningProvider):
         reference_paths = request.reference_image_paths or (
             (request.reference_image_path,) if request.reference_image_path else ())
         input_payload = None if self._is_antigravity() else json.dumps(
-            {"request": dict(request.__dict__), "official_skill_bundle": bundle,
+            {"request": self._safe_request_data(request), "official_skill_bundle": bundle,
              "reference_image": request.reference_image_path if self.multimodal_capable and request.image_consent else None,
              "reference_images": ([{"role": role, "path": path}
                                    for role, path in zip(request.reference_roles, reference_paths)]
