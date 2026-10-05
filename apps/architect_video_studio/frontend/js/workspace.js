@@ -5,6 +5,7 @@ const projectId = qs('project');
 if (!projectId) location.href = 'index.html';
 
 const errEl = document.getElementById('err');
+const workspaceMain = document.getElementById('main-content');
 let project = null;
 let catalog = null;
 let intent = null;
@@ -1873,6 +1874,9 @@ document.getElementById('test-provider-btn')?.addEventListener('click', testProv
 document.getElementById('detect-provider-btn')?.addEventListener('click', detectProvider);
 
 function showHydrationFailure(error) {
+  workspaceMain?.classList.remove('is-loading');
+  workspaceMain?.classList.add('is-load-failed');
+  workspaceMain?.setAttribute('aria-busy', 'false');
   const layout = document.querySelector('.studio-layout');
   if (layout) {
     layout.querySelectorAll('button, input, select, textarea').forEach((el) => { el.disabled = true; });
@@ -1886,6 +1890,9 @@ function showHydrationFailure(error) {
 }
 
 loadAll().then(() => {
+  workspaceMain?.classList.remove('is-loading');
+  workspaceMain?.setAttribute('aria-busy', 'false');
+  document.getElementById('workspace-loading')?.remove();
   const layout = document.querySelector('.studio-layout');
   if (layout) layout.style.display = '';
 }).catch(showHydrationFailure);

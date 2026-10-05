@@ -1191,6 +1191,18 @@ input[type=text], select, textarea { padding: 5px 8px; }
 .app-study .current-job-strip .muted, .app-study .job-strip-time { color: #9daba5; }
 .app-study .current-job-strip .btn { color: #d9e2dd; background: transparent; border-color: #566560; }
 
+/* Keep server-backed Study controls out of view until their canonical state is hydrated. */
+.studio-page.is-loading > :not(#workspace-loading),
+.studio-page.is-load-failed > :not(#err) { display: none !important; }
+.workspace-loading {
+  min-height: min(32vh, 240px);
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+.workspace-loading h1 { margin: 4px 0; font-size: 22px; }
+.workspace-loading p:last-child { margin-bottom: 0; }
+
 /* Environment keeps its existing behavior but reads as an instrument panel. */
 .app-environment .setup-shell { grid-template-columns: 196px minmax(0, 1fr); gap: 8px; }
 .app-environment .setup-shell > .panel,

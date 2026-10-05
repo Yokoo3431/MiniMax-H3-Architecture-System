@@ -2,10 +2,10 @@
   "schema_version": 1,
   "canonical_command": "python -m unittest discover -s tests -p \"test*.py\"",
   "test_inventory_file": "configs/regression_test_inventory.txt",
-  "inventory_sha256": "CE8F6B558320B828C410F3DBC82283A1FFC70F0F21EBEF13AAE1FEA123749AE6",
+  "inventory_sha256": "59F39A9B2FD4A4B8B431AA37460C40A580E7917065FF527CF461C3133BFC2AEC",
   "test_source_manifest_file": "configs/regression_test_sources.json",
-  "test_source_manifest_sha256": "75343233C0BC767992C09AAB0B7A220F03B9D6839C963B675378356502795680",
-  "discovered_count": 1050,
+  "test_source_manifest_sha256": "0F8C91682D2C9143B15DDD0D06672C30BB8F9429B11D82FA1CA38C3829D78FAC",
+  "discovered_count": 1051,
   "expected_skip_count": 4,
   "expected_skip_ids": [
     {
@@ -25,6 +25,6 @@
       "reason": "historical external-machine deployer test is opt-in"
     }
   ],
-  "core_pass_count": 1046,
+  "core_pass_count": 1047,
   "creation_stage": "A8_DELIVERY_CAPABILITY"
 }

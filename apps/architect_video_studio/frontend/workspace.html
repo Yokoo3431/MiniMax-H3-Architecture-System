@@ -33,7 +33,14 @@
   </header>
 
   <a class="skip-link" href="#main-content">跳到主要内容</a>
-  <main id="main-content" class="wrap wrap-wide app-main studio-page">
+  <main id="main-content" class="wrap wrap-wide app-main studio-page is-loading" aria-busy="true">
+    <section id="workspace-loading" class="workspace-loading panel" role="status" aria-live="polite">
+      <div>
+        <p class="eyebrow">Study</p>
+        <h1>正在加载 Study</h1>
+        <p class="muted">正在读取项目、参考图和任务状态；加载完成前不会显示空白占位内容。</p>
+      </div>
+    </section>
     <div id="err" class="error-banner" style="display:none"></div>
     <section class="studio-heading study-identity">
       <div>

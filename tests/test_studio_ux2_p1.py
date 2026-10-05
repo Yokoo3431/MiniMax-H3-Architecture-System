@@ -57,6 +57,20 @@ class StudioUX2P1Tests(unittest.TestCase):
             self.assertIn("READY_TO_GENERATE: '素材与提示词已就绪'", source)
             self.assertNotIn("READY_TO_GENERATE: '可以生成'", source)
 
+    def test_study_hides_unhydrated_defaults_and_exposes_loading_or_failure_state(self):
+        html = self.read("workspace.html")
+        script = self.read("js/workspace.js")
+        styles = self.read("css/studio.css")
+        self.assertIn('class="wrap wrap-wide app-main studio-page is-loading" aria-busy="true"', html)
+        self.assertIn('id="workspace-loading" class="workspace-loading panel" role="status" aria-live="polite"', html)
+        self.assertIn("正在加载 Study", html)
+        self.assertIn(".studio-page.is-loading > :not(#workspace-loading)", styles)
+        self.assertIn(".studio-page.is-load-failed > :not(#err)", styles)
+        self.assertIn("workspaceMain?.classList.remove('is-loading')", script)
+        self.assertIn("workspaceMain?.classList.add('is-load-failed')", script)
+        self.assertIn("workspaceMain?.setAttribute('aria-busy', 'false')", script)
+        self.assertIn("document.getElementById('workspace-loading')?.remove()", script)
+
     def test_study_preserves_legacy_ids_and_adds_p1_frame(self):
         source = self.read("workspace.html")
         for element_id in ("task-name", "task-state", "v-body", "v-progress", "current-job-strip"):
