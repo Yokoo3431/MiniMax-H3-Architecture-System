@@ -25,7 +25,7 @@ const WF_LABEL = {
 
 function stateBadge(state) {
   const labels = {
-    READY_TO_GENERATE: '可以生成', GENERATING: '正在生成', COMPLETED: '已完成',
+    READY_TO_GENERATE: '素材与提示词已就绪', GENERATING: '正在生成', COMPLETED: '已完成',
     REFERENCE_PENDING: '等待参考图', PROMPT_REVIEW: '准备 Prompt', FAILED: '生成失败',
   };
   const cls = ['COMPLETED', 'READY_TO_GENERATE'].includes(state) ? 'done'

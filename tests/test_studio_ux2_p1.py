@@ -51,6 +51,12 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertNotIn("onclick=", body)
         self.assertIn(".app-home .task-card-main:focus-visible", self.read("css/studio.css"))
 
+    def test_ready_badge_does_not_claim_runtime_execution_is_available(self):
+        for name in ("js/home.js", "js/workspace.js"):
+            source = self.read(name)
+            self.assertIn("READY_TO_GENERATE: '素材与提示词已就绪'", source)
+            self.assertNotIn("READY_TO_GENERATE: '可以生成'", source)
+
     def test_study_preserves_legacy_ids_and_adds_p1_frame(self):
         source = self.read("workspace.html")
         for element_id in ("task-name", "task-state", "v-body", "v-progress", "current-job-strip"):

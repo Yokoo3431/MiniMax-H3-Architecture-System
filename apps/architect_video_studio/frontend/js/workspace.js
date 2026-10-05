@@ -61,7 +61,7 @@ const STATE_LABELS = {
   GPU_RUNNING: '生成中', QUALITY_CHECK: '整理输出', QUEUED: '排队中', SUBMITTED: '已提交',
   RUNNING: '运行中', GENERATING: '生成中', RECONCILING: '整理输出', COMPLETED: '已完成',
   FAILED: '生成失败', GPU_FAILED: '生成失败', CANCELLED: '已取消', SUBMISSION_LOST: '提交未确认',
-  READY_TO_GENERATE: '可以生成',
+  READY_TO_GENERATE: '素材与提示词已就绪',
 };
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
