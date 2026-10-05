@@ -59,7 +59,11 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertLess(body.index('</a>'), body.index('<div class="task-actions">'))
         self.assertNotIn("onclick=", body)
         self.assertIn(".app-home .task-card-main:focus-visible", self.read("css/studio.css"))
-        self.assertIn(".skip-link:focus { left:12px; }", self.read("css/studio.css"))
+        focus_link_css = self.read("css/studio.css")
+        self.assertIn(".skip-link:focus {", focus_link_css)
+        self.assertIn("position:relative;", focus_link_css)
+        self.assertIn("width:max-content;", focus_link_css)
+        self.assertIn("margin:8px 12px;", focus_link_css)
 
         for name in PAGES:
             source = self.read(name)

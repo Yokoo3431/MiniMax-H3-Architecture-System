@@ -125,7 +125,14 @@ a:hover { text-decoration: underline; }
 .study-header-context { display:inline-flex; align-items:center; gap:var(--space-2); min-width:0; color:var(--text-secondary); }
 .study-header-context .context-label { font-size:10px; letter-spacing:1px; font-weight:700; color:var(--text-muted); }
 .skip-link { position:absolute; left:-10000px; top:8px; z-index:50; padding:8px 12px; background:var(--surface-tool); border:1px solid var(--border-strong); border-radius:var(--radius-sm); }
-.skip-link:focus { left:12px; }
+.skip-link:focus {
+  position:relative;
+  display:block;
+  left:0;
+  top:0;
+  width:max-content;
+  margin:8px 12px;
+}
 /* UX2-P1: keyboard focus baseline. */
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--interaction-focus); outline-offset:2px; }
 .app-main { width:100%; }
