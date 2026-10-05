@@ -490,12 +490,64 @@ class TestInstallerExecutionAndIntegration(unittest.TestCase):
         self.assertEqual(next(x for x in plan["components"] if x["component_id"] == "comfyui_runtime")["status"], "READY")
         self.assertEqual(self.h.opener.ranges, [])
 
+    def test_ready_component_install_request_is_noop(self):
+        (self.h.native / "ComfyUI" / "custom_nodes" / "windows_safe_load").mkdir(parents=True)
+        (self.h.native / "ComfyUI" / "main.py").parent.mkdir(parents=True, exist_ok=True)
+        main = self.h.native / "ComfyUI" / "main.py"
+        version = self.h.native / "ComfyUI" / "comfyui_version.py"
+        main.write_text("existing runtime", encoding="utf-8")
+        version.write_text('__version__ = "0.33.1"\n', encoding="utf-8")
+        before = {path: path.read_bytes() for path in (main, version)}
+
+        result = self.h.service.start_install({
+            "confirmed": True,
+            "native_root": str(self.h.native),
+            "components": ["comfyui_runtime"],
+        })
+
+        self.assertIsNone(result["job_id"])
+        self.assertEqual(result["status"], "READY")
+        self.assertIn("no installation was performed", result["message"])
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+        self.assertEqual(self.h.opener.ranges, [])
+        self.assertEqual(list(self.h.jobs.glob("job-????????????.json")), [])
+
+    def test_duplicate_install_job_is_rejected(self):
+        self.h.jobs.mkdir(parents=True, exist_ok=True)
+        existing_path = self.h.jobs / "job-0123456789ab.json"
+        existing_path.write_text(json.dumps({"job_id": "job-0123456789ab", "status": "INSTALLING"}), encoding="utf-8")
+        with mock.patch.object(self.h.service, "build_install_plan", return_value={
+            "components": [{"component_id": "dit", "status": "NOT_INSTALLED", "expected_size": 1}],
+            "blocked_reasons": [], "plan_id": "fixture-plan", "install_root": "fixture", "models_root": "fixture",
+        }), mock.patch.object(self.h.service, "_assert_no_gpu_job"):
+            with self.assertRaises(InstallerError) as ctx:
+                self.h.service.start_install({"confirmed": True, "components": ["dit"]})
+        self.assertEqual(ctx.exception.code, "INSTALL_ALREADY_RUNNING")
+        self.assertEqual(len(list(self.h.jobs.glob("job-????????????.json"))), 1)
+        self.assertEqual(self.h.opener.ranges, [])
+
+    def test_unknown_install_job_state_fails_closed(self):
+        self.h.jobs.mkdir(parents=True, exist_ok=True)
+        existing_path = self.h.jobs / "job-0123456789ab.json"
+        existing_path.write_text(json.dumps({"job_id": "job-0123456789ab", "status": "UNKNOWN"}), encoding="utf-8")
+        with mock.patch.object(self.h.service, "build_install_plan", return_value={
+            "components": [{"component_id": "dit", "status": "NOT_INSTALLED", "expected_size": 1}],
+            "blocked_reasons": [], "plan_id": "fixture-plan", "install_root": "fixture", "models_root": "fixture",
+        }), mock.patch.object(self.h.service, "_assert_no_gpu_job"):
+            with self.assertRaises(InstallerError) as ctx:
+                self.h.service.start_install({"confirmed": True, "components": ["dit"]})
+        self.assertEqual(ctx.exception.code, "INSTALL_STATE_UNVERIFIED")
+        self.assertEqual(len(list(self.h.jobs.glob("job-????????????.json"))), 1)
+        self.assertEqual(self.h.opener.ranges, [])
+
     def test_frontend_status_contract(self):
         html = (SYSTEM_ROOT / "apps" / "architect_video_studio" / "frontend" / "setup.html").read_text(encoding="utf-8")
         js = (SYSTEM_ROOT / "apps" / "architect_video_studio" / "frontend" / "js" / "setup.js").read_text(encoding="utf-8")
         for token in ("install-plan", "install-consent", "install-all-btn", "cancel-install-btn"):
             self.assertIn(token, html)
-        for token in ("/api/system/install-plan", "/api/system/install", "/api/system/install/", "confirmed"):
+        for token in ("id=\"install-runtime-btn\" disabled", "id=\"install-support-btn\" disabled", "id=\"install-video-btn\" disabled", "id=\"install-models-btn\" disabled"):
+            self.assertIn(token, html)
+        for token in ("/api/system/install-plan", "/api/system/install", "/api/system/install/", "confirmed", "planLoading || !plan", "installRequestPending"):
             self.assertIn(token, js)
 
     def test_system_api_contract(self):

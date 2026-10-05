@@ -3,6 +3,8 @@ const errEl = document.getElementById('err');
 let env = null;
 let plan = null;
 let activeJob = null;
+let planLoading = false;
+let installRequestPending = false;
 
 async function loadDesktopSettings() {
   try {
@@ -64,6 +66,9 @@ function badge(overall) {
 }
 
 function showProbeChecking() {
+  plan = null;
+  planLoading = true;
+  updateEnvironmentControls();
   const badgeEl = document.getElementById('overall-badge');
   if (badgeEl) badgeEl.innerHTML = badge('CHECKING');
   const inspector = document.getElementById('inspector');
@@ -73,6 +78,8 @@ function showProbeChecking() {
 }
 
 function finishProbeChecking() {
+  planLoading = false;
+  updateEnvironmentControls();
   const button = document.getElementById('recheck-btn');
   if (button) { button.disabled = false; button.textContent = 'Re-check Environment'; }
 }
@@ -98,6 +105,9 @@ function componentSize(item) {
 
 function updateEnvironmentControls() {
   const state = environmentState();
+  const activeInstallStatuses = ['QUEUED', 'DOWNLOADING', 'INSTALLING', 'VERIFYING', 'EXTRACTING'];
+  const activeInstall = activeJob && activeInstallStatuses.includes(activeJob.status);
+  const installActionsBusy = planLoading || installRequestPending || Boolean(activeInstall);
   const allGates = Object.values(state.production_gates || state.gates || {}).every(Boolean);
   const ready = state.overall === 'READY' && allGates;
   const active = state.environment_sources?.active || {};
@@ -117,14 +127,21 @@ function updateEnvironmentControls() {
   const setInstallState = (id, buttonId) => {
     const item = component(id);
     const button = document.getElementById(buttonId);
-    if (button) button.disabled = !item || item.status === 'READY' || Boolean(plan?.blocked_reasons?.length);
+    if (button) button.disabled = installActionsBusy || !item || item.status === 'READY' || Boolean(plan?.blocked_reasons?.length);
   };
   setInstallState('comfyui_runtime', 'install-runtime-btn');
   setInstallState('minimax_h3_nodes', 'install-support-btn');
   setInstallState('video_helper_suite', 'install-video-btn');
   const modelIds = ['dit', 'text_encoder', 'video_vae', 'audio_vae'];
   const missingModels = modelIds.some((id) => component(id)?.status !== 'READY');
-  document.getElementById('install-models-btn').disabled = !plan || !missingModels || Boolean(plan?.blocked_reasons?.length);
+  document.getElementById('install-models-btn').disabled = installActionsBusy || !plan || !missingModels || Boolean(plan?.blocked_reasons?.length);
+  const installAllButton = document.getElementById('install-all-btn');
+  if (installAllButton) {
+    const hasMissingComponents = (plan?.components || []).some((item) => item.status !== 'READY');
+    installAllButton.disabled = installActionsBusy || !plan || !hasMissingComponents || Boolean(plan?.blocked_reasons?.length);
+  }
+  const refreshPlanButton = document.getElementById('refresh-plan-btn');
+  if (refreshPlanButton) refreshPlanButton.disabled = installActionsBusy;
 }
 
 function renderInstallPlan() {
@@ -155,20 +172,33 @@ function renderInstallPlan() {
     return `<div class="install-item"><div class="install-item-head"><span><strong>${esc(item.name)}</strong><br><span class="small">${esc(item.version || 'pinned')}</span></span><span class="${cls}">${esc(item.status)}${item.error ? ` · ${esc(item.error)}` : ''}</span></div><div class="install-item-meta">${esc(sourceLabel)} · ${esc(componentSize(item))} · ${esc(item.source_status || 'PINNED')}<br>License: ${esc(license)}<br>Target: ${esc(item.target || '—')}</div></div>`;
   }).join('');
   consentWrap.style.display = plan.components?.some((i) => i.status !== 'READY') ? 'block' : 'none';
-  installBtn.disabled = !plan.components?.some((i) => i.status !== 'READY') || blocked.includes('INSUFFICIENT_DISK');
+  installBtn.disabled = planLoading || installRequestPending
+    || !plan.components?.some((i) => i.status !== 'READY')
+    || blocked.includes('INSUFFICIENT_DISK');
   installBtn.style.display = allReady ? 'none' : '';
   document.getElementById('installer-panel').classList.toggle('already-ready', allReady);
   updateEnvironmentControls();
 }
 
 async function loadPlan(custom = false) {
+  plan = null;
+  planLoading = true;
+  updateEnvironmentControls();
+  const statusEl = document.getElementById('install-plan-status');
+  if (statusEl) statusEl.textContent = '正在检查现有组件；检查完成前不会启用安装。';
   try {
     plan = custom ? await post('/api/system/install-plan', {
       native_root: document.getElementById('cfg-native').value.trim(),
       models_root: document.getElementById('cfg-models').value.trim(),
     }) : await get('/api/system/install-plan');
     renderInstallPlan();
-  } catch (e) { document.getElementById('install-plan-status').textContent = e.message; }
+  } catch (e) {
+    plan = null;
+    if (statusEl) statusEl.textContent = '安装计划暂不可用；为避免重复安装，安装操作已禁用。请稍后刷新状态。';
+  } finally {
+    planLoading = false;
+    updateEnvironmentControls();
+  }
 }
 
 function renderJob(job) {
@@ -219,21 +249,40 @@ async function saveConfiguration() {
 }
 
 async function startComponents(components) {
+  if (installRequestPending) throw new Error('安装请求正在处理中，请勿重复提交。');
+  if (planLoading || !plan) throw new Error('现有组件检查尚未完成；安装操作已阻止。');
+  const activeInstallStatuses = ['QUEUED', 'DOWNLOADING', 'INSTALLING', 'VERIFYING', 'EXTRACTING'];
+  if (activeJob && activeInstallStatuses.includes(activeJob.status)) {
+    throw new Error('已有安装任务正在运行；为避免重复安装，本次请求已阻止。');
+  }
+  const requested = new Set(components);
+  const selected = plan.components
+    .filter((item) => requested.has(item.component_id) && item.status !== 'READY')
+    .map((item) => item.component_id);
+  if (!selected.length) return { job_id: null, status: 'READY' };
   const consent = document.getElementById('install-consent').checked;
   if (!consent) throw new Error('请先勾选许可证与下载确认。');
   const native = document.getElementById('cfg-native').value.trim();
   const models = document.getElementById('cfg-models').value.trim();
-  if (!native && components.some((id) => ['comfyui_runtime', 'minimax_h3_nodes', 'video_helper_suite'].includes(id))) {
+  if (!native && selected.some((id) => ['comfyui_runtime', 'minimax_h3_nodes', 'video_helper_suite'].includes(id))) {
     throw new Error('请先填写 Native Runtime Path，或使用已配置的 Runtime。');
   }
-  activeJob = await post('/api/system/install', {
-    confirmed: true, components, native_root: native, models_root: models,
-  });
-  if (activeJob.job_id) {
-    renderJob(activeJob);
-    await pollJob(activeJob.job_id);
-  } else {
-    await loadEnv();
+  installRequestPending = true;
+  updateEnvironmentControls();
+  try {
+    activeJob = await post('/api/system/install', {
+      confirmed: true, components: selected, native_root: native, models_root: models,
+    });
+    if (activeJob.job_id) {
+      renderJob(activeJob);
+      await pollJob(activeJob.job_id);
+    } else {
+      await loadEnv();
+    }
+    return activeJob;
+  } finally {
+    installRequestPending = false;
+    updateEnvironmentControls();
   }
 }
 

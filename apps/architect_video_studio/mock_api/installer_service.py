@@ -141,6 +141,7 @@ class InstallationService:
         self._sleep = sleep
         self._threads: Dict[str, threading.Thread] = {}
         self._cancel: Dict[str, threading.Event] = {}
+        self._install_start_lock = threading.Lock()
         self.state = SetupState(store)
 
     # ------------------------------------------------------------------ #
@@ -714,10 +715,34 @@ class InstallationService:
         native = body.get("native_root") or None
         models = body.get("models_root") or None
         plan = self.build_install_plan(native, models)
-        selected = body.get("components") or [
-            c["component_id"] for c in plan["components"] if c["status"] != "READY"
+        requested = body.get("components") if "components" in body else None
+        if requested is None:
+            requested = [c["component_id"] for c in plan["components"] if c["status"] != "READY"]
+        if not isinstance(requested, (list, tuple, set)):
+            raise InstallerError("INVALID_COMPONENT_SELECTION", "Installation components must be a list.")
+        if any(not isinstance(component_id, str) for component_id in requested):
+            raise InstallerError("INVALID_COMPONENT_SELECTION", "Installation component ids must be strings.")
+        requested_set = set(requested)
+        components_by_id = {c["component_id"]: c for c in plan["components"]}
+        unknown = requested_set - components_by_id.keys()
+        if unknown:
+            raise InstallerError(
+                "UNKNOWN_INSTALL_COMPONENT",
+                "The requested installation component is not recognized.",
+                {"components": sorted(str(component) for component in unknown)},
+            )
+        selected = [
+            component_id for component_id in components_by_id
+            if component_id in requested_set and components_by_id[component_id]["status"] != "READY"
         ]
         selected_set = set(selected)
+        if not selected_set:
+            return {
+                "job_id": None,
+                "status": "READY",
+                "plan": plan,
+                "message": "Requested components are already ready; no installation was performed.",
+            }
         relevant_blocked = []
         for item in plan["components"]:
             if item["component_id"] in selected_set and item["status"] != "READY":
@@ -734,33 +759,59 @@ class InstallationService:
         if relevant_blocked:
             code = "MANUAL_SOURCE_REQUIRED" if "MANUAL_SOURCE_REQUIRED" in relevant_blocked else relevant_blocked[0]
             raise InstallerError(code, self._friendly_error(code), {"plan": plan})
-        if not selected_set:
-            return {"job_id": None, "status": "READY", "plan": plan, "message": "All required components are already ready."}
         self._assert_no_gpu_job()
-        job_id = "job-" + uuid.uuid4().hex[:12]
-        job = {
-            "job_id": job_id,
-            "component_id": "required_components",
-            "components": list(selected),
-            "status": "QUEUED",
-            "bytes_total": sum(int(c.get("expected_size") or 0) for c in plan["components"] if c["component_id"] in selected_set),
-            "bytes_downloaded": 0,
-            "progress": 0.0,
-            "speed": 0.0,
-            "eta": None,
-            "error": None,
-            "started_at": None,
-            "updated_at": _now(),
-            "plan_id": plan["plan_id"],
-            "install_root": plan["install_root"],
-            "models_root": plan["models_root"],
-        }
-        self._save_job(job)
-        event = threading.Event()
-        self._cancel[job_id] = event
-        thread = threading.Thread(target=self._run_job, args=(job_id, plan, event), daemon=True)
-        self._threads[job_id] = thread
-        thread.start()
+        with self._install_start_lock:
+            active_statuses = {"QUEUED", "DOWNLOADING", "INSTALLING", "VERIFYING", "EXTRACTING"}
+            terminal_statuses = {"READY", "FAILED", "CANCELLED"}
+            for path in self.job_root.glob("job-????????????.json") if self.job_root.exists() else ():
+                try:
+                    existing = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    raise InstallerError(
+                        "INSTALL_STATE_UNVERIFIED",
+                        "An existing installation job could not be verified; no new installation was started.",
+                    )
+                status = existing.get("status")
+                if status in active_statuses:
+                    raise InstallerError(
+                        "INSTALL_ALREADY_RUNNING",
+                        "An installation is already in progress; a duplicate was not started.",
+                        {"job_id": existing.get("job_id")},
+                    )
+                if status not in terminal_statuses:
+                    raise InstallerError(
+                        "INSTALL_STATE_UNVERIFIED",
+                        "An existing installation job has an unknown state; no new installation was started.",
+                    )
+            if any(thread.is_alive() for thread in self._threads.values()):
+                raise InstallerError(
+                    "INSTALL_ALREADY_RUNNING",
+                    "An installation is already in progress; a duplicate was not started.",
+                )
+            job_id = "job-" + uuid.uuid4().hex[:12]
+            job = {
+                "job_id": job_id,
+                "component_id": "required_components",
+                "components": selected,
+                "status": "QUEUED",
+                "bytes_total": sum(int(c.get("expected_size") or 0) for c in plan["components"] if c["component_id"] in selected_set),
+                "bytes_downloaded": 0,
+                "progress": 0.0,
+                "speed": 0.0,
+                "eta": None,
+                "error": None,
+                "started_at": None,
+                "updated_at": _now(),
+                "plan_id": plan["plan_id"],
+                "install_root": plan["install_root"],
+                "models_root": plan["models_root"],
+            }
+            self._save_job(job)
+            event = threading.Event()
+            self._cancel[job_id] = event
+            thread = threading.Thread(target=self._run_job, args=(job_id, plan, event), daemon=True)
+            self._threads[job_id] = thread
+            thread.start()
         return job
 
     def get_job(self, job_id: str) -> dict:
