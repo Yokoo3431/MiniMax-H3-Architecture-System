@@ -500,6 +500,24 @@ body.app-shell {
   padding-top: 0 !important;
 }
 
+/* Long, unbroken Study names must wrap inside their grid track instead of
+   expanding the Home document and introducing a horizontal scrollbar. */
+.app-home .task-card,
+.app-home .task-card-main,
+.app-home .task-card .ttl,
+.app-home .task-card .ttl > span:first-child { min-width: 0; }
+.app-home .task-card .ttl > span:first-child { overflow-wrap: anywhere; }
+.app-home .task-card .ttl > sl-badge { flex: 0 0 auto; }
+
+@media (max-width: 640px) {
+  .app-home .task-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .app-home .task-actions > sl-button { width: 100%; min-width: 0; }
+}
+
 /* P1.19 optical alignment: keep the nav label group on one explicit text
    metric instead of relying on inherited line-height or padding. */
 .app-shell .app-nav a {

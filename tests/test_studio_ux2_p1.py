@@ -38,6 +38,8 @@ class StudioUX2P1Tests(unittest.TestCase):
             self.assertIn('js/ux2_shell.js', source, name)
             self.assertIn(f'class="app-shell {body_class}"', source, name)
             self.assertIn('id="main-content"', source, name)
+            self.assertLess(source.index('class="skip-link"'), source.index('<header'), name)
+            self.assertLess(source.index('<header'), source.index('id="main-content"'), name)
             for label in ("Home", "Study", "Jobs", "Outputs", "Environment"):
                 self.assertRegex(source, rf">{label}</a>", name)
         home = self.read("js/home.js")
@@ -50,6 +52,15 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertLess(body.index('</a>'), body.index('<div class="task-actions">'))
         self.assertNotIn("onclick=", body)
         self.assertIn(".app-home .task-card-main:focus-visible", self.read("css/studio.css"))
+        self.assertIn(".skip-link:focus { left:12px; }", self.read("css/studio.css"))
+
+    def test_home_cards_wrap_unbroken_names_and_mobile_actions(self):
+        global_css = self.read("css/avs_global_theme.css")
+        self.assertIn(".app-home .task-card .ttl > span:first-child { overflow-wrap: anywhere; }", global_css)
+        self.assertIn(".app-home .task-card-main,", global_css)
+        self.assertIn(".app-home .task-actions {", global_css)
+        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", global_css)
+        self.assertIn(".app-home .task-actions > sl-button { width: 100%; min-width: 0; }", global_css)
 
     def test_ready_badge_does_not_claim_runtime_execution_is_available(self):
         for name in ("js/home.js", "js/workspace.js"):

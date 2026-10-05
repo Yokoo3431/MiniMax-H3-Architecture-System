@@ -14,19 +14,28 @@ The Master Development Program is the governing brief. The primary audience is a
 - Environment showed a successful Torch/CUDA probe message in the error color. It now uses the success color when the probe status is `READY`; the live page was reloaded and the message displayed in green.
 - The existing Study hydration/loading failure state remains in place and was visually/structurally checked earlier in this closeout.
 - The Environment page reports that all required components are already ready and no installation is required. No installer or ComfyUI update was run.
+- The Home overflow and repeated-navigation keyboard entry point were then isolated and corrected as detailed below.
+
+## Responsive Home overflow and keyboard entry follow-up
+
+- Used the application’s mock server at an isolated loopback port with a fresh temporary data root and synthetic Study names only. Production Studio data, ComfyUI, user media, and model folders were not accessed.
+- At a requested 1250 × 700 probe viewport (the iframe border made the app CSS viewport 1248 px wide), an empty Home had no horizontal overflow. Four synthetic Studies, including long unbroken Latin and repeated Chinese titles, reproduced it: document `scrollWidth` reached 1514 px while `clientWidth` was 1233 px. The measured overflow was caused by the Home title’s flex item retaining its automatic min-content width; the long title forced the grid track wider and pushed the status badge outside the viewport.
+- The Home card now allows its title flex item to shrink and wrap anywhere, keeps the state badge from shrinking, and lays the three card actions out in equal columns on narrow viewports. Re-running the same 1250 × 700 synthetic case measured `scrollWidth == clientWidth == 1248` with no out-of-viewport elements.
+- At 375 × 812, the synthetic Home initially measured `scrollWidth 372` vs `clientWidth 358`. The card action buttons occupied about 348 px in a 310 px content row. After the narrow-screen grid fix, both widths measured 358 px and there were no out-of-viewport elements. The nav retains its intentional, confined horizontal scroller (`overflow-x:auto`); it no longer expands the document.
+- Additional Home checks: 768 × 1024 measured document width 766/766; 1280 × 800 measured 1263/1263. Screenshots were visually inspected through the app browser using only synthetic data. The isolated headless Chrome/CDP harness could not start because this host’s Chrome GPU process terminated during initialization, so no persistent screenshot files were produced; no browser software was installed or downloaded.
+- The “跳到主要内容” link now precedes the repeated navigation on all five primary pages. A real Tab interaction on the synthetic Home confirmed it is the first focused element and becomes visible; regression assertions enforce its document order on all primary pages.
 
 ## Remaining UX work
 
-- Home displays a horizontal scrollbar at the reviewed desktop viewport. It was not hidden with an overflow rule because the exact overflowing element has not yet been isolated.
-- Exact 375 px mobile and 768 px tablet viewport checks remain open. The available CUA surface did not expose a deterministic viewport override or a way to save the captured screenshots as review artifacts; no substitute measurements are claimed.
-- Keyboard/accessibility review is incomplete. The visible skip-to-main link is placed after the primary navigation in the document order; its placement should be considered in the remaining accessibility pass.
+- Responsive evidence above covers Home only; the exact mobile/tablet screen-state matrix for Study, Jobs, Outputs, and Environment remains open.
+- The shared skip-link order and initial Home Tab behavior are fixed, but keyboard traversal, visible focus, screen-reader names, and error/status announcements still need a full page-by-page accessibility pass.
 - The full Final E screen/state matrix and Final F clean-install/upgrade/repair/uninstall-preservation matrix have not been closed by this checkpoint.
 
 ## Verification evidence
 
 - Live Home: initial loading state is announced; after hydration, existing Studies and system readiness appear; the `?new=1` route preserves its intended form/focus behavior.
 - Live Environment: ready state, component plan, and corrected success color confirmed. The plan explicitly reports no installation required.
-- Automated canonical regression: 1051 tests, 4 expected skips, 0 failures.
+- Automated canonical regression after the responsive/skip-link follow-up: 1052 tests, 4 expected skips, 0 failures. UX-focused tests: 13 passed; regression inventory/source manifest synchronized and verified.
 - JavaScript syntax, Python compileall, JSON parse, regression inventory/source manifest, and `git diff --check`: PASS.
 - Production ComfyUI remains 0.33.1 on its existing endpoint; the experimental endpoint remains offline. No new GPU generation was submitted.
 
