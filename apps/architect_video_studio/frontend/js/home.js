@@ -3,6 +3,7 @@ const tasksEl = document.getElementById('tasks');
 const errEl = document.getElementById('err');
 
 function showErr(msg) { errEl.style.display = 'block'; errEl.textContent = msg; }
+function escAttr(text) { return esc(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
 function ownerError(error, fallback = '操作失败，请稍后重试。') {
   const message = String(error?.message || error || '');
@@ -52,11 +53,12 @@ async function loadTasks() {
       ? rows.map(({ p, intent, prompt, study }) => {
           const wf = (intent && intent.selected_workflow) || (prompt && prompt.workflow) || null;
           const displayState = study && study.current_state || p.state;
+          const studyName = String(p.name || '未命名 Study');
           return `
           <article class="task-card">
-            <a class="task-card-main" href="workspace.html?project=${encodeURIComponent(p.id)}" aria-label="打开 Study：${esc(p.name)}">
+            <a class="task-card-main" href="workspace.html?project=${encodeURIComponent(p.id)}" aria-label="打开 Study：${escAttr(studyName)}">
               <div class="ttl">
-                <span>${esc(p.name)}</span>
+                <span>${esc(studyName)}</span>
                 ${stateBadge(displayState)}
               </div>
               <div class="tags">
@@ -68,9 +70,9 @@ async function loadTasks() {
               </div>
             </a>
             <div class="task-actions">
-              <sl-button class="btn small ghost" data-action="rename" data-project="${esc(p.id)}">重命名</sl-button>
-              <sl-button class="btn small ghost" data-action="duplicate" data-project="${esc(p.id)}">复制</sl-button>
-              <sl-button class="btn small ghost danger" data-action="delete" data-project="${esc(p.id)}">删除</sl-button>
+              <sl-button class="btn small ghost" data-action="rename" data-project="${escAttr(p.id)}" aria-label="重命名 Study：${escAttr(studyName)}">重命名</sl-button>
+              <sl-button class="btn small ghost" data-action="duplicate" data-project="${escAttr(p.id)}" aria-label="复制 Study：${escAttr(studyName)}">复制</sl-button>
+              <sl-button class="btn small ghost danger" data-action="delete" data-project="${escAttr(p.id)}" aria-label="删除 Study：${escAttr(studyName)}">删除</sl-button>
             </div>
           </article>`;
         }).join('')
