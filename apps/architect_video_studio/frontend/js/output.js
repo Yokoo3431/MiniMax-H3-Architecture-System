@@ -3,9 +3,17 @@ const jobId = qs('job');
 const requestedProjectId = qs('project');
 const errEl = document.getElementById('err');
 
-function showErr(msg) { errEl.className = 'error-banner'; errEl.style.display = 'block'; errEl.textContent = friendlyError(msg, '输出加载失败，请返回 Jobs 重试。'); }
+function showErr(msg) {
+  errEl.className = 'error-banner';
+  errEl.setAttribute('role', 'alert');
+  errEl.setAttribute('aria-live', 'assertive');
+  errEl.style.display = 'block';
+  errEl.textContent = friendlyError(msg, '输出加载失败，请返回 Jobs 重试。');
+}
 function showContextState(msg) {
   errEl.className = 'notice-banner';
+  errEl.setAttribute('role', 'status');
+  errEl.setAttribute('aria-live', 'polite');
   errEl.style.display = 'block';
   errEl.textContent = msg;
 }

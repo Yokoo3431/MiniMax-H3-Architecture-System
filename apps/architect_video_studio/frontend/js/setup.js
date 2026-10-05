@@ -42,8 +42,20 @@ async function saveDesktopSettings() {
 // The legacy top-level fields remain in the API for older clients only.
 function environmentState() { return env?.environment_state || env || {}; }
 
-function showErr(msg) { errEl.className = 'error-banner'; errEl.style.display = 'block'; errEl.textContent = msg; }
-function showNotice(msg) { errEl.className = 'notice-banner'; errEl.style.display = 'block'; errEl.textContent = msg; }
+function showErr(msg) {
+  errEl.className = 'error-banner';
+  errEl.setAttribute('role', 'alert');
+  errEl.setAttribute('aria-live', 'assertive');
+  errEl.style.display = 'block';
+  errEl.textContent = msg;
+}
+function showNotice(msg) {
+  errEl.className = 'notice-banner';
+  errEl.setAttribute('role', 'status');
+  errEl.setAttribute('aria-live', 'polite');
+  errEl.style.display = 'block';
+  errEl.textContent = msg;
+}
 
 function badge(overall) {
   const cls = overall === 'READY' ? 'done' : overall === 'WARNING' ? 'warn'

@@ -54,6 +54,21 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn(".app-home .task-card-main:focus-visible", self.read("css/studio.css"))
         self.assertIn(".skip-link:focus { left:12px; }", self.read("css/studio.css"))
 
+        for name in PAGES:
+            source = self.read(name)
+            self.assertRegex(
+                source,
+                r'<div id="err" class="error-banner" role="alert" '
+                r'aria-live="assertive" aria-atomic="true"',
+                name,
+            )
+        for name in ("js/output.js", "js/setup.js"):
+            source = self.read(name)
+            self.assertIn("errEl.setAttribute('role', 'alert')", source)
+            self.assertIn("errEl.setAttribute('aria-live', 'assertive')", source)
+            self.assertIn("errEl.setAttribute('role', 'status')", source)
+            self.assertIn("errEl.setAttribute('aria-live', 'polite')", source)
+
     def test_home_cards_wrap_unbroken_names_and_mobile_actions(self):
         global_css = self.read("css/avs_global_theme.css")
         self.assertIn(".app-home .task-card .ttl > span:first-child { overflow-wrap: anywhere; }", global_css)
