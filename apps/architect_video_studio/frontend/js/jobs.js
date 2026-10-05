@@ -149,15 +149,11 @@ async function loadJobs(pid) {
     body.innerHTML = '<tr><td colspan="6" class="muted">正在加载任务…</td></tr>';
     const jobs = await get(`/api/projects/${pid}/jobs`);
     body.innerHTML = jobs.length ? jobs.map((j) => `
-      <tr class="job-row" data-job="${esc(j.id)}" tabindex="0">
-        <td data-label="Job">${esc(j.id)}</td><td data-label="Workflow">${esc(j.workflow)}</td><td data-label="状态">${badge(j.state, j)}${progressText(j)}</td>
+      <tr class="job-row" data-job="${esc(j.id)}">
+        <td data-label="Job"><a class="job-detail-link" href="jobs.html?project=${encodeURIComponent(pid)}&job=${encodeURIComponent(j.id)}" aria-label="查看任务详情：${esc(j.id)}">${esc(j.id)}</a></td><td data-label="Workflow">${esc(j.workflow)}</td><td data-label="状态">${badge(j.state, j)}${progressText(j)}</td>
         <td data-label="Seed">${esc(j.seed)}</td><td data-label="创建时间">${esc(j.created_at)}</td>
-        <td data-label="操作">${j.state === 'COMPLETED' ? `<a href="output.html?project=${encodeURIComponent(pid)}&job=${esc(j.id)}" onclick="event.stopPropagation()">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || friendlyState(j))}</span>`}</td>
+        <td data-label="操作">${j.state === 'COMPLETED' ? `<a href="output.html?project=${encodeURIComponent(pid)}&job=${esc(j.id)}">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || friendlyState(j))}</span>`}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">暂无任务</td></tr>';
-    body.querySelectorAll('.job-row').forEach((row) => {
-      const open = () => openDetail(row.dataset.job, pid);
-      row.addEventListener('click', open); row.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
-    });
     if (initialJobId && jobs.some((j) => String(j.id) === String(initialJobId))) await openDetail(initialJobId, pid);
     if (jobs.some((j) => jobIsActive(j))) setTimeout(() => loadJobs(pid), 2000);
   } catch (e) { showErr(e.message); }

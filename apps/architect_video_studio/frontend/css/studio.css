@@ -622,7 +622,6 @@ pre.prompt {
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .table th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
-.table tbody tr.job-row { cursor: pointer; }
 .table tbody tr.job-row:hover { background: var(--accent-soft); }
 .job-detail-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
 .job-detail-grid { display:grid; grid-template-columns: minmax(180px, 260px) 1fr; gap:18px; margin-top:14px; }

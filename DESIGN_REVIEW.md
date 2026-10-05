@@ -52,3 +52,9 @@ The Master Development Program is the governing brief. The primary audience is a
 ## Disposition
 
 This checkpoint is a targeted UX reliability improvement, not a Final E/F acceptance declaration. Keep the overall roadmap progress unchanged until the remaining responsive, accessibility, packaging, and release gates are evidenced.
+
+## Job list keyboard semantics follow-up
+
+- Replaced the focusable-but-nonsemantic Job table row with a named link on the Job ID. The link carries the current project and Job identity, and the existing query-driven detail loader opens the requested Job. Removed the row-only Enter handler and stale click-propagation workaround.
+- Added regression assertions for the link name, encoded detail route, and preservation of the deep-link behavior. UX and inventory-focused checks passed (27 tests); the canonical CPU regression passed (1053 tests, 4 expected skips).
+- This is a code-level keyboard semantics correction, not proof of a complete interactive accessibility audit. No new screenshot set was captured or saved during this follow-up; page-by-page keyboard, focus, screen-reader, and error-announcement review remains open.
