@@ -502,8 +502,8 @@
     {
       "path": "tests/test_patch28i2_installer.py",
       "tracked_status": "tracked",
-      "sha256": "DF831B06B5FAFFA90F7060DA2E41FEE7A0E657D25F352E29F0CC9CDC0059423B",
-      "discovered_test_count": 44,
+      "sha256": "4D65D7D019990D93E25E49E86D42CF8CD40D7B5BF89BCA8085D9E7B53C9ADB4C",
+      "discovered_test_count": 45,
       "classification": "CORE_REGRESSION"
     },
     {

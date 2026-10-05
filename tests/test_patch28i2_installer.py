@@ -173,6 +173,12 @@ class TestInstallerPlanning(unittest.TestCase):
         self.assertEqual(len(plan["components"]), 7)
         self.assertTrue(plan["requires_confirmation"])
 
+    def test_repeated_plan_refreshes_do_not_accumulate_plan_files(self):
+        plans = [self.h.service.build_install_plan(verify_existing=False) for _ in range(5)]
+        self.assertEqual(len({plan["plan_id"] for plan in plans}), len(plans))
+        plan_files = list(self.h.jobs.glob("*.plan.json")) if self.h.jobs.exists() else []
+        self.assertEqual(plan_files, [])
+
     def test_video_support_uses_video_release_provenance(self):
         support = load_support_manifest(SYSTEM_ROOT)
         entry = support["support_layers"]["video_helper_suite"]

@@ -648,8 +648,9 @@ class InstallationService:
             "source_notice": "Downloads begin only after the user reviews this plan and explicitly confirms Install.",
             "model_license_notice": "Model weights are provided under upstream licensing terms. Architect Video Studio does not relicense model weights.",
         }
-        self.job_root.mkdir(parents=True, exist_ok=True)
-        self._atomic_json(self.job_root / f"{plan_id}.plan.json", plan)
+        # Plans are refreshed by the Setup page and recomputed on confirmation.
+        # Persist only actual install jobs; orphan plan snapshots have no reader
+        # and otherwise accumulate on every plan refresh.
         return plan
 
     def _available_bytes(self, path: Path) -> Optional[int]:
