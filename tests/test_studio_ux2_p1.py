@@ -226,6 +226,20 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn('html[data-theme="light"]', global_css)
         self.assertIn("sl-theme-dark", theme)
 
+    def test_environment_installer_grid_shrinks_and_stacks_on_mobile(self):
+        source = self.read("css/studio.css")
+        shared_shell = self.read("css/avs_global_theme.css")
+        self.assertIn(".app-environment .install-plan { grid-template-columns: minmax(0, 1fr); }", source)
+        self.assertIn(".app-environment .install-item-head { flex-wrap: wrap; }", source)
+        self.assertIn(".app-environment .install-item-meta { overflow-wrap: anywhere; }", source)
+        mobile = re.search(r"@media \(max-width: 760px\) \{(?P<body>.*?)\n\}", source, re.S)
+        self.assertIsNotNone(mobile)
+        self.assertIn(".app-environment .setup-shell { grid-template-columns: minmax(0, 1fr); }", mobile.group("body"))
+        self.assertIn(".app-environment .group-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }", mobile.group("body"))
+        self.assertIn(".app-environment #inspector { min-width: 0; }", mobile.group("body"))
+        self.assertIn(".app-shell .app-header { height: auto; min-height: 48px; gap: 6px; flex-wrap: wrap; align-content: center; }", shared_shell)
+        self.assertIn(".app-shell .app-header > .spacer { display: none; }", shared_shell)
+
     def test_route_resolver_owns_active_navigation(self):
         source = self.read("js/ux2_shell.js")
         for token in ("const ROUTES", "function currentRoute", "function resolveNavigation", "link.classList.remove('active')", "link.classList.add('active')"):

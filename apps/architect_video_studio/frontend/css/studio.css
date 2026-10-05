@@ -1220,6 +1220,22 @@ input[type=text], select, textarea { padding: 5px 8px; }
 .app-environment .group-nav { gap: 2px; }
 .app-environment .group-nav button { border-radius: 2px; padding: 7px 9px; background: #eceeea; border-color: #c2c8c3; }
 .app-environment .group-nav button.on { background: #36413d; border-color: #36413d; }
+.app-environment .install-plan { grid-template-columns: minmax(0, 1fr); }
+.app-environment .install-item,
+.app-environment .install-item-head,
+.app-environment .install-item-head > *,
+.app-environment .install-item-meta { min-width: 0; max-width: 100%; }
+.app-environment .install-item-head > *,
+.app-environment .install-item-meta { overflow-wrap: anywhere; }
+.app-environment .install-item-head { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .app-environment .setup-shell { grid-template-columns: minmax(0, 1fr); }
+  .app-environment .setup-shell > *,
+  .app-environment #inspector { min-width: 0; }
+  .app-environment .group-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-environment .group-nav sl-button { min-width: 0; }
+  .app-environment .install-item-head { align-items: flex-start; }
+}
 
 /* Job rows become readable compact records instead of a collapsing table. */
 .jobs-table { table-layout: fixed; }

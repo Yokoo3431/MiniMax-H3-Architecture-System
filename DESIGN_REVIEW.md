@@ -27,15 +27,25 @@ The Master Development Program is the governing brief. The primary audience is a
 
 ## Remaining UX work
 
-- Responsive evidence above covers Home only; the exact mobile/tablet screen-state matrix for Study, Jobs, Outputs, and Environment remains open.
+- Responsive evidence now covers Home, Study, Jobs, Outputs, and Environment at 375 × 812, 768 × 1024, and 1280 × 800 viewports. Environment was visually inspected at all three sizes; Jobs and Outputs were visually inspected at 375 px and measured at all three sizes; Study was visually inspected at 375 px and 1280 px and geometrically checked at 768 px. The remaining accessibility and product-state review is still open.
 - The shared skip-link order and initial Home Tab behavior are fixed, but keyboard traversal, visible focus, screen-reader names, and error/status announcements still need a full page-by-page accessibility pass.
 - The full Final E screen/state matrix and Final F clean-install/upgrade/repair/uninstall-preservation matrix have not been closed by this checkpoint.
+
+## Environment mobile layout follow-up
+
+- Reproduced a narrow-screen Environment overflow using only the isolated mock Studio and synthetic data. At a requested 375 × 812 viewport (373 px CSS viewport inside the probe frame), the document measured 455 px `scrollWidth` against 358 px `clientWidth`.
+- The layout cause was implicit CSS Grid track sizing in the installer plan: an install-status label's min-content width expanded its grid track to about 431 px. The fixed 196 px Environment navigation column also left an unusably narrow inspector on mobile, and the shared 48 px fixed toolbar height did not account for wrapped mobile navigation.
+- The installer plan now uses a shrinkable `minmax(0, 1fr)` track; cards and their contents can shrink and wrap. Below 760 px, Environment navigation and inspector stack, with group buttons arranged in two columns. Below 640 px, the shared toolbar expands to its wrapped content height, removes its flexible spacer, and keeps horizontal navigation contained.
+- Recheck: Environment document widths were 358/358 at 375 px, 751/751 at 768 px, and 1263/1263 at 1280 px (`clientWidth`/`scrollWidth`). Jobs and Outputs also had equal client/scroll widths at all three breakpoints. Study measured equal client/scroll widths at 375, 768, and 1280 px. The intentional offscreen skip link is not page overflow and becomes visible when focused.
+- A Tab check confirmed Environment's first focused control is “跳到主要内容” and that it becomes visible. Accessibility-tree inspection showed Environment groups and controls have accessible names; this is targeted evidence, not a complete keyboard/screen-reader audit.
+- Screenshots were visually inspected through the in-app browser using the synthetic fixture. The isolated headless screenshot exporter remains unusable, so screenshots were not persisted; no screenshots or fixture data were added to the repository. The mock Environment installer panel is not evidence of the installed ComfyUI state. No ComfyUI install, duplicate download, update, restart, or GPU action was performed.
 
 ## Verification evidence
 
 - Live Home: initial loading state is announced; after hydration, existing Studies and system readiness appear; the `?new=1` route preserves its intended form/focus behavior.
 - Live Environment: ready state, component plan, and corrected success color confirmed. The plan explicitly reports no installation required.
-- Automated canonical regression after the responsive/skip-link follow-up: 1052 tests, 4 expected skips, 0 failures. UX-focused tests: 13 passed; regression inventory/source manifest synchronized and verified.
+- Environment responsive repair is covered by a new static regression assertion; live measurements show no app-document horizontal overflow at 375, 768, or 1280 px. Shared mobile toolbar geometry and Environment grid/card wrapping are also asserted.
+- Automated canonical regression after the responsive/skip-link follow-up: 1053 tests, 4 expected skips, 0 failures. UX-focused tests: 14 passed; regression inventory/source manifest synchronized and verified.
 - JavaScript syntax, Python compileall, JSON parse, regression inventory/source manifest, and `git diff --check`: PASS.
 - Production ComfyUI remains 0.33.1 on its existing endpoint; the experimental endpoint remains offline. No new GPU generation was submitted.
 
