@@ -585,6 +585,7 @@ pre.prompt {
 
 .risk { border-left: 4px solid var(--warn); background: #fdf6e8; padding: 10px; border-radius: 0 5px 5px 0; }
 .gate-note { color: var(--err); font-size: 12px; margin: 6px 0; }
+.app-shell .gate-note.gate-note-ok { color: var(--avs-success); }
 
 .intent-card, .kv-card {
   border: 1px solid var(--line);
@@ -1202,6 +1203,15 @@ input[type=text], select, textarea { padding: 5px 8px; }
 }
 .workspace-loading h1 { margin: 4px 0; font-size: 22px; }
 .workspace-loading p:last-child { margin-bottom: 0; }
+.app-home .app-main.is-loading > :not(#home-loading) { display: none !important; }
+.home-loading {
+  min-height: min(32vh, 240px);
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+.home-loading h1 { margin: 4px 0; font-size: 22px; }
+.home-loading p:last-child { margin-bottom: 0; }
 
 /* Environment keeps its existing behavior but reads as an instrument panel. */
 .app-environment .setup-shell { grid-template-columns: 196px minmax(0, 1fr); gap: 8px; }

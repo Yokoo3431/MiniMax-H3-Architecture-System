@@ -103,7 +103,10 @@ async function loadTasks() {
         } catch (e) { showErr(ownerError(e)); }
       });
     });
-  } catch (e) { showErr(ownerError(e, '加载 Study 失败。')); }
+  } catch (e) {
+    tasksEl.textContent = 'Study 列表加载失败；请刷新页面重试。';
+    showErr(ownerError(e, '加载 Study 失败。'));
+  }
 }
 
 async function checkSystem() {
@@ -118,7 +121,11 @@ async function checkSystem() {
     if (env.installation_status === 'INSTALLATION_REPAIR_REQUIRED') {
       el.innerHTML += ' · <a href="setup.html">需要检查 Environment</a>';
     }
-  } catch (_) { /* keep silent; page still usable */ }
+  } catch (_) {
+    const el = document.getElementById('sys-status');
+    el.textContent = 'Environment 状态暂不可用；请打开 Environment Center 检查。';
+    el.className = 'small warn';
+  }
 }
 
 document.getElementById('new-video-btn').addEventListener('click', () => {
@@ -139,9 +146,19 @@ document.getElementById('task-create-btn').addEventListener('click', async () =>
   } catch (e) { showErr(ownerError(e, '创建 Study 失败。')); }
 });
 
-loadTasks();
-checkSystem();
-if (qs('new') === '1') {
-  document.getElementById('new-task-box').style.display = 'block';
-  window.setTimeout(() => document.getElementById('task-title').focus(), 0);
-}
+const homeMain = document.getElementById('main-content');
+const showNewStudyOnLoad = qs('new') === '1';
+Promise.all([loadTasks(), checkSystem()]).catch((e) => {
+  // Both loaders handle expected failures locally; protect the loading shell
+  // if an unexpected programming/runtime error escapes.
+  tasksEl.textContent = 'Study 列表暂时无法显示，请检查连接后重试。';
+  showErr(ownerError(e, '加载 Study 失败。'));
+}).finally(() => {
+  homeMain?.classList.remove('is-loading');
+  homeMain?.setAttribute('aria-busy', 'false');
+  document.getElementById('home-loading')?.remove();
+  if (showNewStudyOnLoad) {
+    document.getElementById('new-task-box').style.display = 'block';
+    window.setTimeout(() => document.getElementById('task-title').focus(), 0);
+  }
+});

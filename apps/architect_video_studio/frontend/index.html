@@ -26,7 +26,14 @@
     <span class="small muted">Architectural workstation</span>
   </header>
   <a class="skip-link" href="#main-content">跳到主要内容</a>
-  <main id="main-content" class="wrap app-main">
+  <main id="main-content" class="wrap app-main is-loading" aria-busy="true">
+    <section id="home-loading" class="home-loading panel" role="status" aria-live="polite">
+      <div>
+        <p class="eyebrow">Architect Video Studio</p>
+        <h1>正在加载 Study</h1>
+        <p class="muted">正在读取项目列表和环境状态；完成前不会把列表显示为空。</p>
+      </div>
+    </section>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
       <h2 style="margin:0;">Recent Studies</h2>
       <span class="muted small">建筑师 AI 视频生成工作站</span>

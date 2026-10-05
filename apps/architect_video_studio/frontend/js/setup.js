@@ -253,7 +253,7 @@ function renderGroup(g) {
       + statusRow('Profile Hardware Source', s.profile_hardware_source || '—')
       + statusRow('Probe Status', probe.probe_status === 'READY' ? 'PASS' : (probe.probe_status || 'NOT_TESTED'), probe.probe_status === 'READY' ? 'ok' : 'warn')
       + statusRow('Last Probe', probe.last_probe_finished || '—')
-      + `<div class="gate-note">${esc(s.gpu_detail || policy.reason || 'Current lightweight GPU/runtime probes have not completed.')}</div>`
+      + `<div class="gate-note${probe.probe_status === 'READY' ? ' gate-note-ok' : ''}">${esc(s.gpu_detail || policy.reason || 'Current lightweight GPU/runtime probes have not completed.')}</div>`
       + statusRow('Free Commit', `${s.free_commit} GB`,
           s.free_commit_policy?.status === 'READY' ? 'ok' :
           s.free_commit_policy?.status === 'WARNING' ? 'warn' : 'err')

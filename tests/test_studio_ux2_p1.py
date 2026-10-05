@@ -71,6 +71,20 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("workspaceMain?.setAttribute('aria-busy', 'false')", script)
         self.assertIn("document.getElementById('workspace-loading')?.remove()", script)
 
+        home_html = self.read("index.html")
+        home_script = self.read("js/home.js")
+        self.assertIn('class="wrap app-main is-loading" aria-busy="true"', home_html)
+        self.assertIn('id="home-loading" class="home-loading panel" role="status" aria-live="polite"', home_html)
+        self.assertIn(".app-home .app-main.is-loading > :not(#home-loading)", styles)
+        self.assertIn("Promise.all([loadTasks(), checkSystem()])", home_script)
+        self.assertIn(".finally(() =>", home_script)
+        self.assertIn("document.getElementById('home-loading')?.remove()", home_script)
+        self.assertIn("Study 列表加载失败；请刷新页面重试。", home_script)
+        self.assertIn("Environment 状态暂不可用；请打开 Environment Center 检查。", home_script)
+        environment_script = self.read("js/setup.js")
+        self.assertIn("probe.probe_status === 'READY' ? ' gate-note-ok' : ''", environment_script)
+        self.assertIn(".app-shell .gate-note.gate-note-ok { color: var(--avs-success); }", styles)
+
     def test_study_preserves_legacy_ids_and_adds_p1_frame(self):
         source = self.read("workspace.html")
         for element_id in ("task-name", "task-state", "v-body", "v-progress", "current-job-strip"):
