@@ -515,6 +515,7 @@ body.app-shell {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
   }
+  .app-home .task-actions > button,
   .app-home .task-actions > sl-button { width: 100%; min-width: 0; }
 }
 

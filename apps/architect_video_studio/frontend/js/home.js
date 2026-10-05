@@ -70,9 +70,9 @@ async function loadTasks() {
               </div>
             </a>
             <div class="task-actions">
-              <sl-button class="btn small ghost" data-action="rename" data-project="${escAttr(p.id)}" aria-label="重命名 Study：${escAttr(studyName)}">重命名</sl-button>
-              <sl-button class="btn small ghost" data-action="duplicate" data-project="${escAttr(p.id)}" aria-label="复制 Study：${escAttr(studyName)}">复制</sl-button>
-              <sl-button class="btn small ghost danger" data-action="delete" data-project="${escAttr(p.id)}" aria-label="删除 Study：${escAttr(studyName)}">删除</sl-button>
+              <button type="button" class="btn small ghost" data-action="rename" data-project="${escAttr(p.id)}" aria-label="重命名 Study：${escAttr(studyName)}">重命名</button>
+              <button type="button" class="btn small ghost" data-action="duplicate" data-project="${escAttr(p.id)}" aria-label="复制 Study：${escAttr(studyName)}">复制</button>
+              <button type="button" class="btn small ghost danger" data-action="delete" data-project="${escAttr(p.id)}" aria-label="删除 Study：${escAttr(studyName)}">删除</button>
             </div>
           </article>`;
         }).join('')
