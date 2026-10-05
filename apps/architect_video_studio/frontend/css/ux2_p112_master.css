@@ -216,6 +216,7 @@
   .app-study .app-nav { max-width: 52vw; overflow-x: auto; }
   .app-study .app-nav a { padding-inline: var(--space-2); }
   .app-study .app-main { padding: var(--space-3) var(--space-2) 20px; }
+  .app-study .generate-section { margin-inline: calc(-1 * var(--space-2)); }
   .app-study .studio-heading { min-height: 48px; margin-bottom: var(--space-3); padding-bottom: var(--space-2); }
   .app-study .studio-heading h1 { font-size: 20px; }
   .app-study .studio-heading > .spectrum-Button.ghost { display: none; }
