@@ -787,6 +787,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_uninstaller_preservation.py",
+      "tracked_status": "tracked",
+      "sha256": "64131A938483E27E1062432D304BB2B74CB3805EC323669EF82BED697DF55005",
+      "discovered_test_count": 1,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_universal_h3_prompt_engine.py",
       "tracked_status": "tracked",
       "sha256": "2ACA25AC3269E7C11E6A945B5CDC8D4AEB0EFABD26C71BE6815C611C03AD94FF",
