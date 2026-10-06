@@ -78,7 +78,7 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
             with script.open("a", encoding="utf-8") as stream:
                 stream.write(
                     "\n$script:findExistingCalled = $false\n"
-                    "function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion) { $script:findExistingCalled = $true; return $null }\n"
+                    "function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion, [string]$RegistrationPath, [ref]$AnyRuntimeFound) { $script:findExistingCalled = $true; return $null }\n"
                     "$installRoot = Join-Path $root 'install'\n"
                     "$target = Join-Path $installRoot 'ArchitectVideoStudio_Runtime'\n"
                     "New-Item -ItemType Directory -Force -Path (Join-Path $target 'python_embeded') | Out-Null\n"
@@ -99,7 +99,7 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-            self.assertIn("PASS", result.stdout)
+            self.assertIn("PASS", result.stdout, f"stdout={result.stdout!r}; stderr={result.stderr!r}")
 
         ensure_start = setup.index("function Ensure-Runtime")
         ensure_end = setup.index("function Copy-Payload", ensure_start)
@@ -153,7 +153,7 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
             script = root / "reuse-existing-runtime.ps1"
             script.write_text(
                 functions
-                + "\nfunction Get-RegisteredRuntime([string]$ExpectedVersion, [string]$RegistrationPath) { return '' }\n"
+                + "\nfunction Get-RegisteredRuntimePath([string]$RegistrationPath) { return '' }\n"
                 + "\n$script:downloadCalled = $false\n"
                 + "function Invoke-ResumableDownload([string]$Url, [string]$Destination) { "
                   "$script:downloadCalled = $true; throw 'runtime download was attempted' }\n"
@@ -239,10 +239,11 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "$registrationPath = " + _ps_quote(registration_path) + "\n"
                 + "$registeredApp = " + _ps_quote(str(registered_app)) + "\n"
                 + "$installRoot = " + _ps_quote(str(install_root)) + "\n"
+                + "$anyRuntimeFound = $false\n"
                 + "try {\n"
                 + "  New-Item -Path $registrationPath -Force | Out-Null\n"
                 + "  Set-ItemProperty -Path $registrationPath -Name InstallLocation -Value $registeredApp\n"
-                + "  $found = Find-ExistingRuntime $installRoot '0.33.1' $registrationPath\n"
+                + "  $found = Find-ExistingRuntime $installRoot '0.33.1' $registrationPath ([ref]$anyRuntimeFound)\n"
                 + "  if (-not [string]::Equals([IO.Path]::GetFullPath($found), [IO.Path]::GetFullPath(" + _ps_quote(str(runtime)) + "), [StringComparison]::OrdinalIgnoreCase)) { throw 'registered runtime was not selected' }\n"
                 + "  if ($script:fullDriveScanCalled) { throw 'runtime discovery performed an unnecessary drive scan' }\n"
                 + "  Write-Output 'PASS'\n"
@@ -255,7 +256,67 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout, f"stdout={result.stdout!r}; stderr={result.stderr!r}")
+
+    def test_setup_refuses_second_download_when_only_existing_runtime_is_incompatible(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        start = setup.index("function Test-RuntimeLayout")
+        extractor_start = setup.index("function Find-ExistingExtractor", start)
+        ensure_start = setup.index("function Ensure-Runtime", extractor_start)
+        ensure_end = setup.index("function Copy-Payload", ensure_start)
+        functions = setup[start:extractor_start] + setup[ensure_start:ensure_end]
+
+        with tempfile.TemporaryDirectory(prefix="avs-incompatible-runtime-contract-") as temp:
+            root = Path(temp)
+            install_root = root / "new-app" / "ArchitectVideoStudio"
+            incompatible = root / "new-app" / "ArchitectVideoStudio_Runtime"
+            python = incompatible / "python_embeded" / "python.exe"
+            main = incompatible / "ComfyUI" / "main.py"
+            version = incompatible / "ComfyUI" / "comfyui_version.py"
+            marker = incompatible / "runtime_version.json"
+            python.parent.mkdir(parents=True)
+            main.parent.mkdir(parents=True)
+            python.write_bytes(b"existing-runtime-python")
+            main.write_text("existing runtime", encoding="utf-8")
+            version.write_text('__version__ = "0.36.0"\n', encoding="utf-8")
+            marker.write_text('{"comfyui":"0.36.0"}', encoding="utf-8")
+            original = {path: path.read_bytes() for path in (python, main, version, marker)}
+            registration_path = (
+                "HKCU:\\Software\\ArchitectVideoStudioRuntimeTest\\"
+                + uuid.uuid4().hex
+            )
+            cache = install_root / "userdata" / "cache" / "bootstrap"
+            script = root / "incompatible-runtime-tests.ps1"
+            script.write_text(
+                functions
+                + "\n$script:downloadCalled = $false\n"
+                + "$script:fullDriveScanCalled = $false\n"
+                + "function Get-PSDrive { $script:fullDriveScanCalled = $true; throw 'full-drive scan should not run when an existing runtime is already identified' }\n"
+                + "function Invoke-ResumableDownload([string]$Url, [string]$Destination) { $script:downloadCalled = $true; throw 'runtime download was attempted' }\n"
+                + "$config = [pscustomobject]@{ runtime = [pscustomobject]@{ version = '0.33.1'; asset = 'must-not-download.7z'; url = 'https://invalid.example/runtime.7z'; sha256 = 'unused' } }\n"
+                + "try { Ensure-Runtime $config " + _ps_quote(str(install_root)) + " " + _ps_quote(str(cache)) + " " + _ps_quote(registration_path) + "; throw 'incompatible runtime unexpectedly accepted' } catch { if ($_.Exception.Message -notmatch 'will not download a second runtime') { throw } }\n"
+                + "if ($script:downloadCalled) { throw 'runtime download was attempted' }\n"
+                + "if ($script:fullDriveScanCalled) { throw 'full-drive scan ran despite a known existing runtime' }\n"
+                + "if (Test-Path -LiteralPath " + _ps_quote(str(install_root)) + ") { throw 'new install root was created' }\n"
+                + "if (Test-Path -LiteralPath " + _ps_quote(str(cache)) + ") { throw 'download cache was created' }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
             self.assertIn("PASS", result.stdout)
+            self.assertEqual({path: path.read_bytes() for path in original}, original)
 
 
 if __name__ == "__main__":

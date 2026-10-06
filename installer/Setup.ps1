@@ -60,8 +60,8 @@ function Test-RuntimeCompatibility([string]$Root, [string]$ExpectedVersion) {
     }
 }
 
-function Get-RegisteredRuntime([string]$ExpectedVersion,
-                               [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
+function Get-RegisteredRuntimePath(
+    [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
     if (-not (Test-Path -LiteralPath $RegistrationPath)) { return "" }
     try {
         $registration = Get-ItemProperty -Path $RegistrationPath -Name InstallLocation -ErrorAction Stop
@@ -71,7 +71,7 @@ function Get-RegisteredRuntime([string]$ExpectedVersion,
         if (-not (Test-Path -LiteralPath $runtimeConfig -PathType Leaf)) { return "" }
         $runtime = (Get-Content -LiteralPath $runtimeConfig -Raw -ErrorAction Stop).Trim()
         if ([string]::IsNullOrWhiteSpace($runtime) -or
-            -not (Test-RuntimeCompatibility $runtime $ExpectedVersion)) { return "" }
+            -not (Test-Path -LiteralPath $runtime -PathType Container)) { return "" }
         return [IO.Path]::GetFullPath($runtime)
     } catch {
         return ""
@@ -79,14 +79,18 @@ function Get-RegisteredRuntime([string]$ExpectedVersion,
 }
 
 function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion,
-                              [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
+                              [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio",
+                              [ref]$AnyRuntimeFound) {
+    if ($AnyRuntimeFound) { $AnyRuntimeFound.Value = $false }
     $parent = Split-Path -Parent $InstallRoot
-    $registeredRuntime = Get-RegisteredRuntime $ExpectedVersion $RegistrationPath
-    if ($registeredRuntime) {
+    $registeredRuntime = Get-RegisteredRuntimePath $RegistrationPath
+    if ($registeredRuntime -and (Test-RuntimeCompatibility $registeredRuntime $ExpectedVersion)) {
         Write-Host "Using the compatible ComfyUI Runtime configured by the existing Architect Video Studio installation."
+        if ($AnyRuntimeFound) { $AnyRuntimeFound.Value = $true }
         return $registeredRuntime
     }
     $candidates = @(
+        $registeredRuntime,
         (Join-Path $InstallRoot "ArchitectVideoStudio_Runtime"),
         (Join-Path $InstallRoot "runtime\native"),
         (Join-Path $parent "ArchitectVideoStudio_Runtime"),
@@ -99,14 +103,25 @@ function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion,
             ForEach-Object { $_.FullName }
     }
 
-    # Last-resort cross-drive discovery is only needed when the bounded known
-    # locations do not contain a compatible Runtime.  Healthy existing
-    # installations therefore update promptly instead of silently scanning
-    # every local drive.
+    # Once an existing ComfyUI layout is present in the registered or bounded
+    # locations, do not recursively scan every drive looking for another copy.
+    # Reuse a compatible candidate or fail closed; never turn discovery into a
+    # long disk walk or an implicit second-runtime installation.
+    $knownRuntimeFound = @($candidates | Where-Object {
+        $_ -and (Test-RuntimeLayout $_)
+    }).Count -gt 0
+    if ($AnyRuntimeFound -and $knownRuntimeFound) {
+        $AnyRuntimeFound.Value = $true
+    }
+
+    # Last-resort cross-drive discovery is only needed when none of the bounded
+    # known locations contains a ComfyUI layout.  Existing installations are
+    # therefore reused or rejected promptly instead of silently scanning every
+    # local drive.
     $directCompatible = @($candidates | Where-Object {
         $_ -and (Test-RuntimeCompatibility $_ $ExpectedVersion)
     })
-    if ($directCompatible.Count -eq 0) {
+    if ($directCompatible.Count -eq 0 -and -not $knownRuntimeFound) {
         Write-Host "Scanning local drives for an existing compatible ComfyUI Runtime..."
         $runtimeNames = @("ArchitectVideoStudio_Runtime")
         foreach ($drive in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
@@ -123,6 +138,9 @@ function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion,
     foreach ($candidate in $candidates) {
         if (-not $candidate -or $seen.ContainsKey($candidate)) { continue }
         $seen[$candidate] = $true
+        if ($AnyRuntimeFound -and (Test-RuntimeLayout $candidate)) {
+            $AnyRuntimeFound.Value = $true
+        }
         if (-not (Test-RuntimeCompatibility $candidate $ExpectedVersion)) { continue }
         $versionFile = Join-Path $candidate "runtime_version.json"
         $versionMatch = $false
@@ -386,7 +404,8 @@ function Ensure-Extractor($Config, [string]$Cache, [string]$InstallRoot, [string
     return $path
 }
 
-function Ensure-Runtime($Config, [string]$InstallRoot, [string]$Cache) {
+function Ensure-Runtime($Config, [string]$InstallRoot, [string]$Cache,
+                        [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
     $runtime = Join-Path $InstallRoot "ArchitectVideoStudio_Runtime"
     if (Test-RuntimeCompatibility $runtime $Config.runtime.version) { return $runtime }
 
@@ -394,10 +413,15 @@ function Ensure-Runtime($Config, [string]$InstallRoot, [string]$Cache) {
         throw "The runtime at the selected install target cannot be proven to match the pinned ComfyUI version. It was preserved; choose a clean install folder or verify the runtime first."
     }
 
-    $existing = Find-ExistingRuntime $InstallRoot $Config.runtime.version
+    $anyExistingRuntime = $false
+    $existing = Find-ExistingRuntime $InstallRoot $Config.runtime.version $RegistrationPath ([ref]$anyExistingRuntime)
     if ($existing) {
         Write-Host "Using existing compatible ComfyUI Runtime: $existing"
         return $existing
+    }
+
+    if ($anyExistingRuntime) {
+        throw "An existing ComfyUI Runtime was found, but none matches the pinned version $($Config.runtime.version). Setup will not download a second runtime; the existing runtime was preserved and requires a separately validated in-place update."
     }
 
     Write-Host "No compatible existing ComfyUI Runtime was found; downloading the pinned runtime..."
