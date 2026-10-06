@@ -17,9 +17,9 @@
 
 | 项 | 值 |
 | --- | --- |
-| License | GPL-3.0 |
-| Source | https://github.com/comfyanonymous/ComfyUI |
-| Usage | 本地视频生成运行时（Native v0.33.1，冻结；本产品仅通过 HTTP 边界调用，不修改其源码） |
+| License | GPL-3.0 (pinned release tag `v0.33.1`; see its `LICENSE`) |
+| Source | https://github.com/Comfy-Org/ComfyUI/tree/v0.33.1 |
+| Usage | 本地视频生成运行时（官方 portable release `v0.33.1`；本产品仅通过 HTTP 边界调用，不修改其源码） |
 
 ## 2. MiniMax H3（节点 / 技能 / 模型）
 
