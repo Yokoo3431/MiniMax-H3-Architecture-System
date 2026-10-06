@@ -18,10 +18,13 @@ python run_architect_video_studio.py --port 8788
 
 打开 `http://127.0.0.1:8788`。
 
-开发/离线数据种子：
+开发/离线数据种子：必须指定隔离的数据目录；只使用仓库内已跟踪的合成样图，
+不会读取相邻工作区中的用户参考图，也不会保留用户 Documents 输出路径。请在第二个终端
+以同一个临时目录启动 mock 服务，并在验收结束后删除该临时目录：
 
 ```bash
-python -c "from mock_api.seed_demo import seed_demo; print(seed_demo())"
+python -m mock_api.seed_demo --data <isolated-temp-directory>
+python run_prototype.py --runtime mock --port 18788 --data <same-isolated-temp-directory>
 ```
 
 ## 目录结构

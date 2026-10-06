@@ -41,7 +41,7 @@ class StudioUX2P1Tests(unittest.TestCase):
             self.assertRegex(source, r'<main id="main-content" tabindex="-1"', name)
             self.assertLess(source.index('class="skip-link"'), source.index('<header'), name)
             self.assertLess(source.index('<header'), source.index('id="main-content"'), name)
-            for label in ("Home", "Study", "Jobs", "Outputs", "Environment"):
+            for label in ("首页", "Study", "任务", "输出", "环境"):
                 self.assertRegex(source, rf">{label}</a>", name)
         home = self.read("js/home.js")
         card = re.search(r'<article class="task-card">(?P<body>.*?)</article>`;', home, re.S)
@@ -123,7 +123,10 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn(".finally(() =>", home_script)
         self.assertIn("document.getElementById('home-loading')?.remove()", home_script)
         self.assertIn("Study 列表加载失败；请刷新页面重试。", home_script)
-        self.assertIn("Environment 状态暂不可用；请打开 Environment Center 检查。", home_script)
+        self.assertIn("环境状态暂时无法读取；可打开环境中心重新检查。", home_script)
+        self.assertIn("生成环境未就绪：请在环境中心查看需处理项目。", home_script)
+        self.assertIn("ComfyUI 服务：${names[state] || '状态未知'}", self.read("js/engine_status.js"))
+        self.assertIn("完整生成条件请查看环境状态", self.read("js/engine_status.js"))
         environment_script = self.read("js/setup.js")
         self.assertIn("probe.probe_status === 'READY' ? ' gate-note-ok' : ''", environment_script)
         self.assertIn(".app-shell .gate-note.gate-note-ok { color: var(--avs-success); }", styles)

@@ -10,22 +10,29 @@ Creates four studies with neutral demo names (no real project names):
 from __future__ import annotations
 
 import base64
+import argparse
 from pathlib import Path
 from typing import Dict
 
-from ._paths import DEFAULT_DATA_ROOT, REPO_ROOT
+from ._paths import REPO_ROOT
 from .job_api import JobAPI
 from .project_api import ProjectAPI
 from .prompt_api import PromptAPI
 from .reference_api import ReferenceAPI
 from .store import StudioStore
 
-REFERENCE_DIR = REPO_ROOT.parent / "参考效果图"
+SAMPLE_DIR = REPO_ROOT / "samples"
+_SAFE_SAMPLE_FILES = {
+    "01_Exterior_Hero.png": "01_Exterior_Hero.png",
+    "05_Slow_Walkthrough.png": "05_Slow_Walkthrough.png",
+}
+_MOCK_OUTPUT_LABEL = "仅用于本地演示（不写入用户目录）"
 
 
 def _read_image(name: str) -> bytes:
-    path = REFERENCE_DIR / name
-    if path.is_file():
+    sample_name = _SAFE_SAMPLE_FILES.get(Path(name).name)
+    path = SAMPLE_DIR / sample_name if sample_name else None
+    if path is not None and path.is_file():
         return path.read_bytes()
     # deterministic placeholder PNG (1x1) so previews still render
     import zlib
@@ -42,15 +49,32 @@ def _read_image(name: str) -> bytes:
             + chunk(b"IEND", b""))
 
 
-def seed_demo(data_root: Path = DEFAULT_DATA_ROOT,
+def _create_demo_project(project_api: ProjectAPI, store: StudioStore,
+                         name: str, project_type: str,
+                         building_stage: str) -> dict:
+    """Create a demo Study without retaining a host Documents path."""
+    project = project_api.create_project(name, project_type, building_stage)
+    project["output_directory"] = _MOCK_OUTPUT_LABEL
+    store.save_project(project)
+    return project
+
+
+def seed_demo(data_root: Path,
               clock_seconds: float = 999.0) -> Dict[str, str]:
+    """Seed neutral demo data in a caller-selected isolated directory.
+
+    The data root is mandatory so demo projects cannot silently accumulate in
+    the application data directory. Reference images are restricted to the
+    repository's tracked synthetic samples; adjacent owner media is ignored.
+    """
     store = StudioStore(data_root)
     project_api = ProjectAPI(store)
     reference_api = ReferenceAPI(store)
     prompt_api = PromptAPI(store)
 
     # ---- Task A: Walkthrough Study (05), completed job ----
-    a = project_api.create_project("Walkthrough Study", "exterior", "方案")
+    a = _create_demo_project(
+        project_api, store, "Walkthrough Study", "exterior", "方案")
     ref_a = reference_api.upload_reference(
         a["id"], "05_Slow_Walkthrough.png", role="first_frame",
         data_base64=base64.b64encode(_read_image("05_Slow_Walkthrough.png")).decode(),
@@ -70,7 +94,8 @@ def seed_demo(data_root: Path = DEFAULT_DATA_ROOT,
     job_a = job_api.get_job(job_a["id"])
 
     # ---- Task B: Facade Motion Study (01), at USER_CONFIRM (no job) ----
-    b = project_api.create_project("Facade Motion Study", "exterior", "展示")
+    b = _create_demo_project(
+        project_api, store, "Facade Motion Study", "exterior", "展示")
     ref_b = reference_api.upload_reference(
         b["id"], "01_Exterior_Hero.png", role="first_frame",
         data_base64=base64.b64encode(_read_image("01_Exterior_Hero.png")).decode(),
@@ -83,15 +108,17 @@ def seed_demo(data_root: Path = DEFAULT_DATA_ROOT,
     prompt_api.generate_prompt(b["id"])
 
     # ---- Study C: Material Study (03), reference approved, no intent ----
-    c = project_api.create_project("Material Study", "material", "展示")
+    c = _create_demo_project(
+        project_api, store, "Material Study", "material", "展示")
     ref_c = reference_api.upload_reference(
-        c["id"], "03_Material_Detail.jpg", role="first_frame",
-        data_base64=base64.b64encode(_read_image("03_Material_Detail.jpg")).decode(),
+        c["id"], "01_Exterior_Hero.png", role="first_frame",
+        data_base64=base64.b64encode(_read_image("01_Exterior_Hero.png")).decode(),
     )
     reference_api.approve_reference(c["id"], ref_c["id"])
 
     # ---- Study D: Draft Study 001 (05), reference pending (fresh task) ----
-    d = project_api.create_project("Draft Study 001", "mixed", "方案")
+    d = _create_demo_project(
+        project_api, store, "Draft Study 001", "mixed", "方案")
     reference_api.upload_reference(
         d["id"], "05_Slow_Walkthrough.png", role="first_frame",
         data_base64=base64.b64encode(_read_image("05_Slow_Walkthrough.png")).decode(),
@@ -108,5 +135,11 @@ def seed_demo(data_root: Path = DEFAULT_DATA_ROOT,
 
 if __name__ == "__main__":
     import json
-    result = seed_demo()
+    parser = argparse.ArgumentParser(description="Seed neutral Studio demo data.")
+    parser.add_argument(
+        "--data", type=Path, required=True,
+        help="explicit isolated directory for disposable demo data",
+    )
+    args = parser.parse_args()
+    result = seed_demo(args.data)
     print(json.dumps(result, indent=2))

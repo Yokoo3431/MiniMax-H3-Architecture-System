@@ -22,6 +22,14 @@ class TestUninstallerPreservation(unittest.TestCase):
     def test_plan_and_cleanup_preserve_user_data_and_models(self):
         if not POWERSHELL.is_file():
             self.skipTest("Windows PowerShell 5.1 is unavailable")
+        policy_probe = subprocess.run(
+            [str(POWERSHELL), "-NoLogo", "-NoProfile", "-NonInteractive",
+             "-Command", "Get-ExecutionPolicy"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        policy = policy_probe.stdout.strip().splitlines()[-1] if policy_probe.stdout.strip() else ""
+        if policy_probe.returncode != 0 or policy not in {"RemoteSigned", "Unrestricted"}:
+            self.skipTest("effective PowerShell policy does not permit unsigned local test scripts; policy will not be overridden")
 
         with tempfile.TemporaryDirectory(prefix="avs-uninstaller-test-") as temp:
             parent = Path(temp)
@@ -48,8 +56,6 @@ class TestUninstallerPreservation(unittest.TestCase):
                 "-NoLogo",
                 "-NoProfile",
                 "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
                 "-File",
                 str(UNINSTALLER),
                 "-InstallRoot",

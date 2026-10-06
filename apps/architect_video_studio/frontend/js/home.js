@@ -115,17 +115,21 @@ async function checkSystem() {
   try {
     const env = await get('/api/system/environment');
     const el = document.getElementById('sys-status');
-    el.innerHTML = env.overall === 'READY'
-      ? '<span class="ok">System Ready</span>'
-      : `<span class="${env.overall === 'BLOCK' ? 'err' : 'warn'}">System ${esc(env.overall)} — 请打开 Environment Center</span>`;
+    const overall = String(env.overall || '').toUpperCase();
+    const status = overall === 'READY'
+      ? {cls: 'ok', text: '生成环境已就绪'}
+      : overall === 'BLOCK'
+        ? {cls: 'err', text: '生成环境未就绪：请在环境中心查看需处理项目。'}
+        : {cls: 'warn', text: '生成环境仍需检查：请在环境中心查看提示。'};
+    el.innerHTML = `<span class="${status.cls}">${status.text}</span>`;
     // Environment is owner-selected. A background health result must not
     // steal the current surface; the Environment link remains available.
     if (env.installation_status === 'INSTALLATION_REPAIR_REQUIRED') {
-      el.innerHTML += ' · <a href="setup.html">需要检查 Environment</a>';
+      el.innerHTML += ' · <a href="setup.html">打开环境中心</a>';
     }
   } catch (_) {
     const el = document.getElementById('sys-status');
-    el.textContent = 'Environment 状态暂不可用；请打开 Environment Center 检查。';
+    el.textContent = '环境状态暂时无法读取；可打开环境中心重新检查。';
     el.className = 'small warn';
   }
 }

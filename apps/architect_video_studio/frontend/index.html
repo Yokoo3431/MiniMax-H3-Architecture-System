@@ -17,14 +17,14 @@
   <header class="topbar app-header">
     <span class="brand">Architect<span class="dot">·</span>Video&nbsp;Studio</span>
     <nav class="nav app-nav" aria-label="主导航">
-      <a data-route="home" href="index.html"><img class="avs-icon" src="vendor/tabler/home.svg" alt="" aria-hidden="true">Home</a>
+      <a data-route="home" href="index.html"><img class="avs-icon" src="vendor/tabler/home.svg" alt="" aria-hidden="true">首页</a>
       <a data-route="study" data-nav-study href="index.html?new=1"><img class="avs-icon" src="vendor/tabler/photo.svg" alt="" aria-hidden="true">Study</a>
-      <a data-route="jobs" href="jobs.html"><img class="avs-icon" src="vendor/tabler/briefcase.svg" alt="" aria-hidden="true">Jobs</a>
-      <a data-route="outputs" href="output.html"><img class="avs-icon" src="vendor/tabler/file-description.svg" alt="" aria-hidden="true">Outputs</a>
-      <a data-route="environment" href="setup.html"><img class="avs-icon" src="vendor/tabler/settings.svg" alt="" aria-hidden="true">Environment</a>
+      <a data-route="jobs" href="jobs.html"><img class="avs-icon" src="vendor/tabler/briefcase.svg" alt="" aria-hidden="true">任务</a>
+      <a data-route="outputs" href="output.html"><img class="avs-icon" src="vendor/tabler/file-description.svg" alt="" aria-hidden="true">输出</a>
+      <a data-route="environment" href="setup.html"><img class="avs-icon" src="vendor/tabler/settings.svg" alt="" aria-hidden="true">环境</a>
     </nav>
     <span class="spacer"></span>
-    <span class="small muted">Architectural workstation</span>
+      <span class="small muted">建筑视频工作站</span>
   </header>
   <main id="main-content" tabindex="-1" class="wrap app-main is-loading" aria-busy="true">
     <section id="home-loading" class="home-loading panel" role="status" aria-live="polite">
@@ -35,14 +35,14 @@
       </div>
     </section>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-      <h2 style="margin:0;">Recent Studies</h2>
+      <h2 style="margin:0;">最近的 Study</h2>
       <span class="muted small">建筑师 AI 视频生成工作站</span>
       <span class="spacer" style="flex:1;"></span>
-      <sl-button class="btn primary" id="new-video-btn">+ New Study</sl-button>
+      <sl-button class="btn primary" id="new-video-btn">＋ 新建 Study</sl-button>
     </div>
 
     <div id="new-task-box" class="panel mb" style="display:none;">
-      <h3>New Study</h3>
+      <h3>新建 Study</h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
         <div style="flex:2;min-width:220px;">
           <label>Study 标题</label>
@@ -74,8 +74,8 @@
     <div id="tasks" class="task-grid"></div>
     <div id="err" class="error-banner" role="alert" aria-live="assertive" aria-atomic="true" style="display:none;"></div>
     <div class="panel mt" style="display:flex;justify-content:space-between;align-items:center;">
-      <span id="sys-status" class="small muted">System: …</span>
-      <a href="setup.html">⚙ System / Environment</a>
+      <span id="sys-status" class="small muted" role="status" aria-live="polite">正在检查生成环境…</span>
+      <a href="setup.html">⚙ 环境中心</a>
     </div>
   </main>
   <script src="js/api.js"></script>

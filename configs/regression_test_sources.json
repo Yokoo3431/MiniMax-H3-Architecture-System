@@ -306,7 +306,7 @@
     {
       "path": "tests/test_installer_setup_runtime_compatibility.py",
       "tracked_status": "tracked",
-      "sha256": "E6F7ED4CE631C9D2332BBB06F16E4919C17B38D366120733801F2112DBC7D0E4",
+      "sha256": "C3490AFB5E9346534AC2214B262B670494379A8F5801BF94A2C688ED2DA1043A",
       "discovered_test_count": 9,
       "classification": "CORE_REGRESSION"
     },
@@ -474,7 +474,7 @@
     {
       "path": "tests/test_patch28c_distribution.py",
       "tracked_status": "tracked",
-      "sha256": "D427D9FE855932A6D139348A80B7BB8D0C3EC190CEDC6B34451902350B3E44E5",
+      "sha256": "2F9D08857011CB19F6928F5D1026F0EA1F8757D69492B8F456759CF3EEAB811C",
       "discovered_test_count": 11,
       "classification": "CORE_REGRESSION"
     },
@@ -782,14 +782,21 @@
     {
       "path": "tests/test_studio_ux2_p1.py",
       "tracked_status": "tracked",
-      "sha256": "60DBB8142CA6695AA2BB4E92C73B5CFC97BBB5E3CD1F6018FEACD2A3F1EA283D",
+      "sha256": "3E162B1FDE8348E4E2DE453C3EE395CF277B1A66A52DA64403C5BE36BD025153",
       "discovered_test_count": 15,
+      "classification": "CORE_REGRESSION"
+    },
+    {
+      "path": "tests/test_synthetic_demo_seed.py",
+      "tracked_status": "tracked",
+      "sha256": "3A1656A8684EE7FE2FCC717F35F29AA4501A488D308E4ED8C419F4916E2C09A4",
+      "discovered_test_count": 3,
       "classification": "CORE_REGRESSION"
     },
     {
       "path": "tests/test_uninstaller_preservation.py",
       "tracked_status": "tracked",
-      "sha256": "64131A938483E27E1062432D304BB2B74CB3805EC323669EF82BED697DF55005",
+      "sha256": "9EB5A3F47A3A11EF4B670C6E4DEFAAD65AE36DDFBC933C37862B81F967254118",
       "discovered_test_count": 1,
       "classification": "CORE_REGRESSION"
     },

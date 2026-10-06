@@ -105,6 +105,14 @@ class TestDistributionLayout(unittest.TestCase):
         powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
         if not powershell.is_file():
             self.skipTest("Windows PowerShell 5.1 is unavailable")
+        policy_probe = subprocess.run(
+            [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+             "-Command", "Get-ExecutionPolicy"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        policy = policy_probe.stdout.strip().splitlines()[-1] if policy_probe.stdout.strip() else ""
+        if policy_probe.returncode != 0 or policy not in {"RemoteSigned", "Unrestricted"}:
+            self.skipTest("effective PowerShell policy does not permit unsigned local test scripts; policy will not be overridden")
         with tempfile.TemporaryDirectory(prefix="avs-uninstall-contract-") as temp:
             root = Path(temp)
             (root / "launcher").mkdir(parents=True)
@@ -117,7 +125,7 @@ class TestDistributionLayout(unittest.TestCase):
             (root / "app-owned.txt").write_text("remove", encoding="utf-8")
 
             result = subprocess.run(
-                [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                [str(powershell), "-NoProfile", "-File",
                  str(script), "-InstallRoot", str(root), "-PlanOnly"],
                 cwd=SYSTEM_ROOT, capture_output=True, text=True, timeout=15,
             )
@@ -133,7 +141,7 @@ class TestDistributionLayout(unittest.TestCase):
             self.assertTrue((root / "Models" / "diffusion_models" / "keep.bin").is_file())
 
             cleanup = subprocess.run(
-                [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                [str(powershell), "-NoProfile", "-File",
                  str(script), "-InstallRoot", str(root), "-CleanupOnly", "-TestFixture"],
                 cwd=SYSTEM_ROOT, capture_output=True, text=True, timeout=15,
             )

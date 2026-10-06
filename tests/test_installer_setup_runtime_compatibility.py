@@ -17,6 +17,23 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _require_local_script_policy(test_case: unittest.TestCase,
+                                 powershell: Path) -> None:
+    if not powershell.is_file():
+        test_case.skipTest("Windows PowerShell 5.1 is unavailable")
+    probe = subprocess.run(
+        [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+         "-Command", "Get-ExecutionPolicy"],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+    policy = probe.stdout.strip().splitlines()[-1] if probe.stdout.strip() else ""
+    if probe.returncode != 0 or policy not in {"RemoteSigned", "Unrestricted"}:
+        test_case.skipTest(
+            "effective PowerShell policy does not permit unsigned local test scripts; "
+            "the test will not override execution policy"
+        )
+
+
 class TestSetupRuntimeCompatibility(unittest.TestCase):
     def _validation_functions(self, setup: str) -> str:
         def extract(name: str, next_name: str) -> str:
@@ -78,9 +95,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "Write-Output 'PASS'\n",
                 encoding="utf-8",
             )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
@@ -128,9 +146,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "Write-Output 'PASS'\n",
                 encoding="utf-8",
             )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
@@ -162,9 +181,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "Write-Output 'PASS'\n",
                 encoding="utf-8",
             )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
@@ -287,9 +307,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                     "if ((Get-FileHash -LiteralPath $targetMain -Algorithm SHA256).Hash -ne $beforeHash) { throw 'unverified target was modified' }\n"
                     "if ($script:findExistingCalled) { throw 'unverified target triggered cross-drive runtime discovery' }\n"
                 )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
@@ -365,9 +386,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "Write-Output 'PASS'\n",
                 encoding="utf-8",
             )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
@@ -444,9 +466,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "} finally { if (Test-Path -LiteralPath $registrationPath) { Remove-Item -LiteralPath $registrationPath -Recurse -Force } }\n",
                 encoding="utf-8",
             )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
@@ -503,9 +526,10 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
                 + "Write-Output 'PASS'\n",
                 encoding="utf-8",
             )
+            _require_local_script_policy(self, powershell)
             result = subprocess.run(
                 [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                 "-File", str(script)],
                 capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
