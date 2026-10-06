@@ -26,13 +26,23 @@ const WF_LABEL = {
 
 function stateBadge(state) {
   const labels = {
-    READY_TO_GENERATE: '素材与提示词已就绪', GENERATING: '正在生成', COMPLETED: '已完成',
-    REFERENCE_PENDING: '等待参考图', PROMPT_REVIEW: '准备 Prompt', FAILED: '生成失败',
+    CREATED: '准备中', NO_REFERENCE: '等待参考图', REFERENCE_PENDING: '等待参考图',
+    REFERENCE_PENDING_APPROVAL: '等待审批', REFERENCE_APPROVED: '参考图已批准',
+    READY_TO_CONFIGURE: '准备配置', PROMPT_REVIEW: '准备 Prompt',
+    PROMPT_NEEDS_CONFIRMATION: '待确认 Prompt', USER_CONFIRM: '待确认 Prompt',
+    READY_TO_GENERATE: '素材与提示词已就绪', QUEUED: '排队中', SUBMITTED: '已提交',
+    RUNNING: '正在生成', GENERATING: '正在生成', GPU_RUNNING: '正在生成',
+    RECONCILING: '整理输出', QUALITY_CHECK: '整理输出', COMPLETED: '已完成',
+    FAILED: '生成失败', GPU_FAILED: '生成失败', QUALITY_FAILED: '质量检查未通过',
+    REFERENCE_REJECTED: '参考图未通过', CANCELLED: '已取消',
+    SUBMISSION_LOST: '提交状态待核验',
   };
   const cls = ['COMPLETED', 'READY_TO_GENERATE'].includes(state) ? 'done'
-    : ['FAILED', 'REFERENCE_REJECTED'].includes(state) ? 'err'
-    : ['GENERATING', 'PROMPT_REVIEW'].includes(state) ? 'warn' : 'state';
-  return `<sl-badge class="badge ${cls}" variant="${cls === 'done' ? 'success' : cls === 'err' ? 'danger' : 'neutral'}" pill>${esc(labels[state] || state)}</sl-badge>`;
+    : ['FAILED', 'GPU_FAILED', 'QUALITY_FAILED', 'REFERENCE_REJECTED'].includes(state) ? 'err'
+    : ['GENERATING', 'GPU_RUNNING', 'PROMPT_REVIEW', 'PROMPT_NEEDS_CONFIRMATION',
+       'USER_CONFIRM', 'QUEUED', 'SUBMITTED', 'RUNNING', 'RECONCILING',
+       'QUALITY_CHECK', 'SUBMISSION_LOST'].includes(state) ? 'warn' : 'state';
+  return `<sl-badge class="badge ${cls}" variant="${cls === 'done' ? 'success' : cls === 'err' ? 'danger' : 'neutral'}" pill>${esc(labels[state] || '状态已更新')}</sl-badge>`;
 }
 
 async function loadTasks() {

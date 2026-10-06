@@ -99,6 +99,11 @@ class StudioUX2P1Tests(unittest.TestCase):
             source = self.read(name)
             self.assertIn("READY_TO_GENERATE: '素材与提示词已就绪'", source)
             self.assertNotIn("READY_TO_GENERATE: '可以生成'", source)
+        home = self.read("js/home.js")
+        self.assertIn("REFERENCE_APPROVED: '参考图已批准'", home)
+        self.assertIn("SUBMISSION_LOST: '提交状态待核验'", home)
+        self.assertIn("labels[state] || '状态已更新'", home)
+        self.assertNotIn("labels[state] || state", home)
 
     def test_study_hides_unhydrated_defaults_and_exposes_loading_or_failure_state(self):
         html = self.read("workspace.html")
