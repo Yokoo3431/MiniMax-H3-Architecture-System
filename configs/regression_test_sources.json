@@ -306,8 +306,8 @@
     {
       "path": "tests/test_installer_setup_runtime_compatibility.py",
       "tracked_status": "tracked",
-      "sha256": "E9DF24B5AD92A055C3311F3FB38CBFF35BA8EF95B3D5B558B066E01B1FD7458A",
-      "discovered_test_count": 1,
+      "sha256": "6C694D67323B4289CE9A8F7FC8A51B9D6F1314B4A90CA78768C51F4BF54ADC7D",
+      "discovered_test_count": 2,
       "classification": "CORE_REGRESSION"
     },
     {

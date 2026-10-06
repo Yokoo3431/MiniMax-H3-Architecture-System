@@ -106,6 +106,78 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
         self.assertIn("cannot be proven to match the pinned ComfyUI version", ensure)
         self.assertNotIn("Remove-Item -LiteralPath $runtime", ensure)
 
+    def test_setup_reuses_existing_pinned_runtime_without_download_or_copy(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        compat_start = setup.index("function Test-RuntimeLayout")
+        find_start = setup.index("function Find-ExistingRuntime", compat_start)
+        extractor_start = setup.index("function Find-ExistingExtractor", find_start)
+        ensure_start = setup.index("function Ensure-Runtime", extractor_start)
+        ensure_end = setup.index("function Copy-Payload", ensure_start)
+        functions = (
+            setup[compat_start:find_start]
+            + setup[find_start:extractor_start]
+            + setup[ensure_start:ensure_end]
+        )
+
+        with tempfile.TemporaryDirectory(prefix="avs-runtime-reuse-contract-") as temp:
+            root = Path(temp)
+            existing = root / "ArchitectVideoStudio_Runtime"
+            python = existing / "python_embeded" / "python.exe"
+            main = existing / "ComfyUI" / "main.py"
+            version = existing / "ComfyUI" / "comfyui_version.py"
+            marker = existing / "runtime_version.json"
+            python.parent.mkdir(parents=True)
+            main.parent.mkdir(parents=True)
+            python.write_bytes(b"synthetic-runtime-python")
+            main.write_text("synthetic runtime", encoding="utf-8")
+            version.write_text('__version__ = "0.33.1"\n', encoding="utf-8")
+            marker.write_text('{"comfyui":"0.33.1","pread":"pread"}', encoding="utf-8")
+            original = {path: path.read_bytes() for path in (python, main, version, marker)}
+
+            install_root = root / "fresh-app-install"
+            cache = install_root / "userdata" / "cache" / "bootstrap"
+            expected = _ps_quote(str(existing))
+            config = (
+                "[pscustomobject]@{ runtime = [pscustomobject]@{ "
+                "version = '0.33.1'; asset = 'must-not-download.7z'; "
+                "url = 'https://invalid.example/runtime.7z'; sha256 = 'unused' } }"
+            )
+            script = root / "reuse-existing-runtime.ps1"
+            script.write_text(
+                functions
+                + "\n$script:downloadCalled = $false\n"
+                + "function Invoke-ResumableDownload([string]$Url, [string]$Destination) { "
+                  "$script:downloadCalled = $true; throw 'runtime download was attempted' }\n"
+                + "$installRoot = " + _ps_quote(str(install_root)) + "\n"
+                + "$cache = " + _ps_quote(str(cache)) + "\n"
+                + "$expected = " + expected + "\n"
+                + "$config = " + config + "\n"
+                + "$result = Ensure-Runtime $config $installRoot $cache\n"
+                + "if (-not [string]::Equals([IO.Path]::GetFullPath($result), "
+                  "[IO.Path]::GetFullPath($expected), [StringComparison]::OrdinalIgnoreCase)) { "
+                  "throw 'existing runtime was not selected' }\n"
+                + "if ($script:downloadCalled) { throw 'runtime download was attempted' }\n"
+                + "if (Test-Path -LiteralPath $installRoot) { throw 'new runtime/app root was created' }\n"
+                + "if (Test-Path -LiteralPath $cache) { throw 'download cache was created' }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
+            self.assertEqual({path: path.read_bytes() for path in original}, original)
+
 
 if __name__ == "__main__":
     unittest.main()
