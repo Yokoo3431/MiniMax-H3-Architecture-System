@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 
@@ -152,6 +153,7 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
             script = root / "reuse-existing-runtime.ps1"
             script.write_text(
                 functions
+                + "\nfunction Get-RegisteredRuntime([string]$ExpectedVersion, [string]$RegistrationPath) { return '' }\n"
                 + "\n$script:downloadCalled = $false\n"
                 + "function Invoke-ResumableDownload([string]$Url, [string]$Destination) { "
                   "$script:downloadCalled = $true; throw 'runtime download was attempted' }\n"
@@ -177,6 +179,83 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
             self.assertIn("PASS", result.stdout)
             self.assertEqual({path: path.read_bytes() for path in original}, original)
+
+    def test_setup_prefers_registered_existing_runtime_without_drive_scan(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        start = setup.index("function Test-RuntimeLayout")
+        end = setup.index("function Find-ExistingExtractor", start)
+        functions = setup[start:end]
+
+        with tempfile.TemporaryDirectory(prefix="avs-registered-runtime-contract-") as temp:
+            root = Path(temp)
+            runtime = root / "shared-runtime" / "ArchitectVideoStudio_Runtime"
+            (runtime / "python_embeded").mkdir(parents=True)
+            (runtime / "python_embeded" / "python.exe").write_bytes(b"fixture-python")
+            comfy = runtime / "ComfyUI"
+            comfy.mkdir()
+            (comfy / "main.py").write_text("fixture", encoding="utf-8")
+            (comfy / "comfyui_version.py").write_text(
+                '__version__ = "0.33.1"\n', encoding="utf-8"
+            )
+            (runtime / "runtime_version.json").write_text(
+                '{"comfyui":"0.33.1","pread":"pread"}', encoding="utf-8"
+            )
+
+            decoy = root / "ArchitectVideoStudio_Runtime"
+            (decoy / "python_embeded").mkdir(parents=True)
+            (decoy / "python_embeded" / "python.exe").write_bytes(b"decoy-python")
+            (decoy / "ComfyUI" / "custom_nodes" / "ComfyUI_RH_MinMaxH3").mkdir(parents=True)
+            (decoy / "ComfyUI" / "custom_nodes" / "ComfyUI-VideoHelperSuite").mkdir()
+            (decoy / "ComfyUI" / "main.py").write_text("decoy", encoding="utf-8")
+            (decoy / "ComfyUI" / "comfyui_version.py").write_text(
+                '__version__ = "0.33.1"\n', encoding="utf-8"
+            )
+            (decoy / "runtime_version.json").write_text(
+                '{"comfyui":"0.33.1","pread":"pread"}', encoding="utf-8"
+            )
+
+            registered_app = root / "previous-app"
+            registered_app.mkdir()
+            (registered_app / "native_env.path").write_text(
+                str(runtime), encoding="utf-8"
+            )
+            install_root = root / "new-app" / "ArchitectVideoStudio"
+            registration_path = (
+                "HKCU:\\Software\\ArchitectVideoStudioRuntimeTest\\"
+                + uuid.uuid4().hex
+            )
+            script = root / "registered-runtime-tests.ps1"
+            script.write_text(
+                functions
+                + "\n$script:fullDriveScanCalled = $false\n"
+                + "function Get-PSDrive { $script:fullDriveScanCalled = $true; throw 'full-drive scan should not run' }\n"
+                + "$registrationPath = " + _ps_quote(registration_path) + "\n"
+                + "$registeredApp = " + _ps_quote(str(registered_app)) + "\n"
+                + "$installRoot = " + _ps_quote(str(install_root)) + "\n"
+                + "try {\n"
+                + "  New-Item -Path $registrationPath -Force | Out-Null\n"
+                + "  Set-ItemProperty -Path $registrationPath -Name InstallLocation -Value $registeredApp\n"
+                + "  $found = Find-ExistingRuntime $installRoot '0.33.1' $registrationPath\n"
+                + "  if (-not [string]::Equals([IO.Path]::GetFullPath($found), [IO.Path]::GetFullPath(" + _ps_quote(str(runtime)) + "), [StringComparison]::OrdinalIgnoreCase)) { throw 'registered runtime was not selected' }\n"
+                + "  if ($script:fullDriveScanCalled) { throw 'runtime discovery performed an unnecessary drive scan' }\n"
+                + "  Write-Output 'PASS'\n"
+                + "} finally { if (Test-Path -LiteralPath $registrationPath) { Remove-Item -LiteralPath $registrationPath -Recurse -Force } }\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
 
 
 if __name__ == "__main__":

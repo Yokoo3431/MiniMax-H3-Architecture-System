@@ -60,8 +60,32 @@ function Test-RuntimeCompatibility([string]$Root, [string]$ExpectedVersion) {
     }
 }
 
-function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion) {
+function Get-RegisteredRuntime([string]$ExpectedVersion,
+                               [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
+    if (-not (Test-Path -LiteralPath $RegistrationPath)) { return "" }
+    try {
+        $registration = Get-ItemProperty -Path $RegistrationPath -Name InstallLocation -ErrorAction Stop
+        $registeredInstallRoot = [string]$registration.InstallLocation
+        if ([string]::IsNullOrWhiteSpace($registeredInstallRoot)) { return "" }
+        $runtimeConfig = Join-Path $registeredInstallRoot "native_env.path"
+        if (-not (Test-Path -LiteralPath $runtimeConfig -PathType Leaf)) { return "" }
+        $runtime = (Get-Content -LiteralPath $runtimeConfig -Raw -ErrorAction Stop).Trim()
+        if ([string]::IsNullOrWhiteSpace($runtime) -or
+            -not (Test-RuntimeCompatibility $runtime $ExpectedVersion)) { return "" }
+        return [IO.Path]::GetFullPath($runtime)
+    } catch {
+        return ""
+    }
+}
+
+function Find-ExistingRuntime([string]$InstallRoot, [string]$ExpectedVersion,
+                              [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
     $parent = Split-Path -Parent $InstallRoot
+    $registeredRuntime = Get-RegisteredRuntime $ExpectedVersion $RegistrationPath
+    if ($registeredRuntime) {
+        Write-Host "Using the compatible ComfyUI Runtime configured by the existing Architect Video Studio installation."
+        return $registeredRuntime
+    }
     $candidates = @(
         (Join-Path $InstallRoot "ArchitectVideoStudio_Runtime"),
         (Join-Path $InstallRoot "runtime\native"),
