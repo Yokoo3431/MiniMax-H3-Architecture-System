@@ -18,6 +18,200 @@ def _ps_quote(value: str) -> str:
 
 
 class TestSetupRuntimeCompatibility(unittest.TestCase):
+    def _validation_functions(self, setup: str) -> str:
+        def extract(name: str, next_name: str) -> str:
+            start = setup.index(f"function {name}")
+            end = setup.index(f"function {next_name}", start)
+            return setup[start:end]
+
+        return "\n".join((
+            extract("Test-RuntimeLayout", "Test-RuntimeCompatibility"),
+            extract("Test-RuntimeCompatibility", "Get-RegisteredRuntimePath"),
+            extract("Resolve-ValidationRuntime", "Assert-ValidationTarget"),
+            extract("Assert-ValidationTarget", "Invoke-ValidationInstall"),
+            extract("Invoke-ValidationInstall", "Find-ExistingRuntime"),
+            extract("Copy-Payload", "Stop-ExistingDesktopShell"),
+        ))
+
+    def test_validation_mode_stages_only_app_and_reuses_registered_runtime(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        functions = self._validation_functions(setup)
+        with tempfile.TemporaryDirectory(prefix="avs-validation-stage-") as temp:
+            root = Path(temp)
+            runtime = root / "registered-runtime"
+            (runtime / "python_embeded").mkdir(parents=True)
+            (runtime / "python_embeded" / "python.exe").write_bytes(b"existing-python")
+            (runtime / "ComfyUI").mkdir()
+            (runtime / "ComfyUI" / "main.py").write_text("existing ComfyUI", encoding="utf-8")
+            version = runtime / "ComfyUI" / "comfyui_version.py"
+            version.write_text('__version__ = "0.33.1"\n', encoding="utf-8")
+            main_before = (runtime / "ComfyUI" / "main.py").read_bytes()
+            python_before = (runtime / "python_embeded" / "python.exe").read_bytes()
+            payload = root / "payload"
+            payload.mkdir()
+            (payload / "app-entry.py").write_text("synthetic AVS payload", encoding="utf-8")
+            target = root / f"avs-validation-{uuid.uuid4().hex}"
+            script = root / "validation-stage.ps1"
+            script.write_text(
+                functions
+                + "\nfunction Get-RegisteredRuntimePath([string]$RegistrationPath) { return "
+                + _ps_quote(str(runtime)) + " }\n"
+                + "function Get-PSDrive { throw 'validation mode must not scan drives' }\n"
+                + "function Invoke-ResumableDownload([string]$Url, [string]$Destination) { throw 'validation mode must not download' }\n"
+                + "$config = [pscustomobject]@{ runtime = [pscustomobject]@{ version = '0.33.1' } }\n"
+                + "$result = Invoke-ValidationInstall $config " + _ps_quote(str(payload)) + " "
+                + _ps_quote(str(target)) + " 'synthetic-registration'\n"
+                + "if ($result.Mode -ne 'VALIDATION_PAYLOAD_ONLY') { throw 'wrong validation mode' }\n"
+                + "if ($result.RuntimeVersion -ne '0.33.1') { throw 'runtime version not recorded' }\n"
+                + "if (-not (Test-Path -LiteralPath (Join-Path $result.InstallRoot 'app-entry.py'))) { throw 'AVS payload was not staged' }\n"
+                + "if (-not (Test-Path -LiteralPath (Join-Path $result.InstallRoot 'native_env.path'))) { throw 'runtime pointer was not staged' }\n"
+                + "if (Test-Path -LiteralPath (Join-Path $result.InstallRoot 'ArchitectVideoStudio_Runtime')) { throw 'ComfyUI was copied into the validation install' }\n"
+                + "if ((Get-Content -LiteralPath (Join-Path $result.InstallRoot 'native_env.path') -Raw).Trim() -ne "
+                + _ps_quote(str(runtime)) + ") { throw 'validation did not point at the existing runtime' }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
+            self.assertEqual((runtime / "ComfyUI" / "main.py").read_bytes(), main_before)
+            self.assertEqual((runtime / "python_embeded" / "python.exe").read_bytes(), python_before)
+            self.assertEqual(version.read_text(encoding="utf-8"), '__version__ = "0.33.1"\n')
+
+    def test_validation_mode_fails_closed_without_matching_registered_runtime(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        functions = self._validation_functions(setup)
+        with tempfile.TemporaryDirectory(prefix="avs-validation-fail-closed-") as temp:
+            root = Path(temp)
+            runtime = root / "registered-runtime"
+            (runtime / "python_embeded").mkdir(parents=True)
+            (runtime / "python_embeded" / "python.exe").write_bytes(b"existing-python")
+            (runtime / "ComfyUI").mkdir()
+            (runtime / "ComfyUI" / "main.py").write_text("existing", encoding="utf-8")
+            (runtime / "ComfyUI" / "comfyui_version.py").write_text(
+                '__version__ = "0.36.0"\n', encoding="utf-8"
+            )
+            payload = root / "payload"
+            payload.mkdir()
+            target = root / f"avs-validation-{uuid.uuid4().hex}"
+            script = root / "validation-fail-closed.ps1"
+            script.write_text(
+                functions
+                + "\n$script:registeredRuntime = " + _ps_quote(str(runtime)) + "\n"
+                + "function Get-RegisteredRuntimePath([string]$RegistrationPath) { return $script:registeredRuntime }\n"
+                + "function Get-PSDrive { throw 'validation mode must not scan drives' }\n"
+                + "function Invoke-ResumableDownload([string]$Url, [string]$Destination) { throw 'validation mode must not download' }\n"
+                + "$config = [pscustomobject]@{ runtime = [pscustomobject]@{ version = '0.33.1' } }\n"
+                + "try { Invoke-ValidationInstall $config " + _ps_quote(str(payload)) + " "
+                + _ps_quote(str(target)) + " 'synthetic-registration'; throw 'mismatched runtime accepted' } catch { if ($_.Exception.Message -notmatch 'stopped without updating or installing a runtime') { throw } }\n"
+                + "if (Test-Path -LiteralPath " + _ps_quote(str(target)) + ") { throw 'target created after runtime mismatch' }\n"
+                + "$script:registeredRuntime = ''\n"
+                + "try { Resolve-ValidationRuntime $config 'synthetic-registration'; throw 'missing registered runtime accepted' } catch { if ($_.Exception.Message -notmatch 'already registered ComfyUI runtime') { throw } }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
+
+    def test_validation_mode_target_is_confined_and_never_overwritten(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        functions = self._validation_functions(setup)
+        with tempfile.TemporaryDirectory(prefix="avs-validation-target-") as temp:
+            root = Path(temp)
+            existing = root / f"avs-validation-{uuid.uuid4().hex}"
+            existing.mkdir()
+            sentinel = existing / "keep.txt"
+            sentinel.write_text("preserve", encoding="utf-8")
+            outside = ROOT / f"avs-validation-{uuid.uuid4().hex}"
+            script = root / "validation-target.ps1"
+            script.write_text(
+                functions
+                + "\n$existing = " + _ps_quote(str(existing)) + "\n"
+                + "try { Assert-ValidationTarget $existing; throw 'existing target accepted' } catch { if ($_.Exception.Message -notmatch 'will not overwrite') { throw } }\n"
+                + "try { Assert-ValidationTarget " + _ps_quote(str(outside)) + "; throw 'outside target accepted' } catch { if ($_.Exception.Message -notmatch 'inside the system temporary directory') { throw } }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve")
+
+    def test_validation_branch_exits_before_runtime_or_registration_mutations(self):
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        self.assertTrue(setup.lstrip().startswith("param("))
+        start = setup.index("if ($ValidationMode)")
+        end = setup.index("$defaultRoot =", start)
+        branch = setup[start:end]
+        for forbidden in (
+            "Stop-ExistingDesktopShell", "Stop-ExistingManagedServices",
+            "Ensure-Runtime", "Install-H3FrontendBridge",
+            "Ensure-H3ModelRootBridge", "Reconcile-H3RuntimeSupport",
+            "Register-WindowsApplication", "Start-Process",
+        ):
+            self.assertNotIn(forbidden, branch)
+        self.assertIn("return", branch)
+        stage_start = setup.index("function Invoke-ValidationInstall")
+        stage_end = setup.index("function Find-ExistingRuntime", stage_start)
+        stage = setup[stage_start:stage_end]
+        self.assertNotIn("Find-ExistingRuntime", stage)
+        self.assertNotIn("Invoke-ResumableDownload", stage)
+
+    def test_setup_script_parses_without_executing_installer(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+        setup_path = ROOT / "installer" / "Setup.ps1"
+        command = (
+            "$ErrorActionPreference = 'Stop'; "
+            f"[void][scriptblock]::Create((Get-Content -LiteralPath {_ps_quote(str(setup_path))} -Raw)); "
+            "Write-Output 'PASS'"
+        )
+        result = subprocess.run(
+            [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+             "-Command", command],
+            capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertIn("PASS", result.stdout)
+
     def test_runtime_version_must_be_proven_and_unknown_target_is_preserved(self):
         powershell = (
             Path(os.environ.get("WINDIR", r"C:\Windows"))

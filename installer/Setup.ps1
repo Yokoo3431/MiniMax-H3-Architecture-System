@@ -1,3 +1,8 @@
+param(
+    [switch]$ValidationMode,
+    [string]$TargetRoot
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -75,6 +80,64 @@ function Get-RegisteredRuntimePath(
         return [IO.Path]::GetFullPath($runtime)
     } catch {
         return ""
+    }
+}
+
+function Resolve-ValidationRuntime($Config,
+                                  [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
+    # Validation mode is deliberately narrower than normal Setup discovery:
+    # use only the runtime already recorded by the installed application.
+    # It must never scan drives, download, extract, or create another runtime.
+    $runtime = Get-RegisteredRuntimePath $RegistrationPath
+    if (-not $runtime) {
+        throw "Validation requires an already registered ComfyUI runtime. No runtime was installed or downloaded."
+    }
+    if (-not (Test-RuntimeCompatibility $runtime ([string]$Config.runtime.version))) {
+        throw "The registered ComfyUI runtime does not match the package pin. Validation stopped without updating or installing a runtime."
+    }
+    return $runtime
+}
+
+function Assert-ValidationTarget([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw "Validation mode requires an explicit temporary target folder."
+    }
+    $target = [IO.Path]::GetFullPath($Path)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([char]0x5c, [char]0x2f)
+    $tempPrefix = $tempRoot + [IO.Path]::DirectorySeparatorChar
+    if (-not $target.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        (Split-Path -Leaf $target) -notmatch '^avs-validation-[A-Fa-f0-9-]{8,}$') {
+        throw "Validation target must be a uniquely named avs-validation-* folder inside the system temporary directory."
+    }
+    if (Test-Path -LiteralPath $target) {
+        throw "Validation target already exists; Setup will not overwrite it."
+    }
+    return $target
+}
+
+function Invoke-ValidationInstall($Config, [string]$PayloadRoot, [string]$TargetRoot,
+                                  [string]$RegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio") {
+    $target = Assert-ValidationTarget $TargetRoot
+    $runtime = Resolve-ValidationRuntime $Config $RegistrationPath
+    if (-not (Test-Path -LiteralPath $PayloadRoot -PathType Container)) {
+        throw "Validation payload is missing."
+    }
+    $payload = [IO.Path]::GetFullPath($PayloadRoot)
+    $targetPrefix = $target.TrimEnd([char]0x5c, [char]0x2f) + [IO.Path]::DirectorySeparatorChar
+    if ($payload.StartsWith($targetPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        $target.StartsWith($payload.TrimEnd([char]0x5c, [char]0x2f) + [IO.Path]::DirectorySeparatorChar,
+                           [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Validation payload and target must be separate folders."
+    }
+
+    New-Item -ItemType Directory -Path $target | Out-Null
+    Copy-Payload $payload $target
+    Set-Content -LiteralPath (Join-Path $target "native_env.path") -Value $runtime -Encoding UTF8
+    return [pscustomobject]@{
+        InstallRoot = $target
+        RuntimeRoot = $runtime
+        RuntimeVersion = [string]$Config.runtime.version
+        Mode = "VALIDATION_PAYLOAD_ONLY"
     }
 }
 
@@ -635,6 +698,15 @@ function Select-InstallRoot([string]$DefaultRoot) {
 }
 
 $config = Read-BootstrapConfig
+$payload = Join-Path $PSScriptRoot "payload"
+if (-not (Test-Path -LiteralPath $payload)) { throw "Installer payload is missing." }
+if ($ValidationMode) {
+    $validation = Invoke-ValidationInstall $config $payload $TargetRoot
+    Write-Host "Validation payload staged using the existing registered ComfyUI runtime."
+    Write-Host "No ComfyUI files, models, runtime support, Windows registration, or running services were changed."
+    return
+}
+
 $defaultRoot = [Environment]::ExpandEnvironmentVariables($config.policy.default_install_root)
 $requested = $env:ARCHITECT_VIDEO_STUDIO_INSTALL_ROOT
 if (-not $requested) {
@@ -647,8 +719,6 @@ if (-not $requested) {
 if ([string]::IsNullOrWhiteSpace($requested)) { throw "Installation canceled." }
 $installRoot = if ([string]::IsNullOrWhiteSpace($requested)) { $defaultRoot } else { [Environment]::ExpandEnvironmentVariables($requested.Trim('"')) }
 $installRoot = [IO.Path]::GetFullPath($installRoot)
-$payload = Join-Path $PSScriptRoot "payload"
-if (-not (Test-Path -LiteralPath $payload)) { throw "Installer payload is missing." }
 $cache = Join-Path $installRoot "userdata\cache\bootstrap"
 
 Write-Host "Installing Architect Video Studio to $installRoot"
