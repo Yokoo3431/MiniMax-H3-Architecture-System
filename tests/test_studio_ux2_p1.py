@@ -88,6 +88,12 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", global_css)
         self.assertIn(".app-home .task-actions > sl-button { width: 100%; min-width: 0; }", global_css)
 
+    def test_readonly_fields_follow_shared_light_and_dark_theme_tokens(self):
+        global_css = self.read("css/avs_global_theme.css")
+        self.assertIn(".app-shell .readonly-field {", global_css)
+        self.assertIn("background: var(--avs-control-bg);", global_css)
+        self.assertIn("color: var(--avs-text-secondary);", global_css)
+
     def test_ready_badge_does_not_claim_runtime_execution_is_available(self):
         for name in ("js/home.js", "js/workspace.js"):
             source = self.read(name)
