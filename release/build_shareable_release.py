@@ -186,6 +186,11 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def _payload_file_count(payload: Path) -> int:
+    """Count unique files in the final payload after generated assets are added."""
+    return sum(1 for item in payload.rglob("*") if item.is_file())
+
+
 def _find_csc() -> Path:
     compiler_candidates = [
         Path(os.environ.get("WINDIR", r"C:\Windows"))
@@ -307,9 +312,9 @@ def main() -> int:
         raise RuntimeError(f"Invalid source commit returned by Git: {source_commit!r}")
     with tempfile.TemporaryDirectory(prefix="architect-video-studio-release-") as temp:
         stage = Path(temp)
-        files = assemble_payload(stage)
+        assemble_payload(stage)
         build_desktop_shell(stage / "payload")
-        files += 4
+        files = _payload_file_count(stage / "payload")
         build_zip(stage / "payload", stage / "payload.zip")
         build_setup_launcher(stage)
         setup = build_setup(stage, output_dir / "ArchitectVideoStudio-Setup.exe")

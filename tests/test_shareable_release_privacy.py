@@ -9,6 +9,14 @@ from release import build_shareable_release as release_builder
 
 
 class TestShareableReleasePrivacy(unittest.TestCase):
+    def test_final_payload_file_count_tracks_unique_files(self):
+        with tempfile.TemporaryDirectory(prefix="avs-payload-count-") as temp:
+            payload = Path(temp) / "payload"
+            (payload / "launcher").mkdir(parents=True)
+            (payload / "launcher" / "app.exe").write_bytes(b"app")
+            (payload / "README.md").write_text("readme", encoding="utf-8")
+            self.assertEqual(release_builder._payload_file_count(payload), 2)
+
     def test_payload_copies_only_tracked_safe_sources(self):
         with tempfile.TemporaryDirectory(prefix="avs-release-privacy-") as temp:
             root = Path(temp)

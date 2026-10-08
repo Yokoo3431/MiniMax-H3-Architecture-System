@@ -775,8 +775,8 @@
     {
       "path": "tests/test_shareable_release_privacy.py",
       "tracked_status": "tracked",
-      "sha256": "5E9A9713A9B4B12C3D0B6140A796535EFC1843B4436304D8FA53D85E7E284CB0",
-      "discovered_test_count": 4,
+      "sha256": "788F01CEF8F4E40CDFA4D21EB348D43BE14ED5C00BEF6AD0E406C95891FD3C31",
+      "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },
     {
