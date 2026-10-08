@@ -58,3 +58,23 @@ This checkpoint is a targeted UX reliability improvement, not a Final E/F accept
 - Replaced the focusable-but-nonsemantic Job table row with a named link on the Job ID. The link carries the current project and Job identity, and the existing query-driven detail loader opens the requested Job. Removed the row-only Enter handler and stale click-propagation workaround.
 - Added regression assertions for the link name, encoded detail route, and preservation of the deep-link behavior. UX and inventory-focused checks passed (27 tests); the canonical CPU regression passed (1053 tests, 4 expected skips).
 - This is a code-level keyboard semantics correction, not proof of a complete interactive accessibility audit. No new screenshot set was captured or saved during this follow-up; page-by-page keyboard, focus, screen-reader, and error-announcement review remains open.
+
+## Final E responsive UX durable closeout — 2026-10-08
+
+- Re-reviewed the final responsive CSS changes in `apps/architect_video_studio/frontend/css/avs_global_theme.css` and `apps/architect_video_studio/frontend/css/studio.css`. The navigation/status toolbar now wraps at tablet/mobile widths; the Study generation section no longer overlays preceding fields after the layout stacks; the Jobs table switches to labeled cards at 900 px and gives the creation timestamp a full row.
+- Visually inspected all 15 existing synthetic-only viewport screenshots after the CSS edit timestamps: Home, Study, Jobs, Output, and Environment at 375 × 812, 768 × 1024, and 1280 × 800. The synthetic fixture contains no owner project/media data and the Environment screen explicitly marks host hardware as unqueried. No horizontal overflow appears in the manifest or in the captures; mobile Jobs timestamps remain readable and tablet Study controls no longer overlap.
+- All 15 PNG files exist, have valid PNG signatures, and their pixel dimensions match the requested viewport dimensions. The manifest contains no stored hashes; SHA-256 fingerprints were computed during this closeout for all captures. The screenshots remain in the existing ignored `.codex_tmp/closeout-final-ux-20261008/screenshots/` evidence directory and are not staged.
+- The screenshot set is viewport-sized, not full-page; below-fold sections were not claimed as visually reviewed. This closeout is a responsive layout review, not a complete keyboard, screen-reader, or WCAG contrast audit. Small secondary labels remain compact and can be revisited in a dedicated accessibility pass.
+- Focused UX/inventory checks passed (57 tests); the canonical `unittest` suite passed (1,069 tests, 13 skipped, 0 failures). Tracked Python compilation, JavaScript syntax, tracked JSON parsing, Golden workflow diff, privacy scan, and `git diff --check` were also verified. No screenshots, prompts, reference media, or runtime data were added to Git.
+
+### Screenshots Captured / Reviewed
+
+| Page | Mobile | Tablet | Desktop |
+| --- | --- | --- | --- |
+| Home | `home_mobile_375x812.png` | `home_tablet_768x1024.png` | `home_desktop_1280x800.png` |
+| Study | `workspace_a_completed_mobile_375x812.png` | `workspace_a_completed_tablet_768x1024.png` | `workspace_a_completed_desktop_1280x800.png` |
+| Jobs | `job_center_mobile_375x812.png` | `job_center_tablet_768x1024.png` | `job_center_desktop_1280x800.png` |
+| Output | `output_review_mobile_375x812.png` | `output_review_tablet_768x1024.png` | `output_review_desktop_1280x800.png` |
+| Environment | `environment_mobile_375x812.png` | `environment_tablet_768x1024.png` | `environment_desktop_1280x800.png` |
+
+Evidence directory (local, ignored): `.codex_tmp/closeout-final-ux-20261008/screenshots/`.

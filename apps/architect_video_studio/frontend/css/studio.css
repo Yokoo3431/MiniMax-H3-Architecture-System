@@ -1246,7 +1246,7 @@ input[type=text], select, textarea { padding: 5px 8px; }
 /* Job rows become readable compact records instead of a collapsing table. */
 .jobs-table { table-layout: fixed; }
 .jobs-table th, .jobs-table td { overflow-wrap: anywhere; }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .jobs-table, .jobs-table tbody { display: block; width: 100%; }
   .jobs-table thead { display: none; }
   .jobs-table tr.job-row {
@@ -1259,13 +1259,16 @@ input[type=text], select, textarea { padding: 5px 8px; }
   .jobs-table tr.job-row td { display: flex; min-width: 0; gap: 8px; align-items: baseline; padding: 3px 0; border: 0; }
   .jobs-table tr.job-row td::before { content: attr(data-label); flex: 0 0 64px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
   .jobs-table tr.job-row td:first-child { grid-column: 1 / -1; font-family: var(--mono); }
-  .jobs-table tr.job-row td:nth-child(3), .jobs-table tr.job-row td:nth-child(6) { grid-column: 1 / -1; }
+  .jobs-table tr.job-row td:nth-child(3),
+  .jobs-table tr.job-row td:nth-child(5),
+  .jobs-table tr.job-row td:nth-child(6) { grid-column: 1 / -1; }
   .jobs-table tr.job-row td > * { min-width: 0; }
   .jobs-table tr:not(.job-row) td[colspan] { display: block; }
 }
 @media (max-width: 900px) {
   .app-study .studio-layout { grid-template-columns: minmax(0,1fr); grid-template-areas: "viewport" "inspector" "reference"; min-height: 0; }
   .app-study .generation-panel { max-height: none; overflow: visible; border-left: 0; }
+  .app-study .generation-panel .generate-section { position: static; }
   .app-study .reference-panel { border-right: 0; }
   .app-study .ux2-viewport { min-height: 54vh; }
   .app-study .ux2-viewport .v-body { min-height: 44vh; }

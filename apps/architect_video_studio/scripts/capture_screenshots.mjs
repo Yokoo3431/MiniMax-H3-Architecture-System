@@ -1,19 +1,78 @@
 // Capture UX screenshots only from an isolated loopback synthetic fixture.
 // Usage: node capture_screenshots.mjs <mock_loopback_url> <out_dir> <fixture-project-a> <fixture-job-a> <fixture-project-b>
 
-import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const [baseArg, outArg, projectAArg, jobAArg, projectBArg] = process.argv.slice(2);
 let BASE;
 let OUT;
 let PROJ_A;
 let JOB_A;
 let PROJ_B;
+const syntheticSystemEnvironment = {
+  overall: 'SYNTHETIC AUDIT',
+  installation_status: 'SYNTHETIC_ONLY',
+  setup_completed: false,
+  paths: {
+    native_root: 'SYNTHETIC_RUNTIME_PATH_NOT_DISCLOSED',
+    models_root: 'SYNTHETIC_MODELS_PATH_NOT_DISCLOSED',
+    configured: false,
+    runtime_role: 'SYNTHETIC_AUDIT',
+  },
+  environment_sources: {active: {source: 'synthetic-audit-fixture'}},
+  production_gates: {synthetic_audit_only: true},
+  gates: {comfyui_present: true, synthetic_audit_only: true},
+  system: {
+    os: 'Synthetic Windows',
+    gpu_hardware: {status: 'NOT_TESTED', ready: false, name: 'Synthetic GPU (not probed)', vram_gb: null},
+    driver: {status: 'NOT_TESTED', ready: false, version: 'synthetic'},
+    runtime_cuda: {status: 'NOT_TESTED', ready: false, torch_imported: false},
+    hardware_policy: {label: 'Synthetic audit fixture', status: 'EXPERIMENTAL', reason: 'Synthetic-only screen data.'},
+    gpu_ready: false,
+    gpu_detail: 'Synthetic-only audit data; host hardware was not queried.',
+    deployment_profile: 'SYNTHETIC',
+    profile_hardware_source: 'synthetic-fixture',
+    free_commit: 0,
+    free_commit_policy: {status: 'NOT_TESTED'},
+    disk_free_gb: 0,
+    environment_probe: {probe_status: 'NOT_TESTED', last_probe_finished: null},
+  },
+  runtime: {
+    present: false, version: 'SYNTHETIC', frontend: 'SYNTHETIC',
+    baseline_comparison: 'NOT_TESTED', pread: false, port: 'SYNTHETIC',
+    path: 'SYNTHETIC_PATH_NOT_DISCLOSED',
+  },
+  models: {ready: 0, count: 0, status: 'SYNTHETIC_ONLY', items: [], h3_asset_status: {ready: false, status: 'NOT_TESTED'}},
+  support: {},
+  skill: {status: 'SYNTHETIC_ONLY', generation_allowed: false},
+  workflows: {ready: 0, count: 0, items: []},
+};
+const syntheticInstallPlan = {
+  components: ['comfyui_runtime', 'minimax_h3_nodes', 'video_helper_suite', 'dit', 'text_encoder', 'video_vae', 'audio_vae']
+    .map((component_id) => ({
+      component_id, name: 'Synthetic audit placeholder', version: 'SYNTHETIC',
+      status: 'SYNTHETIC', type: component_id === 'comfyui_runtime' ? 'runtime' : 'fixture',
+      source: 'SYNTHETIC_ONLY', source_status: 'SYNTHETIC_ONLY', target: 'NOT_APPLICABLE',
+      expected_size: 0,
+    })),
+  blocked_reasons: ['SYNTHETIC_AUDIT_ONLY'],
+  download_size_bytes: 0,
+  required_disk_bytes: 0,
+  available_disk_gb: null,
+};
+const syntheticSystemResponses = {
+  '/api/system/environment': syntheticSystemEnvironment,
+  '/api/system/install-plan': syntheticInstallPlan,
+  '/api/system/desktop-settings': {startup_enabled: false, tray_minimized: false},
+  '/api/system/runtime-update/status': {candidate_root: null, candidate_ready: false, active_root_exists: false, rollback_available: false},
+  '/api/system/engine-status': {state: 'STOPPED'},
+};
 try {
   if (![baseArg, outArg, projectAArg, jobAArg, projectBArg].every(Boolean)) {
     throw new Error('explicit loopback mock URL, output directory, and fixture IDs are required');
@@ -21,167 +80,113 @@ try {
   const target = new URL(baseArg);
   if (target.protocol !== 'http:' ||
       !['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) ||
-      !target.port || target.port === '8788' || target.username || target.password ||
+      target.port !== '10204' || target.username || target.password ||
       !['', '/'].includes(target.pathname) || target.search || target.hash) {
-    throw new Error('target must be an isolated loopback mock server, not the Studio service');
+    throw new Error('target must be the isolated synthetic mock on loopback port 10204');
   }
   const fixtureId = /^(?:fixture|synthetic)-[A-Za-z0-9_-]{1,80}$/;
-  if (![projectAArg, jobAArg, projectBArg].every((value) => fixtureId.test(value))) {
-    throw new Error('project and Job identifiers must be synthetic fixture IDs');
+  const seededProjectId = /^proj-[a-f0-9]{12}$/;
+  const seededJobId = /^job-[a-f0-9]{12}$/;
+  if (![projectAArg, projectBArg].every((value) => fixtureId.test(value) || seededProjectId.test(value)) ||
+      !(fixtureId.test(jobAArg) || seededJobId.test(jobAArg))) {
+    throw new Error('project and Job identifiers must be synthetic fixture or isolated-seed IDs');
   }
   BASE = target.origin;
   OUT = outArg;
   PROJ_A = projectAArg;
   JOB_A = jobAArg;
   PROJ_B = projectBArg;
-} catch (e) {
-  console.error('UNSAFE_SCREENSHOT_TARGET', e.message);
+} catch (error) {
+  console.error('UNSAFE_SCREENSHOT_TARGET', error.message);
   process.exit(2);
 }
-const CDP_PORT = 9444;
 
 mkdirSync(OUT, { recursive: true });
-const profileDir = join(tmpdir(), `avs-shot-${randomUUID()}`);
-let chrome = null;
-let browserWs = null;
-let cdp = null;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function launchChrome() {
-  const args = [
-    `--remote-debugging-port=${CDP_PORT}`,
-    `--user-data-dir=${profileDir}`,
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-background-networking',
-    '--window-size=1680,1000',
-    '--hide-scrollbars',
-    '--headless=new',
-    '--disable-extensions',
-    '--disable-gpu',
-  ];
-  chrome = spawn(CHROME, [...args, 'about:blank'], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-      if (r.ok) return await r.json();
-    } catch {}
-    await sleep(500);
-  }
-  throw new Error('chrome cdp not ready');
-}
-
-class CDP {
-  constructor(ws) {
-    this.ws = ws;
-    this.id = 0;
-    this.pending = new Map();
-    ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.id && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id);
-        this.pending.delete(msg.id);
-        msg.error ? reject(new Error(JSON.stringify(msg.error))) : resolve(msg.result);
-      }
-    });
-  }
-  static async connect(wsUrl) {
-    const ws = new WebSocket(wsUrl);
-    await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', rej); });
-    return new CDP(ws);
-  }
-  send(method, params = {}) {
-    const id = ++this.id;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-  close() { try { this.ws.close(); } catch {} }
-}
-
-async function evalJs(cdp, expression) {
-  const r = await cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  return r.result?.value;
-}
-
-async function shot(cdp, name) {
-  // Full-page capture so below-fold panels (Generation Panel etc.) are visible.
-  const r = await cdp.send('Page.captureScreenshot', {
-    format: 'png',
-    captureBeyondViewport: true,
-    fromSurface: true,
-  });
-  writeFileSync(join(OUT, `${name}.png`), Buffer.from(r.data, 'base64'));
+let browser = null;
+const captures = [];
+async function capture(name, page) {
+  const path = join(OUT, `${name}.png`);
+  await page.screenshot({ path, fullPage: false, animations: 'disabled' });
+  const metrics = await page.evaluate(() => ({
+    title: document.title,
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
+    documentWidth: document.documentElement.scrollWidth,
+    documentHeight: document.documentElement.scrollHeight,
+    horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }));
+  captures.push({name, path, ...metrics});
   console.log('shot:', name);
 }
 
-async function open(cdp, url, waitMs = 1800) {
-  await cdp.send('Page.navigate', { url });
-  await sleep(waitMs);
+async function open(url, page, waitMs = 1800) {
+  const target = new URL(url);
+  target.searchParams.set('__avs_audit', randomUUID());
+  await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  await page.waitForTimeout(waitMs);
 }
 
 async function main() {
-  const version = await launchChrome();
-  browserWs = await CDP.connect(version.webSocketDebuggerUrl);
-  const { targetId } = await browserWs.send('Target.createTarget', { url: 'about:blank' });
-  await sleep(500);
-  const targets = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
-  const page = targets.find((t) => t.id === targetId) ?? targets.find((t) => t.type === 'page');
-  cdp = await CDP.connect(page.webSocketDebuggerUrl);
-  await cdp.send('Page.enable');
-  await cdp.send('Runtime.enable');
+  browser = await chromium.launch({
+    executablePath: EDGE,
+    headless: true,
+    args: ['--disable-background-networking', '--disable-extensions', '--disable-gpu'],
+  });
 
   const pages = [
     ['home', `${BASE}/index.html`],
     ['workspace_a_completed', `${BASE}/workspace.html?project=${PROJ_A}`],
-    ['workspace_b_gate', `${BASE}/workspace.html?project=${PROJ_B}`],
     ['job_center', `${BASE}/jobs.html?project=${PROJ_A}`],
     ['output_review', `${BASE}/output.html?job=${JOB_A}`],
+    ['environment', `${BASE}/setup.html`],
   ];
-  for (const [name, url] of pages) {
-    await open(cdp, url);
-    if (name === 'workspace_b_gate') {
-      // Demonstrate the risk-review gate: checkbox unchecked -> Generate disabled.
-      await evalJs(cdp, `document.getElementById('risk-check').checked = false; updateGate(); 'ok'`);
-      await sleep(300);
+  const viewports = [
+    { id: 'mobile_375x812', width: 375, height: 812 },
+    { id: 'tablet_768x1024', width: 768, height: 1024 },
+    { id: 'desktop_1280x800', width: 1280, height: 800 },
+  ];
+  for (const viewport of viewports) {
+    const context = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      deviceScaleFactor: 1,
+      isMobile: viewport.width < 500,
+    });
+    await context.route('**/*', async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.origin !== BASE) return route.abort();
+      if (requestUrl.pathname.startsWith('/api/system/')) {
+        const value = syntheticSystemResponses[requestUrl.pathname]
+          || {ok: true, applied: false, state: 'SYNTHETIC_ONLY', message: 'Synthetic audit only; no host operation.'};
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ok: true, data: value}),
+        });
+      }
+      return route.continue();
+    });
+    const page = await context.newPage();
+    for (const [name, url] of pages) {
+      await open(url, page);
+      if (name === 'home' && viewport.id === 'desktop_1280x800') {
+        console.log('home-status:', JSON.stringify(await page.evaluate(() => ({
+          environment: document.getElementById('sys-status')?.innerText,
+          service: document.querySelector('.engine-label')?.innerText,
+        }))));
+      }
+      await capture(`${name}_${viewport.id}`, page);
     }
-    await shot(cdp, name);
+    await context.close();
   }
-
-  // Show the enabled Generate state after risk review on project B.
-  await open(cdp, `${BASE}/workspace.html?project=${PROJ_B}`);
-  await evalJs(cdp, `document.getElementById('risk-check').checked = true; updateGate(); 'ok'`);
-  await sleep(300);
-  await shot(cdp, 'workspace_b_risk_reviewed');
-
+  writeFileSync(join(OUT, 'responsive_manifest.json'), JSON.stringify({syntheticOnly: true, viewports, captures}, null, 2));
   console.log('DONE');
 }
 
 async function cleanup() {
-  if (cdp) cdp.close();
-  if (browserWs) browserWs.close();
-  if (chrome && chrome.exitCode === null) {
-    await new Promise((resolve) => {
-      const timer = setTimeout(resolve, 5000);
-      chrome.once('exit', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      chrome.kill();
-    });
-  }
-  try {
-    // This directory is unique to this invocation and contains only its
-    // temporary Chrome profile/cache; screenshots remain in OUT.
-    rmSync(profileDir, { recursive: true, force: true });
-  } catch (e) {
-    console.error('PROFILE_CLEANUP_FAILED', e?.code ?? 'UNKNOWN');
-  }
+  if (browser) await browser.close().catch((error) => console.error('BROWSER_CLEANUP_FAILED', error?.message ?? 'UNKNOWN'));
 }
 
-main().catch((e) => {
-  console.error('CAPTURE_FAILED', e);
+main().catch((error) => {
+  console.error('CAPTURE_FAILED', error);
   process.exitCode = 1;
 }).finally(cleanup);
