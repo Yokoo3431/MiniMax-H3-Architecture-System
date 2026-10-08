@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
@@ -49,6 +50,134 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
             extract("Invoke-ValidationInstall", "Find-ExistingRuntime"),
             extract("Copy-Payload", "Stop-ExistingDesktopShell"),
         ))
+
+    def _app_only_functions(self, setup: str) -> str:
+        start = setup.index("function Copy-Payload")
+        end = setup.index("function Stop-ExistingDesktopShell", start)
+        return setup[start:end]
+
+    def test_supported_install_and_uninstall_paths_do_not_bypass_execution_policy(self):
+        for relative in (
+                "installer/Setup.cmd", "installer/Setup.ps1",
+                "installer/SetupLauncher.cs", "installer/Uninstall.ps1"):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertNotIn("ExecutionPolicy Bypass", source, relative)
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        app_only = setup[setup.index("if ($AppOnly)"):setup.index("$defaultRoot =", setup.index("if ($AppOnly)"))]
+        for forbidden in (
+                "Ensure-Runtime", "Install-H3FrontendBridge",
+                "Ensure-H3ModelRootBridge", "Reconcile-H3RuntimeSupport",
+                "Find-ExistingModelsRoot", "Invoke-ResumableDownload"):
+            self.assertNotIn(forbidden, app_only)
+        launcher = (ROOT / "installer" / "SetupLauncher.cs").read_text(encoding="utf-8")
+        self.assertIn("--app-only", launcher)
+        self.assertIn("--bootstrap-python", launcher)
+        self.assertIn("-NoProfile -File", launcher)
+        self.assertIn("function Assert-AppOnlyRegistrationTarget", setup)
+        registration_guard = setup.index("Assert-AppOnlyRegistrationTarget $target")
+        payload_copy = setup.index("Copy-Payload $PayloadRoot $target -AppOnly")
+        self.assertLess(registration_guard, payload_copy)
+        self.assertIn("will not overwrite its registration", setup)
+        self.assertIn("will not overwrite it", setup)
+
+    def test_app_only_install_reuses_python_and_never_touches_runtime(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        functions = self._app_only_functions(setup)
+        with tempfile.TemporaryDirectory(prefix="avs-app-only-contract-") as temp:
+            root = Path(temp)
+            payload = root / "payload"
+            (payload / "launcher").mkdir(parents=True)
+            (payload / "apps" / "architect_video_studio" / "mock_api").mkdir(parents=True)
+            (payload / "launcher" / "launcher.py").write_text("synthetic launcher", encoding="utf-8")
+            (payload / "apps" / "architect_video_studio" / "mock_api" / "server.py").write_text(
+                "synthetic server", encoding="utf-8")
+            (payload / "Start_ArchitectVideoStudio.bat").write_text("synthetic entry", encoding="utf-8")
+            (payload / "Models").mkdir()
+            (payload / "Models" / "metadata.json").write_text("{}", encoding="utf-8")
+            target = root / "installed-app"
+            runtime = root / "external-runtime"
+            runtime.mkdir()
+            sentinel = runtime / "runtime-sentinel.txt"
+            sentinel.write_text("preserve", encoding="utf-8")
+            script = root / "app-only.ps1"
+            script.write_text(
+                functions
+                + "\nfunction Get-RegisteredRuntimePath { return '' }\n"
+                + "function Register-WindowsApplication([string]$InstallRoot) { $script:registered = $true }\n"
+                + "function Stop-ExistingDesktopShell([string]$InstallRoot) { $script:shellStopped = $true }\n"
+                + "function Stop-ExistingManagedServices([string]$InstallRoot) { $script:servicesStopped = $true }\n"
+                + "function Start-Process { param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle); $script:started = $FilePath }\n"
+                + "function Ensure-Runtime { throw 'runtime provisioning was called' }\n"
+                + "function Invoke-ResumableDownload { throw 'download was called' }\n"
+                + "$script:registered = $false; $script:started = ''; $script:shellStopped = $false; $script:servicesStopped = $false\n"
+                + "$result = Invoke-AppOnlyInstall " + _ps_quote(str(payload)) + " "
+                + _ps_quote(str(target)) + " " + _ps_quote(sys.executable) + "\n"
+                + "if (-not $script:registered -or -not $script:started) { throw 'application lifecycle incomplete' }\n"
+                + "if (-not $script:shellStopped -or -not $script:servicesStopped) { throw 'existing Studio was not stopped before repair' }\n"
+                + "if (-not (Test-Path -LiteralPath (Join-Path $result 'launcher\\launcher.py'))) { throw 'payload not installed' }\n"
+                + "if (-not (Test-Path -LiteralPath (Join-Path $result 'bootstrap_python.path'))) { throw 'Python reference not persisted' }\n"
+                + "$pointerBytes = [IO.File]::ReadAllBytes((Join-Path $result 'bootstrap_python.path')); if ($pointerBytes.Length -ge 3 -and $pointerBytes[0] -eq 239 -and $pointerBytes[1] -eq 187 -and $pointerBytes[2] -eq 191) { throw 'Python reference unexpectedly has a UTF-8 BOM' }\n"
+                + "if (Test-Path -LiteralPath (Join-Path $result 'native_env.path')) { throw 'runtime binding was fabricated' }\n"
+                + "if (Test-Path -LiteralPath (Join-Path $result 'ArchitectVideoStudio_Runtime')) { throw 'ComfyUI runtime was installed' }\n"
+                + "if (Test-Path -LiteralPath (Join-Path $result 'Models')) { throw 'model directory was touched by App-only install' }\n"
+                + "$state = Get-Content -LiteralPath (Join-Path $result 'userdata\\system\\setup_state.json') -Raw | ConvertFrom-Json\n"
+                + "if ($state.install_mode -ne 'app_only' -or $state.runtime_binding -ne 'unbound') { throw 'App-only state not recorded' }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            _require_local_script_policy(self, powershell)
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-File", str(script)],
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve")
+            self.assertFalse((target / "models_env.path").exists())
+
+    def test_app_only_target_rejects_nonempty_unrecognized_folder(self):
+        powershell = (
+            Path(os.environ.get("WINDIR", r"C:\\Windows"))
+            / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        if not powershell.is_file():
+            self.skipTest("Windows PowerShell 5.1 is unavailable")
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        functions = self._app_only_functions(setup)
+        with tempfile.TemporaryDirectory(prefix="avs-app-only-target-") as temp:
+            root = Path(temp)
+            payload = root / "payload"
+            payload.mkdir()
+            target = root / "unrelated-data"
+            target.mkdir()
+            sentinel = target / "keep.txt"
+            sentinel.write_text("preserve", encoding="utf-8")
+            script = root / "target-check.ps1"
+            script.write_text(
+                functions
+                + "\nfunction Get-RegisteredRuntimePath { return '' }\n"
+                + "try { Assert-AppOnlyTarget " + _ps_quote(str(target)) + " "
+                + _ps_quote(str(payload)) + "; throw 'unrecognized target accepted' } catch { if ($_.Exception.Message -notmatch 'not empty') { throw } }\n"
+                + "Write-Output 'PASS'\n",
+                encoding="utf-8",
+            )
+            _require_local_script_policy(self, powershell)
+            result = subprocess.run(
+                [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive",
+                 "-File", str(script)],
+                capture_output=True, text=True, timeout=20,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertIn("PASS", result.stdout)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve")
 
     def test_validation_mode_stages_only_app_and_reuses_registered_runtime(self):
         powershell = (

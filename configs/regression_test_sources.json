@@ -180,8 +180,8 @@
     {
       "path": "tests/test_environment_discovery_reuse.py",
       "tracked_status": "tracked",
-      "sha256": "7FCBDAB0EA2450BB6D7921F3B286517AE19CA7CE838F0B01CDABE65DD966ACD6",
-      "discovered_test_count": 4,
+      "sha256": "064D4479E4FF45104DAB8A27C7A09C6B9C4E9989E240FC88ADC92229A61AD7BB",
+      "discovered_test_count": 5,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -306,8 +306,8 @@
     {
       "path": "tests/test_installer_setup_runtime_compatibility.py",
       "tracked_status": "tracked",
-      "sha256": "C3490AFB5E9346534AC2214B262B670494379A8F5801BF94A2C688ED2DA1043A",
-      "discovered_test_count": 9,
+      "sha256": "E3AC65A389CEFCBC72735F1FD936592BAB27F868D2D38E7E80ADE5E270C5305B",
+      "discovered_test_count": 12,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -467,8 +467,8 @@
     {
       "path": "tests/test_patch28b_launcher.py",
       "tracked_status": "tracked",
-      "sha256": "8649F7035780BFA5EFBFAF91515568E6889499827D3166CC6D28619C1A85A661",
-      "discovered_test_count": 22,
+      "sha256": "9CB2B88AC6AC68B09937DB3140E8E6CB8B09895F663D5807D8E046568036EF4A",
+      "discovered_test_count": 25,
       "classification": "CORE_REGRESSION"
     },
     {

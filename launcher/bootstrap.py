@@ -50,6 +50,14 @@ def resolve_bootstrap_python(root: Optional[Path] = None,
                              native_root: Optional[Path] = None) -> Optional[Path]:
     root = Path(root or project_root()).resolve()
     native_root = native_root or configured_native_root(root)
+    app_only_pointer = root / "bootstrap_python.path"
+    if app_only_pointer.is_file():
+        try:
+            configured = app_only_pointer.read_text(encoding="utf-8-sig").strip().strip('"')
+            candidate = Path(configured).expanduser() if configured else None
+            return candidate.resolve() if candidate and candidate.is_file() else None
+        except (OSError, RuntimeError, ValueError):
+            return None
     seen: set[str] = set()
     for candidate in _candidate_paths(root, native_root):
         candidate = Path(candidate).expanduser()
@@ -62,4 +70,18 @@ def resolve_bootstrap_python(root: Optional[Path] = None,
     return None
 
 
-__all__ = ["configured_native_root", "project_root", "resolve_bootstrap_python"]
+def resolve_launch_python(root: Optional[Path] = None,
+                          native_root: Optional[Path] = None,
+                          fallback: Optional[Path] = None) -> Optional[Path]:
+    """Honor an explicit App-only interpreter pin without arbitrary fallback."""
+    root = Path(root or project_root()).resolve()
+    resolved = resolve_bootstrap_python(root, native_root)
+    if resolved is not None:
+        return resolved
+    if (root / "bootstrap_python.path").is_file():
+        return None
+    return Path(fallback).resolve() if fallback else None
+
+
+__all__ = ["configured_native_root", "project_root", "resolve_bootstrap_python",
+           "resolve_launch_python"]

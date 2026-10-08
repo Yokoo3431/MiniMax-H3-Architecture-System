@@ -386,8 +386,20 @@ def resolve_active_environment(repo_root: Path, state: Optional[dict] = None,
     root = Path(repo_root).resolve()
     state = state or {}
     environ = environ or os.environ
-    raw_native = _resolved(state.get("native_root") or environ.get("H3_NATIVE_ROOT"))
-    raw_models = _resolved(state.get("models_root") or environ.get("H3_MODELS_ROOT"))
+    app_only_unbound = (
+        str(state.get("install_mode", "")).casefold() == "app_only"
+        and not str(state.get("native_root", "")).strip()
+    )
+    raw_native = None if app_only_unbound else _resolved(
+        state.get("native_root") or environ.get("H3_NATIVE_ROOT"))
+    raw_models = None if app_only_unbound else _resolved(
+        state.get("models_root") or environ.get("H3_MODELS_ROOT"))
+
+    # Distribution defaults are package-relative placeholders, not an App-only
+    # runtime binding. Ignore them until the user explicitly configures a root.
+    if app_only_unbound:
+        auto_discover = False
+        use_legacy_config = False
 
     validation_native = raw_native if is_validation_target(raw_native, root) else None
     validation_models = raw_models if is_validation_target(raw_models, root) else None
@@ -461,10 +473,15 @@ def resolve_install_roots(repo_root: Path, state: Optional[dict] = None,
                                         auto_discover=auto_discover)
     manifest = _baseline(root)
     install = manifest.get("installation", {})
-    raw_native = _resolved((state or {}).get("native_root") or
-                           (environ or os.environ).get("H3_NATIVE_ROOT"))
-    raw_models = _resolved((state or {}).get("models_root") or
-                           (environ or os.environ).get("H3_MODELS_ROOT"))
+    state = state or {}
+    app_only_unbound = (
+        str(state.get("install_mode", "")).casefold() == "app_only"
+        and not str(state.get("native_root", "")).strip()
+    )
+    raw_native = None if app_only_unbound else _resolved(
+        state.get("native_root") or (environ or os.environ).get("H3_NATIVE_ROOT"))
+    raw_models = None if app_only_unbound else _resolved(
+        state.get("models_root") or (environ or os.environ).get("H3_MODELS_ROOT"))
     native = active.native_root or (raw_native if raw_native and not is_validation_target(raw_native, root) else None)
     models = active.models_root or (raw_models if raw_models and not is_validation_target(raw_models, root) else None)
     native = native or root / install.get("default_runtime_root", "runtime/native")

@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from apps.architect_video_studio.mock_api.environment_resolution import (  # noqa: E402
     resolve_active_environment,
+    resolve_install_roots,
 )
 from apps.architect_video_studio.mock_api.installer_service import InstallationService  # noqa: E402
 from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
@@ -138,6 +139,36 @@ class TestEnvironmentDiscoveryReuse(unittest.TestCase):
                         "H3_WINDOWS_SAFE_LOAD": "pread",
                     })
             self.assertIsNone(active.native_root)
+
+    def test_unbound_app_only_install_skips_runtime_and_model_discovery(self):
+        configured_runtime = ROOT / "local-config" / "some-other-runtime"
+        configured_models = ROOT / "local-config" / "some-other-models"
+        with mock.patch(
+                "apps.architect_video_studio.mock_api.environment_resolution.discover_existing_native") as native_discovery, \
+             mock.patch(
+                "apps.architect_video_studio.mock_api.environment_resolution.discover_existing_models") as model_discovery:
+            active = resolve_active_environment(
+                ROOT,
+                {"install_mode": "app_only", "runtime_binding": "unbound"},
+                {"H3_NATIVE_ROOT": str(configured_runtime),
+                 "H3_MODELS_ROOT": str(configured_models)},
+                auto_discover=True,
+                use_legacy_config=True,
+            )
+        self.assertIsNone(active.native_root)
+        self.assertIsNone(active.models_root)
+        native_discovery.assert_not_called()
+        model_discovery.assert_not_called()
+
+        proposed_native, proposed_models, _active = resolve_install_roots(
+            ROOT,
+            {"install_mode": "app_only", "runtime_binding": "unbound"},
+            {"H3_NATIVE_ROOT": str(configured_runtime),
+             "H3_MODELS_ROOT": str(configured_models)},
+            auto_discover=True,
+        )
+        self.assertNotEqual(proposed_native, configured_runtime.resolve())
+        self.assertNotEqual(proposed_models, configured_models.resolve())
 
 
 if __name__ == "__main__":

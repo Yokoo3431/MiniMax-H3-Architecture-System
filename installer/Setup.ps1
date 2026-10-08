@@ -1,6 +1,8 @@
 param(
     [switch]$ValidationMode,
-    [string]$TargetRoot
+    [switch]$AppOnly,
+    [string]$TargetRoot,
+    [string]$BootstrapPythonPath
 )
 
 Set-StrictMode -Version Latest
@@ -525,15 +527,234 @@ function Ensure-Runtime($Config, [string]$InstallRoot, [string]$Cache,
     return $runtime
 }
 
-function Copy-Payload([string]$Source, [string]$Destination) {
+function Copy-Payload([string]$Source, [string]$Destination, [switch]$AppOnly) {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
     Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
+        if ($AppOnly -and $_.Name -in @("Models", "models")) { return }
+        if ($AppOnly -and $_.Name -in @("ComfyUI", "ArchitectVideoStudio_Runtime")) {
+            throw "The App-only payload contains a ComfyUI runtime directory and was rejected."
+        }
         try {
             Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force -ErrorAction Stop
         } catch {
             throw "Failed to copy installer payload '$($_.FullName)' to '$Destination'. The destination may be locked by another process. $($_.Exception.Message)"
         }
     }
+}
+
+function Test-InstallPathWithin([string]$Path, [string]$Root) {
+    $fullPath = [IO.Path]::GetFullPath($Path).TrimEnd([char]0x5c, [char]0x2f)
+    $fullRoot = [IO.Path]::GetFullPath($Root).TrimEnd([char]0x5c, [char]0x2f)
+    return [string]::Equals($fullPath, $fullRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $fullPath.StartsWith($fullRoot + [IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-AppOnlyPython([string]$RequestedPath) {
+    $candidate = $RequestedPath
+    if ([string]::IsNullOrWhiteSpace($candidate)) { $candidate = $env:H3_BOOTSTRAP_PYTHON }
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        $command = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command) { $candidate = $command.Source }
+    }
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        throw "App-only installation requires an existing Python 3.10+ interpreter. No software will be downloaded."
+    }
+    try { $candidate = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($candidate.Trim().Trim('"'))) }
+    catch { throw "The selected Python interpreter path is invalid." }
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf) -or
+        $candidate -notmatch '(?i)\.exe$' -or
+        $candidate -match '(?i)\\WindowsApps\\') {
+        throw "The selected Python interpreter is missing or is a Windows app-execution alias. Select an existing python.exe."
+    }
+    $versionOutput = @(& $candidate -I -B -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $versionOutput.Count -eq 0) {
+        throw "The selected Python interpreter could not be started. No installation changes were made."
+    }
+    $versionText = ([string]$versionOutput[-1]).Trim()
+    $version = $null
+    if (-not [Version]::TryParse($versionText, [ref]$version) -or $version -lt [Version]"3.10") {
+        throw "App-only installation requires an existing Python 3.10 or later interpreter; no Python will be installed."
+    }
+    return [pscustomobject]@{ Path = $candidate; Version = $version.ToString() }
+}
+
+function Assert-AppOnlyTarget([string]$InstallRoot, [string]$PayloadRoot) {
+    if ([string]::IsNullOrWhiteSpace($InstallRoot)) { throw "App-only installation requires an explicit target folder." }
+    $target = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($InstallRoot.Trim('"')))
+    $volumeRoot = [IO.Path]::GetPathRoot($target)
+    if ([string]::Equals($target.TrimEnd([char]0x5c, [char]0x2f),
+            $volumeRoot.TrimEnd([char]0x5c, [char]0x2f), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The application cannot be installed to a drive root."
+    }
+    $payload = [IO.Path]::GetFullPath($PayloadRoot)
+    if ((Test-InstallPathWithin $target $payload) -or (Test-InstallPathWithin $payload $target)) {
+        throw "The application target and installer payload must be separate folders."
+    }
+    if (Test-Path -LiteralPath (Join-Path $payload "ArchitectVideoStudio_Runtime")) {
+        throw "The App-only payload contains a runtime directory and was rejected."
+    }
+    if (Test-Path -LiteralPath (Join-Path $payload "ComfyUI")) {
+        throw "The App-only payload contains a ComfyUI directory and was rejected."
+    }
+
+    # Reject junctions/symlinks in every existing target ancestor. This keeps
+    # Copy-Payload from escaping the selected installation location.
+    $current = $target
+    while ($current) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "The application target contains a link or junction. Choose a regular folder."
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $current) { break }
+        $current = $parent
+    }
+
+    if (Test-Path -LiteralPath $target -PathType Container) {
+        $entries = @(Get-ChildItem -LiteralPath $target -Force)
+        $recognized = (Test-Path -LiteralPath (Join-Path $target "launcher\launcher.py") -PathType Leaf) -or
+            (Test-Path -LiteralPath (Join-Path $target "launcher\ArchitectVideoStudioDesktop.exe") -PathType Leaf)
+        if ($entries.Count -gt 0 -and -not $recognized) {
+            throw "The selected folder is not empty and is not a recognized Architect Video Studio installation. Nothing was overwritten."
+        }
+    }
+
+    $knownRuntimes = @()
+    if ($env:H3_NATIVE_ROOT) { $knownRuntimes += $env:H3_NATIVE_ROOT }
+    foreach ($variable in @("H3_MODELS_ROOT", "MINIMAX_H3_MODEL_ROOTS", "MINIMAX_H3_WEIGHTS_ROOTS")) {
+        $value = [Environment]::GetEnvironmentVariable($variable)
+        if ($value) { $knownRuntimes += ($value -split [IO.Path]::PathSeparator) }
+    }
+    $registered = Get-RegisteredRuntimePath
+    if ($registered) { $knownRuntimes += $registered }
+    $existingPointer = Join-Path $target "native_env.path"
+    if (Test-Path -LiteralPath $existingPointer -PathType Leaf) {
+        $value = (Get-Content -LiteralPath $existingPointer -Raw).Trim().Trim('"')
+        if ($value) { $knownRuntimes += [Environment]::ExpandEnvironmentVariables($value) }
+    }
+    foreach ($runtimeRoot in $knownRuntimes) {
+        if ([string]::IsNullOrWhiteSpace([string]$runtimeRoot)) { continue }
+        try { $runtimeRoot = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables([string]$runtimeRoot)) }
+        catch { continue }
+        if (Test-InstallPathWithin $target $runtimeRoot) {
+            throw "The selected App-only target is inside a known ComfyUI runtime. Choose a separate application folder."
+        }
+    }
+    return $target
+}
+
+function Assert-AppOnlyRegistrationTarget([string]$InstallRoot) {
+    $target = [IO.Path]::GetFullPath($InstallRoot).TrimEnd([char]0x5c, [char]0x2f)
+    $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ArchitectVideoStudio"
+    if (Test-Path -LiteralPath $uninstallKey) {
+        try {
+            $registered = [string](Get-ItemProperty -LiteralPath $uninstallKey -Name InstallLocation -ErrorAction Stop).InstallLocation
+        } catch {
+            throw "The existing Studio registration could not be safely verified. App-only setup stopped without changing it."
+        }
+        if ([string]::IsNullOrWhiteSpace($registered)) {
+            throw "The existing Studio registration has no installation identity."
+        }
+        $registered = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($registered)).TrimEnd([char]0x5c, [char]0x2f)
+        if (-not [string]::Equals($registered, $target, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Another Architect Video Studio installation is registered. App-only setup will not overwrite its registration."
+        }
+    }
+
+    $expectedExe = [IO.Path]::GetFullPath((Join-Path $target "launcher\ArchitectVideoStudioDesktop.exe"))
+    $appPathKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\ArchitectVideoStudio.exe"
+    if (Test-Path -LiteralPath $appPathKey) {
+        try {
+            $registeredExe = [string](Get-ItemProperty -LiteralPath $appPathKey -Name '(Default)' -ErrorAction Stop).'(Default)'
+        } catch {
+            throw "The existing Studio executable registration could not be safely verified. App-only setup stopped without changing it."
+        }
+        if ([string]::IsNullOrWhiteSpace($registeredExe) -or
+            -not [string]::Equals([IO.Path]::GetFullPath($registeredExe), $expectedExe,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Another Studio executable is registered. App-only setup will not overwrite it."
+        }
+    }
+
+    $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Architect Video Studio.lnk"
+    if (Test-Path -LiteralPath $shortcut -PathType Leaf) {
+        try {
+            $shell = New-Object -ComObject WScript.Shell
+            $registeredTarget = [string]$shell.CreateShortcut($shortcut).TargetPath
+        } catch {
+            throw "The existing Studio shortcut could not be safely verified. App-only setup stopped without changing it."
+        }
+        if ([string]::IsNullOrWhiteSpace($registeredTarget) -or
+            -not [string]::Equals([IO.Path]::GetFullPath($registeredTarget), $expectedExe,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Another Studio shortcut is registered. App-only setup will not overwrite it."
+        }
+    }
+}
+
+function Write-AppOnlyState([string]$InstallRoot) {
+    $statePath = Join-Path $InstallRoot "userdata\system\setup_state.json"
+    $state = $null
+    if (Test-Path -LiteralPath $statePath -PathType Leaf) {
+        try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
+        catch { throw "Existing application setup state is invalid; it was preserved and not overwritten." }
+    } else {
+        $state = [pscustomobject]@{
+            schema_version = 1
+            setup_completed = $false
+            native_root = ""
+            models_root = ""
+            last_validation = ""
+            environment_status = "SETUP_REQUIRED"
+            skill_status = "UNKNOWN"
+        }
+    }
+    $state | Add-Member -MemberType NoteProperty -Name install_mode -Value "app_only" -Force
+    $binding = if (-not [string]::IsNullOrWhiteSpace([string]$state.native_root)) { "bound" } else { "unbound" }
+    $state | Add-Member -MemberType NoteProperty -Name runtime_binding -Value $binding -Force
+    $statePathParent = Split-Path -Parent $statePath
+    New-Item -ItemType Directory -Force -Path $statePathParent | Out-Null
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 8), $encoding)
+}
+
+function Invoke-AppOnlyInstall([string]$PayloadRoot, [string]$InstallRoot,
+                               [string]$RequestedPythonPath) {
+    $target = Assert-AppOnlyTarget $InstallRoot $PayloadRoot
+    Assert-AppOnlyRegistrationTarget $target
+    $python = Resolve-AppOnlyPython $RequestedPythonPath
+    foreach ($relative in @("launcher\launcher.py", "apps\architect_video_studio\mock_api\server.py",
+                            "Start_ArchitectVideoStudio.bat")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $PayloadRoot $relative) -PathType Leaf)) {
+            throw "The App-only payload is incomplete; missing required application files."
+        }
+    }
+    New-Item -ItemType Directory -Path $target -Force | Out-Null
+    Stop-ExistingDesktopShell $target
+    Stop-ExistingManagedServices $target
+    Copy-Payload $PayloadRoot $target -AppOnly
+    [IO.File]::WriteAllText((Join-Path $target "bootstrap_python.path"), $python.Path,
+        (New-Object System.Text.UTF8Encoding($false)))
+    Write-AppOnlyState $target
+
+    $env:H3_PROJECT_ROOT = $target
+    $env:H3_STUDIO_DATA = Join-Path $target "userdata\studio"
+    $env:H3_BOOTSTRAP_PYTHON = $python.Path
+    $env:PYTHONNOUSERSITE = "1"
+    Register-WindowsApplication $target
+    $desktopShell = Join-Path $target "launcher\ArchitectVideoStudioDesktop.exe"
+    if (Test-Path -LiteralPath $desktopShell -PathType Leaf) {
+        Start-Process -FilePath $desktopShell -WorkingDirectory $target | Out-Null
+    } else {
+        $launcherScript = Join-Path $target "launcher\launcher.py"
+        Start-Process -FilePath $python.Path -ArgumentList @("`"$launcherScript`"", "start", "--no-browser") `
+            -WorkingDirectory $target -WindowStyle Hidden | Out-Null
+    }
+    Write-Host "App-only install complete. Python $($python.Version) is reused; ComfyUI, models, and runtime support were not provisioned."
+    Write-Host "The application is available in setup mode until a compatible ComfyUI runtime is explicitly bound."
 }
 
 function Stop-ExistingDesktopShell([string]$InstallRoot) {
@@ -624,7 +845,7 @@ function Register-WindowsApplication([string]$InstallRoot, [string]$Version = "0
     $uninstaller = Join-Path $InstallRoot 'installer\Uninstall.ps1'
     $powershell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
     if (-not (Test-Path -LiteralPath $powershell)) { $powershell = 'powershell.exe' }
-    $uninstallCommand = '"{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}" -InstallRoot "{2}"' -f `
+    $uninstallCommand = '"{0}" -NoProfile -File "{1}" -InstallRoot "{2}"' -f `
         $powershell, $uninstaller, $InstallRoot
     Set-ItemProperty -Path $uninstall -Name 'UninstallString' -Value $uninstallCommand
     Write-Host "Registered Architect Video Studio in Start Menu and Installed apps."
@@ -707,8 +928,22 @@ if ($ValidationMode) {
     return
 }
 
+if ($AppOnly) {
+    $requested = $TargetRoot
+    if (-not $requested) { $requested = $env:ARCHITECT_VIDEO_STUDIO_INSTALL_ROOT }
+    if (-not $requested) {
+        $defaultRoot = [Environment]::ExpandEnvironmentVariables($config.policy.default_install_root)
+        try { $requested = Select-InstallRoot $defaultRoot }
+        catch { $requested = Read-Host "Install Architect Video Studio to [$defaultRoot] (press Enter to accept)" }
+        if (-not $requested) { $requested = $defaultRoot }
+    }
+    Invoke-AppOnlyInstall $payload ([Environment]::ExpandEnvironmentVariables($requested.Trim('"'))) $BootstrapPythonPath
+    return
+}
+
 $defaultRoot = [Environment]::ExpandEnvironmentVariables($config.policy.default_install_root)
-$requested = $env:ARCHITECT_VIDEO_STUDIO_INSTALL_ROOT
+$requested = $TargetRoot
+if (-not $requested) { $requested = $env:ARCHITECT_VIDEO_STUDIO_INSTALL_ROOT }
 if (-not $requested) {
     try {
         $requested = Select-InstallRoot $defaultRoot

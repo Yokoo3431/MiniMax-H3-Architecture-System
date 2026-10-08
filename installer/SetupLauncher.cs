@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using System.Text;
 using System.Windows.Forms;
 
 internal static class SetupLauncher
@@ -55,7 +56,31 @@ internal static class SetupLauncher
 
     private static string Quote(string value)
     {
-        return "\"" + value.Replace("\"", "\\\"") + "\"";
+        var result = new StringBuilder();
+        result.Append('"');
+        var slashes = 0;
+        foreach (var character in value)
+        {
+            if (character == '\\')
+            {
+                slashes++;
+                continue;
+            }
+            if (character == '"')
+            {
+                result.Append('\\', slashes * 2 + 1);
+                result.Append('"');
+            }
+            else
+            {
+                result.Append('\\', slashes);
+                result.Append(character);
+            }
+            slashes = 0;
+        }
+        result.Append('\\', slashes * 2);
+        result.Append('"');
+        return result.ToString();
     }
 
     private static void ExtractResource(string name, string destination)
@@ -70,6 +95,9 @@ internal static class SetupLauncher
     private sealed class InstallerForm : Form
     {
         private readonly TextBox pathBox;
+        private readonly CheckBox appOnlyCheck;
+        private readonly TextBox bootstrapPythonBox;
+        private readonly Button pythonBrowseButton;
         private readonly Button installButton;
         private readonly Button browseButton;
         private readonly Button typePathButton;
@@ -81,12 +109,12 @@ internal static class SetupLauncher
         private bool browseInProgress;
         private System.Windows.Forms.Timer closeTimer;
 
-        public InstallerForm()
+        public InstallerForm(bool appOnly, string initialRoot, string bootstrapPython)
         {
             Text = "Architect Video Studio Setup";
             Width = 720;
-            Height = 480;
-            MinimumSize = new Size(620, 400);
+            Height = 560;
+            MinimumSize = new Size(620, 520);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -100,10 +128,10 @@ internal static class SetupLauncher
             Controls.Add(title);
 
             var description = new Label {
-                Text = "Choose an installation folder. Existing ComfyUI, H3 nodes and model roots will be detected and reused when compatible.",
+                Text = "Install the application. Runtime setup is separate; App-only mode never downloads or modifies ComfyUI or models.",
                 AutoSize = false,
                 Width = 660,
-                Height = 42,
+                Height = 46,
                 Location = new Point(18, 48)
             };
             Controls.Add(description);
@@ -115,7 +143,7 @@ internal static class SetupLauncher
             });
 
             pathBox = new TextBox {
-                Text = GetInitialInstallRoot(),
+                Text = String.IsNullOrWhiteSpace(initialRoot) ? GetInitialInstallRoot() : initialRoot,
                 Location = new Point(18, 128),
                 Width = 430,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
@@ -140,17 +168,49 @@ internal static class SetupLauncher
             typePathButton.Click += TypePathClicked;
             Controls.Add(typePathButton);
 
+            appOnlyCheck = new CheckBox {
+                Text = "App-only: do not install, download, or modify ComfyUI or model files",
+                AutoSize = true,
+                Checked = appOnly,
+                Location = new Point(18, 165)
+            };
+            appOnlyCheck.CheckedChanged += AppOnlyChanged;
+            Controls.Add(appOnlyCheck);
+
+            Controls.Add(new Label {
+                Text = "Existing Python 3.10+ interpreter (required for App-only):",
+                AutoSize = true,
+                Location = new Point(18, 195)
+            });
+            bootstrapPythonBox = new TextBox {
+                Text = String.IsNullOrWhiteSpace(bootstrapPython)
+                    ? (Environment.GetEnvironmentVariable("H3_BOOTSTRAP_PYTHON") ?? FindPythonOnPath())
+                    : bootstrapPython,
+                Location = new Point(18, 216),
+                Width = 540,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+            Controls.Add(bootstrapPythonBox);
+            pythonBrowseButton = new Button {
+                Text = "Browse...",
+                Location = new Point(570, 214),
+                Width = 105,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            pythonBrowseButton.Click += PythonBrowseClicked;
+            Controls.Add(pythonBrowseButton);
+
             status = new Label {
                 Text = "Ready",
                 AutoSize = true,
-                Location = new Point(18, 170)
+                Location = new Point(18, 252)
             };
             Controls.Add(status);
 
             progress = new ProgressBar {
                 Style = ProgressBarStyle.Marquee,
                 MarqueeAnimationSpeed = 30,
-                Location = new Point(18, 195),
+                Location = new Point(18, 276),
                 Width = 657,
                 Height = 18,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
@@ -163,22 +223,67 @@ internal static class SetupLauncher
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
                 BackColor = Color.White,
-                Location = new Point(18, 228),
+                Location = new Point(18, 305),
                 Width = 657,
-                Height = 145,
+                Height = 160,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             Controls.Add(log);
 
             installButton = new Button {
                 Text = "Install",
-                Location = new Point(570, 390),
+                Location = new Point(570, 482),
                 Width = 105,
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
             installButton.Click += InstallClicked;
             Controls.Add(installButton);
             AcceptButton = installButton;
+            UpdateAppOnlyControls();
+        }
+
+        private static string FindPythonOnPath()
+        {
+            var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+            foreach (var directory in path.Split(Path.PathSeparator))
+            {
+                if (String.IsNullOrWhiteSpace(directory)) continue;
+                var candidate = Path.Combine(directory.Trim().Trim('"'), "python.exe");
+                if (candidate.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                if (File.Exists(candidate)) return candidate;
+            }
+            return "";
+        }
+
+        private void AppOnlyChanged(object sender, EventArgs args)
+        {
+            UpdateAppOnlyControls();
+        }
+
+        private void UpdateAppOnlyControls()
+        {
+            var enabled = appOnlyCheck != null && appOnlyCheck.Checked;
+            if (bootstrapPythonBox != null) bootstrapPythonBox.Enabled = enabled;
+            if (pythonBrowseButton != null) pythonBrowseButton.Enabled = enabled;
+            if (status != null && enabled) status.Text = "App-only mode: no ComfyUI or model provisioning";
+        }
+
+        private void PythonBrowseClicked(object sender, EventArgs args)
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Select an existing Python interpreter";
+                dialog.Filter = "Python interpreter (python.exe)|python.exe|Executable files (*.exe)|*.exe";
+                dialog.CheckFileExists = true;
+                dialog.Multiselect = false;
+                if (!String.IsNullOrWhiteSpace(bootstrapPythonBox.Text))
+                {
+                    try { dialog.InitialDirectory = Path.GetDirectoryName(bootstrapPythonBox.Text); }
+                    catch { }
+                }
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    bootstrapPythonBox.Text = dialog.FileName;
+            }
         }
 
         private void BrowseClicked(object sender, EventArgs args)
@@ -307,6 +412,12 @@ internal static class SetupLauncher
                 MessageBox.Show(this, "Please choose an installation folder.", "Architect Video Studio", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+            var selectedPython = bootstrapPythonBox.Text.Trim().Trim('"');
+            if (appOnlyCheck.Checked && String.IsNullOrWhiteSpace(selectedPython))
+            {
+                MessageBox.Show(this, "App-only mode requires an existing Python 3.10+ interpreter. No software will be downloaded.", "Architect Video Studio", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe");
             if (!File.Exists(powershell)) powershell = "powershell.exe";
@@ -327,12 +438,15 @@ internal static class SetupLauncher
                 typePathButton.Enabled = false;
                 installButton.Enabled = false;
                 progress.Visible = true;
-                status.Text = "Installing and scanning for existing components...";
-                AppendLog("Installing Architect Video Studio to " + selected);
+                status.Text = appOnlyCheck.Checked ? "Installing application only..." : "Installing and checking existing components...";
+                AppendLog((appOnlyCheck.Checked ? "Installing application only to " : "Installing Architect Video Studio to ") + selected);
 
+                var arguments = "-NoLogo -NoProfile -File " + Quote(script) + " -TargetRoot " + Quote(selected);
+                if (appOnlyCheck.Checked)
+                    arguments += " -AppOnly -BootstrapPythonPath " + Quote(selectedPython);
                 var info = new ProcessStartInfo {
                     FileName = powershell,
-                    Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File " + Quote(script),
+                    Arguments = arguments,
                     WorkingDirectory = workRoot,
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -392,7 +506,7 @@ internal static class SetupLauncher
             Directory.Delete(path, false);
         }
 
-        private static void CleanupSetupPayload(string path)
+        public static void CleanupSetupPayload(string path)
         {
             if (String.IsNullOrWhiteSpace(path)) return;
             var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -467,11 +581,71 @@ internal static class SetupLauncher
         }
     }
 
+    private static bool HasOption(string[] args, string option)
+    {
+        foreach (var value in args)
+            if (String.Equals(value, option, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    private static string GetOption(string[] args, string option)
+    {
+        for (var index = 0; index + 1 < args.Length; index++)
+            if (String.Equals(args[index], option, StringComparison.OrdinalIgnoreCase)) return args[index + 1];
+        return "";
+    }
+
+    private static int RunSilentAppOnly(string[] args)
+    {
+        if (!HasOption(args, "--app-only") || !HasOption(args, "--silent")) return 2;
+        var target = GetOption(args, "--install-root");
+        var python = GetOption(args, "--bootstrap-python");
+        if (String.IsNullOrWhiteSpace(target) || String.IsNullOrWhiteSpace(python)) return 2;
+        var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe");
+        if (!File.Exists(powershell)) powershell = "powershell.exe";
+        var workRoot = Path.Combine(Path.GetTempPath(), "ArchitectVideoStudio-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(workRoot);
+            var script = Path.Combine(workRoot, "Setup.ps1");
+            ExtractResource("Setup.ps1", script);
+            ExtractResource("payload.zip", Path.Combine(workRoot, "payload.zip"));
+            var info = new ProcessStartInfo {
+                FileName = powershell,
+                Arguments = "-NoLogo -NoProfile -File " + Quote(script) +
+                    " -AppOnly -TargetRoot " + Quote(target) +
+                    " -BootstrapPythonPath " + Quote(python),
+                WorkingDirectory = workRoot,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using (var process = Process.Start(info))
+            {
+                if (process == null) return 3;
+                process.WaitForExit();
+                if (process.ExitCode == 0) RememberInstallRoot(target);
+                return process.ExitCode;
+            }
+        }
+        catch
+        {
+            return 4;
+        }
+        finally
+        {
+            try { if (Directory.Exists(workRoot)) InstallerForm.CleanupSetupPayload(workRoot); }
+            catch { }
+        }
+    }
+
     public static int Main(string[] args)
     {
+        var appOnly = HasOption(args, "--app-only");
+        if (HasOption(args, "--silent")) return RunSilentAppOnly(args);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new InstallerForm());
+        Application.Run(new InstallerForm(appOnly, GetOption(args, "--install-root"),
+            GetOption(args, "--bootstrap-python")));
         return 0;
     }
 }

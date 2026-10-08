@@ -6,7 +6,7 @@ if exist "%SETUP_ROOT%SetupLauncher.exe" (
   start "Architect Video Studio Setup" "%SETUP_ROOT%SetupLauncher.exe" %*
   endlocal & exit /b 0
 )
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SETUP_ROOT%Setup.ps1" %*
+powershell.exe -NoLogo -NoProfile -File "%SETUP_ROOT%Setup.ps1" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 if not "%EXIT_CODE%"=="0" (
   echo.

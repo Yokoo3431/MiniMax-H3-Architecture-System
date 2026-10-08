@@ -112,6 +112,13 @@ internal sealed class DesktopShellForm : Form
 
     private string FindPython()
     {
+        var appOnlyPythonPath = Path.Combine(root, "bootstrap_python.path");
+        if (File.Exists(appOnlyPythonPath))
+        {
+            var appOnlyPython = ReadPath(appOnlyPythonPath);
+            return !String.IsNullOrEmpty(appOnlyPython) && File.Exists(appOnlyPython)
+                ? appOnlyPython : null;
+        }
         var native = ReadPath(Path.Combine(root, "native_env.path"));
         var candidates = new[] { Path.Combine(root, "runtime", "bootstrap", "python.exe"), Path.Combine(root, "userdata", "cache", "runtime", "comfyui_runtime", "python_embeded", "python.exe"), String.IsNullOrEmpty(native) ? "" : Path.Combine(native, "python_embeded", "python.exe") };
         foreach (var item in candidates) if (!String.IsNullOrEmpty(item) && File.Exists(item)) return item;

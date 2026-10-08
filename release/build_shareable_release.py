@@ -49,6 +49,7 @@ DOC_FILES = (
     "docs/Quick_Start.md", "docs/Hardware_Requirements.md",
     "docs/Troubleshooting.md", "docs/Advanced_ComfyUI.md",
     "docs/User_Guide.md", "docs/Developer_Architecture.md",
+    "docs/App_Only_Installation.md",
 )
 HARDENING_FILES = (
     "patches/support_layers/minimax_h3_vae_offload_sync.patch",
@@ -325,6 +326,7 @@ def main() -> int:
         "installer": setup.name,
         "package": package.name,
         "payload_files": files,
+        "runtime_bundled": False,
         "models_bundled": False,
         "hardware_profile_selection": {
             "config": "configs/h3_runtime_profiles.json",

@@ -16,12 +16,19 @@ if defined NATIVE_ROOT set "H3_NATIVE_ROOT=%NATIVE_ROOT%"
 rem Prefer project-managed/validated Python; system Python is development fallback only.
 set "PY="
 if defined H3_BOOTSTRAP_PYTHON if exist "%H3_BOOTSTRAP_PYTHON%" set "PY=%H3_BOOTSTRAP_PYTHON%"
+if exist "%ROOT%\bootstrap_python.path" (
+  set /p PY=<"%ROOT%\bootstrap_python.path"
+  if not defined PY goto :bootstrap_error
+  if not exist "%PY%" goto :bootstrap_error
+  goto :python_resolved
+)
 if not defined PY if exist "%ROOT%\runtime\bootstrap\python.exe" set "PY=%ROOT%\runtime\bootstrap\python.exe"
 if not defined PY if exist "%ROOT%\userdata\cache\runtime\comfyui_runtime\python_embeded\python.exe" set "PY=%ROOT%\userdata\cache\runtime\comfyui_runtime\python_embeded\python.exe"
 if not defined PY if defined NATIVE_ROOT if exist "%NATIVE_ROOT%\python_embeded\python.exe" set "PY=%NATIVE_ROOT%\python_embeded\python.exe"
 if not defined PY for /f "delims=" %%P in ('where python 2^>nul') do if not defined PY set "PY=%%P"
 
 if not defined PY goto :bootstrap_error
+:python_resolved
 set "H3_BOOTSTRAP_PYTHON=%PY%"
 set "H3_BASELINE=%ROOT%\configs\native_production_baseline.json"
 if not defined H3_ENV_REPORT set "H3_ENV_REPORT=%ROOT%\userdata\system\env_report.json"

@@ -11,6 +11,7 @@ import socket
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 from pathlib import Path
 
@@ -18,6 +19,7 @@ SYSTEM_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SYSTEM_ROOT))
 
 from launcher.env_check import EnvChecker, EnvPaths  # noqa: E402
+from launcher.bootstrap import resolve_launch_python  # noqa: E402
 from launcher.launcher import Launcher, PortManager as LauncherPortManager  # noqa: E402
 from launcher.lock_manager import LockManager  # noqa: E402
 from launcher.process_manager import PortManager, ProcessManager, Service  # noqa: E402
@@ -336,6 +338,49 @@ class TestProcessLifecycle(unittest.TestCase):
 
 
 class TestLauncherFailureHandling(unittest.TestCase):
+    def test_invalid_app_only_python_pin_fails_closed_without_system_fallback(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            root = Path(tmpd)
+            (root / "bootstrap_python.path").write_text(
+                str(root / "missing-python.exe"), encoding="utf-8")
+            self.assertIsNone(resolve_launch_python(root, fallback=Path(sys.executable)))
+
+    def test_system_python_fallback_remains_available_without_explicit_pin(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            root = Path(tmpd)
+            self.assertEqual(resolve_launch_python(root, fallback=Path(sys.executable)),
+                             Path(sys.executable).resolve())
+
+    def test_unbound_app_only_clears_only_distribution_runtime_defaults(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            root = Path(tmpd)
+            data = root / "userdata"
+            state_path = data / "system" / "setup_state.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text('{"install_mode":"app_only","native_root":""}',
+                                  encoding="utf-8")
+            paths = {
+                "H3_NATIVE_ROOT": root / "ArchitectVideoStudio_Runtime",
+                "H3_MODELS_ROOT": root / "Models",
+                "H3_COMFY_INPUT": root / "ArchitectVideoStudio_Runtime" / "ComfyUI" / "input",
+                "H3_COMFY_OUTPUT": root / "ArchitectVideoStudio_Runtime" / "ComfyUI" / "output",
+            }
+            config = SimpleNamespace(userdata=data, **{
+                "native_comfyui_root": paths["H3_NATIVE_ROOT"],
+                "models_root": paths["H3_MODELS_ROOT"],
+                "comfy_input": paths["H3_COMFY_INPUT"],
+                "comfy_output": paths["H3_COMFY_OUTPUT"],
+            })
+            explicit_runtime = root / "user-selected-runtime"
+            with mock.patch.dict(os.environ, {
+                    **{name: str(path) for name, path in paths.items()},
+            }, clear=False):
+                os.environ["H3_NATIVE_ROOT"] = str(explicit_runtime)
+                Launcher._clear_unbound_app_only_runtime_defaults(config)
+                self.assertEqual(os.environ.get("H3_NATIVE_ROOT"), str(explicit_runtime))
+                for name in ("H3_MODELS_ROOT", "H3_COMFY_INPUT", "H3_COMFY_OUTPUT"):
+                    self.assertNotIn(name, os.environ)
+
     def test_prepare_port_supplies_the_selected_runtime_python_identity(self):
         with tempfile.TemporaryDirectory() as tmpd:
             tmp = Path(tmpd)

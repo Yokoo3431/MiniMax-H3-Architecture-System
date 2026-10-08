@@ -27,7 +27,7 @@ if str(_LAUNCHER_DIR) not in sys.path:
 
 from dist_config import DistributionConfig
 from env_check import EnvChecker, EnvPaths
-from bootstrap import resolve_bootstrap_python
+from bootstrap import resolve_launch_python
 from apps.architect_video_studio.mock_api.environment_resolution import resolve_active_environment
 from apps.architect_video_studio.mock_api.environment_service import EnvironmentService
 from apps.architect_video_studio.mock_api.store import StudioStore
@@ -63,6 +63,7 @@ class Launcher:
         if cfg_path.is_file():
             self.dist_config = DistributionConfig(cfg_path)
             self.dist_config.apply_environment()
+            self._clear_unbound_app_only_runtime_defaults(self.dist_config)
             logs_dir = self.dist_config.logs
             (logs_dir).mkdir(parents=True, exist_ok=True)
         if paths is None and not dry_run:
@@ -71,9 +72,10 @@ class Launcher:
         self.lock = LockManager(lock_path)
         self.paths = paths or EnvPaths()
         self._env_checker = env_checker
-        bootstrap_python = resolve_bootstrap_python(REPO_ROOT, self.paths.native_root)
-        if bootstrap_python is None and sys.executable:
-            bootstrap_python = Path(sys.executable)
+        bootstrap_python = resolve_launch_python(
+            REPO_ROOT, self.paths.native_root,
+            Path(sys.executable) if sys.executable else None,
+        )
         pm_kwargs = {}
         if self.dist_config is not None:
             pm_kwargs = {
@@ -92,6 +94,34 @@ class Launcher:
             bootstrap_python=bootstrap_python,
             **pm_kwargs,
         )
+
+    @staticmethod
+    def _clear_unbound_app_only_runtime_defaults(dist_config: DistributionConfig) -> None:
+        """Remove only package-default runtime paths for an unbound App-only install."""
+        state_path = dist_config.userdata / "system" / "setup_state.json"
+        try:
+            import json
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return
+        if (str(state.get("install_mode", "")).casefold() != "app_only"
+                or str(state.get("native_root", "")).strip()):
+            return
+        defaults = {
+            "H3_NATIVE_ROOT": dist_config.native_comfyui_root,
+            "H3_MODELS_ROOT": dist_config.models_root,
+            "H3_COMFY_INPUT": dist_config.comfy_input,
+            "H3_COMFY_OUTPUT": dist_config.comfy_output,
+        }
+        for name, configured_default in defaults.items():
+            current = os.environ.get(name, "").strip()
+            if not current:
+                continue
+            try:
+                if Path(current).resolve() == configured_default.resolve():
+                    os.environ.pop(name, None)
+            except (OSError, RuntimeError, ValueError):
+                continue
 
     def _adopt_existing_environment(self) -> None:
         """Make the launcher use an adopted pair before the first env check."""

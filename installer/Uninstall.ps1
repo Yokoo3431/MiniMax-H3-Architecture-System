@@ -229,7 +229,7 @@ $workerPath = Join-Path $env:TEMP ('ArchitectVideoStudio-Uninstall-' + [guid]::N
 Copy-Item -LiteralPath $PSCommandPath -Destination $workerPath
 $powershell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 if (-not (Test-Path -LiteralPath $powershell)) { $powershell = 'powershell.exe' }
-$arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -InstallRoot "{1}" -CleanupOnly -WaitForPid {2}' -f `
+$arguments = '-NoProfile -File "{0}" -InstallRoot "{1}" -CleanupOnly -WaitForPid {2}' -f `
     $workerPath, $root, $PID
 Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden | Out-Null
 [Windows.Forms.MessageBox]::Show(
