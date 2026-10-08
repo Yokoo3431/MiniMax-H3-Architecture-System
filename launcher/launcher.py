@@ -49,42 +49,79 @@ def _open_browser(url: str) -> bool:
         return False
 
 
+def validate_app_only_data_root(data_root: Path, application_root: Path) -> Path:
+    """Require isolated data and application roots with no ancestor overlap."""
+    data = Path(data_root).resolve()
+    application = Path(application_root).resolve()
+    try:
+        common = Path(os.path.commonpath((str(data), str(application)))).resolve()
+    except ValueError as exc:
+        raise ValueError("App-only data root and application root must be on a comparable local path") from exc
+    normalize = lambda path: os.path.normcase(os.path.normpath(str(path)))
+    common_key = normalize(common)
+    if common_key in {normalize(data), normalize(application)}:
+        raise ValueError("App-only data root must be separate from and not contain the application/source root")
+    return data
+
+
 class Launcher:
     def __init__(self, dry_run: bool = False, no_browser: bool = False,
                  logs_dir: Path = DEFAULT_LOGS,
                  lock_path: Path = DEFAULT_LOCK,
                  paths: EnvPaths | None = None,
                  env_checker=None,
-                 dist_config_path: Path | None = None) -> None:
+                 dist_config_path: Path | None = None,
+                 app_only: bool = False,
+                 studio_port: int | None = None,
+                 studio_data: Path | None = None) -> None:
         self.dry_run = dry_run
         self.no_browser = no_browser
+        self.app_only = bool(app_only)
+        app_data_root = None
+        if self.app_only:
+            if studio_data is None:
+                raise ValueError("App-only mode requires an explicit isolated data root")
+            app_data_root = validate_app_only_data_root(Path(studio_data), REPO_ROOT)
         self.dist_config = None
         cfg_path = Path(dist_config_path or DEFAULT_DIST_CONFIG)
         if cfg_path.is_file():
             self.dist_config = DistributionConfig(cfg_path)
             self.dist_config.apply_environment()
             self._clear_unbound_app_only_runtime_defaults(self.dist_config)
-            logs_dir = self.dist_config.logs
+            logs_dir = (app_data_root / "logs" if self.app_only
+                        else self.dist_config.logs)
             (logs_dir).mkdir(parents=True, exist_ok=True)
-        if paths is None and not dry_run:
+        elif self.app_only:
+            logs_dir = app_data_root / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+        if paths is None and not dry_run and not self.app_only:
             self._adopt_existing_environment()
         self.logger = LauncherLogger(logs_dir, "launcher")
         self.lock = LockManager(lock_path)
         self.paths = paths or EnvPaths()
         self._env_checker = env_checker
-        bootstrap_python = resolve_launch_python(
-            REPO_ROOT, self.paths.native_root,
-            Path(sys.executable) if sys.executable else None,
+        bootstrap_python = (
+            Path(sys.executable) if self.app_only and sys.executable else
+            resolve_launch_python(
+                REPO_ROOT, self.paths.native_root,
+                Path(sys.executable) if sys.executable else None,
+            )
         )
-        pm_kwargs = {}
+        pm_kwargs = {"app_only": self.app_only, "studio_port": studio_port}
         if self.dist_config is not None:
-            pm_kwargs = {
+            pm_kwargs.update({
                 "studio_app": self.dist_config.studio_app,
                 "studio_workdir": self.dist_config.studio_workdir,
-                "studio_data": self.dist_config.userdata / "studio",
-            }
+                "studio_data": (app_data_root / "studio" if self.app_only else
+                                Path(studio_data) if studio_data else
+                                self.dist_config.userdata / "studio"),
+            })
+        elif self.app_only:
+            pm_kwargs["studio_data"] = app_data_root / "studio"
         elif os.environ.get("H3_STUDIO_DATA"):
-            pm_kwargs["studio_data"] = Path(os.environ["H3_STUDIO_DATA"])
+            pm_kwargs["studio_data"] = Path(studio_data or os.environ["H3_STUDIO_DATA"])
+        elif studio_data is not None:
+            pm_kwargs["studio_data"] = Path(studio_data)
         self.pm = ProcessManager(
             native_root=self.paths.native_root,
             repo_root=self.paths.repo_root,
@@ -255,8 +292,35 @@ class Launcher:
         print("Close that application or choose its supported runtime, then start Architect Video Studio again.")
         return False
 
+    def _start_app_only(self) -> int:
+        """Start only the isolated Studio setup service; never inspect/start ComfyUI."""
+        url = f"http://127.0.0.1:{self.pm.STUDIO_PORT}"
+        if self.dry_run:
+            print(f"[APP_ONLY_DRY_RUN] Studio setup service would use {url}")
+            return 0
+        try:
+            self.lock.acquire()
+        except RuntimeError as exc:
+            self.logger.error(str(exc))
+            print(f"[BLOCK] {exc}")
+            return 2
+        if not self._prepare_port(self.pm.STUDIO_PORT, "studio"):
+            self.lock.release()
+            return 1
+        self.logger.info("APP_ONLY: starting Studio setup service only; ComfyUI is not inspected or started")
+        studio = self.pm.start_studio(setup_mode=True)
+        if studio.state == "FAILED":
+            self.logger.error(f"Studio failed: {studio.failure}")
+            print(f"[FAILED] Studio setup service: {studio.failure}")
+            self.lock.release()
+            return 1
+        print(f"[APP_ONLY] Studio setup service RUNNING ({url}); ComfyUI was not started")
+        return self._serve()
+
     def start(self, skip_env: bool = False) -> int:
         self.logger.info("launcher starting")
+        if self.app_only:
+            return self._start_app_only()
         try:
             self.lock.acquire()
         except RuntimeError as exc:
@@ -468,8 +532,33 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--skip-env", action="store_true")
+    parser.add_argument("--app-only", action="store_true",
+                        help="Start only the isolated Studio setup service; never start ComfyUI")
+    parser.add_argument("--studio-port", type=int,
+                        help="Required with --app-only; must not be a production/runtime port")
+    parser.add_argument("--data-root", type=Path,
+                        help="Required with --app-only; separate isolated Studio data directory")
     args = parser.parse_args()
-    launcher = Launcher(dry_run=args.dry_run, no_browser=args.no_browser)
+    if args.app_only:
+        if args.command != "start" or args.skip_env:
+            parser.error("--app-only is only valid for start and cannot be combined with --skip-env")
+        if args.studio_port is None or args.data_root is None:
+            parser.error("--app-only requires explicit --studio-port and --data-root")
+        if not 1024 <= args.studio_port <= 65535 or args.studio_port in {8189, 8190, 8788}:
+            parser.error("--app-only Studio port must be an isolated non-production port")
+        try:
+            validate_app_only_data_root(args.data_root, REPO_ROOT)
+        except ValueError as exc:
+            parser.error(str(exc))
+    elif args.studio_port is not None or args.data_root is not None:
+        parser.error("--studio-port and --data-root require --app-only")
+    launcher = Launcher(
+        dry_run=args.dry_run,
+        no_browser=args.no_browser,
+        app_only=args.app_only,
+        studio_port=args.studio_port,
+        studio_data=args.data_root,
+    )
     if args.command == "start":
         return launcher.start(skip_env=args.skip_env)
     if args.command == "native":

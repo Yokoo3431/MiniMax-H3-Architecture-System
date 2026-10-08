@@ -264,6 +264,7 @@ def build_setup_launcher(stage: Path) -> Path:
     result = subprocess.run(
         [str(compiler), "/nologo", "/target:winexe", "/optimize+",
          "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll",
+         "/r:System.IO.Compression.dll",
          f"/win32icon:{APP_ICON}",
          f"/resource:{stage / 'payload.zip'},payload.zip",
          f"/resource:{stage / 'Setup.ps1'},Setup.ps1",

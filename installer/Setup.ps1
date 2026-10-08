@@ -1,12 +1,16 @@
 param(
     [switch]$ValidationMode,
     [switch]$AppOnly,
+    [switch]$Isolated,
     [string]$TargetRoot,
     [string]$BootstrapPythonPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if ($Isolated -and -not $AppOnly) {
+    throw "Isolated installation is available only for App-only setup."
+}
 
 function Read-BootstrapConfig {
     $archive = Join-Path $PSScriptRoot "payload.zip"
@@ -695,6 +699,31 @@ function Assert-AppOnlyRegistrationTarget([string]$InstallRoot) {
     }
 }
 
+function Assert-AppOnlyIsolatedTarget([string]$InstallRoot) {
+    $root = [IO.Path]::GetFullPath($InstallRoot)
+    if (-not (Test-Path -LiteralPath $root)) { return }
+    $item = Get-Item -LiteralPath $root -Force
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "The isolated App-only target is not a safe ordinary directory."
+    }
+    $markerPath = Join-Path $root "app_only_isolated.json"
+    if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+        throw "The isolated App-only target already exists and is not owned by this install mode."
+    }
+    try { $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json }
+    catch { throw "The isolated App-only ownership marker is invalid; the target was not changed." }
+    if ($marker.schema_version -ne 1 -or $marker.install_scope -ne "isolated_app_only") {
+        throw "The isolated App-only ownership marker does not match this installer."
+    }
+}
+
+function Write-AppOnlyIsolationMarker([string]$InstallRoot) {
+    $marker = [pscustomobject]@{ schema_version = 1; install_scope = "isolated_app_only" }
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText((Join-Path $InstallRoot "app_only_isolated.json"),
+        ($marker | ConvertTo-Json -Compress), $encoding)
+}
+
 function Write-AppOnlyState([string]$InstallRoot) {
     $statePath = Join-Path $InstallRoot "userdata\system\setup_state.json"
     $state = $null
@@ -722,9 +751,10 @@ function Write-AppOnlyState([string]$InstallRoot) {
 }
 
 function Invoke-AppOnlyInstall([string]$PayloadRoot, [string]$InstallRoot,
-                               [string]$RequestedPythonPath) {
+                               [string]$RequestedPythonPath, [switch]$Isolated) {
     $target = Assert-AppOnlyTarget $InstallRoot $PayloadRoot
-    Assert-AppOnlyRegistrationTarget $target
+    if ($Isolated) { Assert-AppOnlyIsolatedTarget $target }
+    else { Assert-AppOnlyRegistrationTarget $target }
     $python = Resolve-AppOnlyPython $RequestedPythonPath
     foreach ($relative in @("launcher\launcher.py", "apps\architect_video_studio\mock_api\server.py",
                             "Start_ArchitectVideoStudio.bat")) {
@@ -739,11 +769,17 @@ function Invoke-AppOnlyInstall([string]$PayloadRoot, [string]$InstallRoot,
     [IO.File]::WriteAllText((Join-Path $target "bootstrap_python.path"), $python.Path,
         (New-Object System.Text.UTF8Encoding($false)))
     Write-AppOnlyState $target
+    if ($Isolated) { Write-AppOnlyIsolationMarker $target }
 
     $env:H3_PROJECT_ROOT = $target
     $env:H3_STUDIO_DATA = Join-Path $target "userdata\studio"
     $env:H3_BOOTSTRAP_PYTHON = $python.Path
     $env:PYTHONNOUSERSITE = "1"
+    if ($Isolated) {
+        Write-Host "Isolated App-only install complete. Shared registry, Start Menu, remembered install path, and auto-launch were left untouched."
+        Write-Host "The installed launcher can be started explicitly in isolated App-only mode."
+        return
+    }
     Register-WindowsApplication $target
     $desktopShell = Join-Path $target "launcher\ArchitectVideoStudioDesktop.exe"
     if (Test-Path -LiteralPath $desktopShell -PathType Leaf) {
@@ -937,7 +973,8 @@ if ($AppOnly) {
         catch { $requested = Read-Host "Install Architect Video Studio to [$defaultRoot] (press Enter to accept)" }
         if (-not $requested) { $requested = $defaultRoot }
     }
-    Invoke-AppOnlyInstall $payload ([Environment]::ExpandEnvironmentVariables($requested.Trim('"'))) $BootstrapPythonPath
+    Invoke-AppOnlyInstall $payload ([Environment]::ExpandEnvironmentVariables($requested.Trim('"'))) `
+        $BootstrapPythonPath -Isolated:$Isolated
     return
 }
 

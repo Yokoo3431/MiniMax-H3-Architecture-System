@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
 using System.Threading;
 using System.Text;
@@ -598,9 +599,11 @@ internal static class SetupLauncher
     private static int RunSilentAppOnly(string[] args)
     {
         if (!HasOption(args, "--app-only") || !HasOption(args, "--silent")) return 2;
+        var isolated = HasOption(args, "--isolated");
         var target = GetOption(args, "--install-root");
         var python = GetOption(args, "--bootstrap-python");
         if (String.IsNullOrWhiteSpace(target) || String.IsNullOrWhiteSpace(python)) return 2;
+        if (isolated) return RunIsolatedAppOnlyInstall(target, python);
         var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell\\v1.0\\powershell.exe");
         if (!File.Exists(powershell)) powershell = "powershell.exe";
         var workRoot = Path.Combine(Path.GetTempPath(), "ArchitectVideoStudio-" + Guid.NewGuid().ToString("N"));
@@ -610,11 +613,13 @@ internal static class SetupLauncher
             var script = Path.Combine(workRoot, "Setup.ps1");
             ExtractResource("Setup.ps1", script);
             ExtractResource("payload.zip", Path.Combine(workRoot, "payload.zip"));
+            var setupArguments = "-NoLogo -NoProfile -File " + Quote(script) +
+                " -AppOnly -TargetRoot " + Quote(target) +
+                " -BootstrapPythonPath " + Quote(python);
+            if (isolated) setupArguments += " -Isolated";
             var info = new ProcessStartInfo {
                 FileName = powershell,
-                Arguments = "-NoLogo -NoProfile -File " + Quote(script) +
-                    " -AppOnly -TargetRoot " + Quote(target) +
-                    " -BootstrapPythonPath " + Quote(python),
+                Arguments = setupArguments,
                 WorkingDirectory = workRoot,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -623,7 +628,7 @@ internal static class SetupLauncher
             {
                 if (process == null) return 3;
                 process.WaitForExit();
-                if (process.ExitCode == 0) RememberInstallRoot(target);
+                if (process.ExitCode == 0 && !isolated) RememberInstallRoot(target);
                 return process.ExitCode;
             }
         }
@@ -638,10 +643,407 @@ internal static class SetupLauncher
         }
     }
 
+    private static string NormalizePath(string value)
+    {
+        var full = Path.GetFullPath(Environment.ExpandEnvironmentVariables((value ?? "").Trim().Trim('"')));
+        var root = Path.GetPathRoot(full);
+        if (String.Equals(full, root, StringComparison.OrdinalIgnoreCase)) return full;
+        return full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static bool EntryExists(string path)
+    {
+        try { File.GetAttributes(path); return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+    }
+
+    private static bool IsWithinOrEqual(string path, string root)
+    {
+        var fullPath = NormalizePath(path);
+        var fullRoot = NormalizePath(root);
+        var prefix = fullRoot.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+            ? fullRoot : fullRoot + Path.DirectorySeparatorChar;
+        return String.Equals(fullPath, fullRoot, StringComparison.OrdinalIgnoreCase) ||
+            fullPath.StartsWith(prefix,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool PathsOverlap(string left, string right)
+    {
+        return IsWithinOrEqual(left, right) || IsWithinOrEqual(right, left);
+    }
+
+    private static void RejectReparseAncestors(string path)
+    {
+        var current = new DirectoryInfo(NormalizePath(path));
+        while (current != null)
+        {
+            if (current.Exists && (current.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("The isolated path contains a link or junction.");
+            current = current.Parent;
+        }
+    }
+
+    private static void RejectKnownRuntimeOverlap(string target)
+    {
+        foreach (var variable in new[] { "H3_NATIVE_ROOT", "H3_MODELS_ROOT", "MINIMAX_H3_MODEL_ROOTS", "MINIMAX_H3_WEIGHTS_ROOTS" })
+        {
+            var valueFromEnvironment = Environment.GetEnvironmentVariable(variable) ?? "";
+            foreach (var candidate in valueFromEnvironment.Split(Path.PathSeparator))
+            {
+                if (String.IsNullOrWhiteSpace(candidate)) continue;
+                try
+                {
+                    if (PathsOverlap(target, candidate))
+                        throw new InvalidOperationException("The isolated App-only target overlaps a configured runtime or model location.");
+                }
+                catch (ArgumentException) { }
+                catch (NotSupportedException) { }
+            }
+        }
+    }
+
+    private static void ValidateIsolatedInstallRoot(string value, out string target)
+    {
+        target = NormalizePath(value);
+        var volumeRoot = NormalizePath(Path.GetPathRoot(target));
+        if (String.Equals(target, volumeRoot, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The isolated App-only target cannot be a drive root.");
+        if (PathsOverlap(target, Assembly.GetExecutingAssembly().Location))
+            throw new InvalidOperationException("The isolated App-only target and installer must be separate paths.");
+        RejectReparseAncestors(Path.GetDirectoryName(target));
+        if (Directory.Exists(target))
+        {
+            var info = new DirectoryInfo(target);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("The isolated App-only target is a link or junction.");
+            var marker = Path.Combine(target, "app_only_isolated.json");
+            if (EntryExists(marker))
+            {
+                if ((File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("The isolated App-only ownership marker is a link.");
+                var markerText = File.ReadAllText(marker, Encoding.UTF8);
+                if (markerText.IndexOf("\"schema_version\":1", StringComparison.Ordinal) < 0 ||
+                    markerText.IndexOf("\"install_scope\":\"isolated_app_only\"", StringComparison.Ordinal) < 0)
+                    throw new InvalidOperationException("The isolated App-only ownership marker is invalid.");
+                if (File.Exists(Path.Combine(target, "launcher", "runtime.lock")))
+                    throw new InvalidOperationException("The isolated Studio is active or has an unresolved launcher lock.");
+            }
+            else if (Directory.GetFileSystemEntries(target).Length != 0)
+            {
+                throw new InvalidOperationException("The isolated App-only target exists and is not owned by this installer.");
+            }
+        }
+
+        RejectKnownRuntimeOverlap(target);
+    }
+
+    private static Version ValidateExistingPython(string value, out string pythonPath)
+    {
+        pythonPath = NormalizePath(value);
+        if (!pythonPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+            pythonPath.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            !File.Exists(pythonPath))
+            throw new InvalidOperationException("App-only setup requires an existing Python 3.10+ executable; no software will be downloaded.");
+
+        var info = new ProcessStartInfo {
+            FileName = pythonPath,
+            Arguments = "-I -B -c \"import sys; print('%d.%d.%d' % sys.version_info[:3])\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        using (var process = Process.Start(info))
+        {
+            if (process == null) throw new InvalidOperationException("The selected Python executable could not be started.");
+            if (!process.WaitForExit(10000))
+            {
+                try { process.Kill(); } catch { }
+                throw new InvalidOperationException("The selected Python version check timed out.");
+            }
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            Version version;
+            if (process.ExitCode != 0 || !Version.TryParse(output, out version) || version < new Version(3, 10))
+                throw new InvalidOperationException("App-only setup requires an existing Python 3.10 or later interpreter.");
+            return version;
+        }
+    }
+
+    private static string SafeArchiveRelativePath(string entryName)
+    {
+        if (String.IsNullOrWhiteSpace(entryName)) throw new InvalidDataException("The application archive contains an empty path.");
+        var normalized = entryName.Replace('\\', '/');
+        if (normalized.StartsWith("/", StringComparison.Ordinal) || normalized.IndexOf(':') >= 0 ||
+            normalized.IndexOf('\0') >= 0 || Path.IsPathRooted(normalized))
+            throw new InvalidDataException("The application archive contains an absolute or invalid path.");
+        var parts = normalized.TrimEnd('/').Split('/');
+        foreach (var part in parts)
+        {
+            if (part.Length == 0 || part == "." || part == ".." || part.EndsWith(".", StringComparison.Ordinal) ||
+                part.EndsWith(" ", StringComparison.Ordinal))
+                throw new InvalidDataException("The application archive contains an unsafe path component.");
+            var stem = part.Split('.')[0];
+            if (System.Text.RegularExpressions.Regex.IsMatch(stem, "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                throw new InvalidDataException("The application archive contains a reserved Windows path.");
+        }
+        foreach (var part in parts)
+            if (String.Equals(part, "ComfyUI", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(part, "ArchitectVideoStudio_Runtime", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The App-only archive contains a ComfyUI runtime directory.");
+        return String.Join(Path.DirectorySeparatorChar.ToString(), parts);
+    }
+
+    private static bool IsModelPath(string relative)
+    {
+        var first = relative.Split(Path.DirectorySeparatorChar)[0];
+        return String.Equals(first, "models", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ExtractAppPayload(string destination)
+    {
+        const int maxEntries = 20000;
+        const long maxEntryBytes = 512L * 1024 * 1024;
+        const long maxTotalBytes = 1024L * 1024 * 1024;
+        using (var input = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip"))
+        {
+            if (input == null) throw new InvalidOperationException("The App-only payload is missing.");
+            using (var archive = new ZipArchive(input, ZipArchiveMode.Read, false))
+            {
+                if (archive.Entries.Count == 0 || archive.Entries.Count > maxEntries)
+                    throw new InvalidDataException("The App-only archive entry count is invalid.");
+                long total = 0;
+                foreach (var entry in archive.Entries)
+                {
+                    var relative = SafeArchiveRelativePath(entry.FullName);
+                    var unixType = (entry.ExternalAttributes >> 16) & 0xF000;
+                    if (unixType == 0xA000 ||
+                        (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("The App-only archive contains a symbolic link.");
+                    if (IsModelPath(relative)) continue;
+                    if (entry.Length < 0 || entry.Length > maxEntryBytes || total > maxTotalBytes - entry.Length)
+                        throw new InvalidDataException("The App-only archive exceeds the safe extraction limit.");
+                    total += entry.Length;
+                    var outputPath = Path.GetFullPath(Path.Combine(destination, relative));
+                    if (!IsWithinOrEqual(outputPath, destination) || IsWithinOrEqual(destination, outputPath))
+                        throw new InvalidDataException("The App-only archive path escapes its staging folder.");
+                }
+                foreach (var entry in archive.Entries)
+                {
+                    var relative = SafeArchiveRelativePath(entry.FullName);
+                    if (IsModelPath(relative)) continue;
+                    var outputPath = Path.GetFullPath(Path.Combine(destination, relative));
+                    if (entry.FullName.EndsWith("/", StringComparison.Ordinal) || entry.FullName.EndsWith("\\", StringComparison.Ordinal))
+                    {
+                        Directory.CreateDirectory(outputPath);
+                        continue;
+                    }
+                    var parent = Path.GetDirectoryName(outputPath);
+                    if (!String.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
+                    using (var source = entry.Open())
+                    using (var output = new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                        source.CopyTo(output);
+                }
+            }
+        }
+        foreach (var required in new[] {
+            Path.Combine(destination, "launcher", "launcher.py"),
+            Path.Combine(destination, "apps", "architect_video_studio", "mock_api", "server.py"),
+            Path.Combine(destination, "Start_ArchitectVideoStudio.bat") })
+            if (!File.Exists(required)) throw new InvalidDataException("The App-only payload is missing a required application file.");
+    }
+
+    private static void CopyStagedPayload(string source, string destination)
+    {
+        var pending = new System.Collections.Generic.Stack<string>();
+        pending.Push(source);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            foreach (var entry in Directory.GetFileSystemEntries(current))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("The staged App-only payload unexpectedly contains a link.");
+                var relative = entry.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var target = Path.GetFullPath(Path.Combine(destination, relative));
+                if (!IsWithinOrEqual(target, destination) || String.Equals(target, NormalizePath(destination), StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("The staged App-only payload path escaped the install target.");
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    if (IsModelPath(relative)) continue;
+                    Directory.CreateDirectory(target);
+                    pending.Push(entry);
+                }
+                else
+                {
+                    var parent = Path.GetDirectoryName(target);
+                    if (!String.IsNullOrEmpty(parent))
+                    {
+                        RejectReparseAncestors(parent);
+                        Directory.CreateDirectory(parent);
+                    }
+                    if (File.Exists(target) && (File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
+                        throw new IOException("The isolated install contains a linked application file.");
+                    File.Copy(entry, target, true);
+                }
+            }
+        }
+    }
+
+    private static void WriteIsolatedInstallState(string target, string pythonPath)
+    {
+        var pythonFile = Path.Combine(target, "bootstrap_python.path");
+        if (EntryExists(pythonFile) && (File.GetAttributes(pythonFile) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("The isolated Python pointer is a link.");
+        File.WriteAllText(pythonFile, pythonPath, new UTF8Encoding(false));
+        var statePath = Path.Combine(target, "userdata", "system", "setup_state.json");
+        RejectReparseAncestors(Path.GetDirectoryName(statePath));
+        if (EntryExists(statePath) && (File.GetAttributes(statePath) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("The isolated setup state is a link.");
+        if (!File.Exists(statePath))
+        {
+            var parent = Path.GetDirectoryName(statePath);
+            Directory.CreateDirectory(parent);
+            File.WriteAllText(statePath,
+                "{\"schema_version\":1,\"setup_completed\":false,\"native_root\":\"\",\"models_root\":\"\",\"last_validation\":\"\",\"environment_status\":\"SETUP_REQUIRED\",\"skill_status\":\"UNKNOWN\",\"install_mode\":\"app_only\",\"runtime_binding\":\"unbound\"}",
+                new UTF8Encoding(false));
+        }
+        var markerPath = Path.Combine(target, "app_only_isolated.json");
+        if (EntryExists(markerPath) && (File.GetAttributes(markerPath) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("The isolated ownership marker is a link.");
+        File.WriteAllText(markerPath, "{\"schema_version\":1,\"install_scope\":\"isolated_app_only\"}", new UTF8Encoding(false));
+    }
+
+    private static int RunIsolatedAppOnlyInstall(string targetValue, string pythonValue)
+    {
+        string target;
+        string python;
+        string stage = null;
+        try
+        {
+            ValidateIsolatedInstallRoot(targetValue, out target);
+            ValidateExistingPython(pythonValue, out python);
+            stage = Path.Combine(Path.GetTempPath(), "AVS-AppOnly-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(stage);
+            RejectReparseAncestors(stage);
+            ExtractAppPayload(stage);
+            if (!Directory.Exists(target)) Directory.CreateDirectory(target);
+            if ((File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("The isolated App-only target became a link or junction.");
+            CopyStagedPayload(stage, target);
+            WriteIsolatedInstallState(target, python);
+            return 0;
+        }
+        catch (Exception error)
+        {
+            try { Console.Error.WriteLine("[APP_ONLY_NATIVE_INSTALL_FAILED] " + error.GetType().Name); } catch { }
+            return 5;
+        }
+        finally
+        {
+            try
+            {
+                if (!String.IsNullOrWhiteSpace(stage) && Directory.Exists(stage) &&
+                    Path.GetDirectoryName(NormalizePath(stage)).Equals(
+                        NormalizePath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetFileName(stage).StartsWith("AVS-AppOnly-", StringComparison.OrdinalIgnoreCase))
+                    DeleteTreeWithoutFollowingLinks(stage);
+            }
+            catch { }
+        }
+    }
+
+    private static void DeleteTreeWithoutFollowingLinks(string path)
+    {
+        foreach (var entry in Directory.GetFileSystemEntries(path))
+        {
+            var attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                if ((attributes & FileAttributes.Directory) != 0) Directory.Delete(entry, false);
+                else File.Delete(entry);
+            }
+            else if ((attributes & FileAttributes.Directory) != 0)
+            {
+                DeleteTreeWithoutFollowingLinks(entry);
+            }
+            else File.Delete(entry);
+        }
+        Directory.Delete(path, false);
+    }
+
+    private static void ValidateIsolatedUninstallRoot(string value, out string target)
+    {
+        target = NormalizePath(value);
+        var volumeRoot = NormalizePath(Path.GetPathRoot(target));
+        if (String.Equals(target, volumeRoot, StringComparison.OrdinalIgnoreCase) || !Directory.Exists(target))
+            throw new InvalidOperationException("The isolated App-only uninstall target is invalid.");
+        if (PathsOverlap(target, Assembly.GetExecutingAssembly().Location))
+            throw new InvalidOperationException("Run uninstall from the external distribution executable, not from inside the install root.");
+        RejectKnownRuntimeOverlap(target);
+        RejectReparseAncestors(target);
+        var marker = Path.Combine(target, "app_only_isolated.json");
+        if (!EntryExists(marker)) throw new InvalidOperationException("A valid isolated install marker is required.");
+        if ((File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidOperationException("The isolated install marker is a link.");
+        var markerText = File.ReadAllText(marker, Encoding.UTF8);
+        if (markerText.IndexOf("\"schema_version\":1", StringComparison.Ordinal) < 0 ||
+            markerText.IndexOf("\"install_scope\":\"isolated_app_only\"", StringComparison.Ordinal) < 0 ||
+            !File.Exists(Path.Combine(target, "launcher", "launcher.py")))
+            throw new InvalidOperationException("The selected folder is not a verified isolated App-only installation.");
+        if (File.Exists(Path.Combine(target, "launcher", "runtime.lock")))
+            throw new InvalidOperationException("The isolated Studio is active or has an unresolved launcher lock.");
+    }
+
+    private static int RunIsolatedAppOnlyUninstall(string targetValue)
+    {
+        try
+        {
+            string target;
+            ValidateIsolatedUninstallRoot(targetValue, out target);
+            var preserve = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "userdata", "models", "Models", "app_only_isolated.json"
+            };
+            foreach (var entry in Directory.GetFileSystemEntries(target))
+            {
+                if (preserve.Contains(Path.GetFileName(entry))) continue;
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    if ((attributes & FileAttributes.Directory) != 0) Directory.Delete(entry, false);
+                    else File.Delete(entry);
+                }
+                else if ((attributes & FileAttributes.Directory) != 0) DeleteTreeWithoutFollowingLinks(entry);
+                else File.Delete(entry);
+            }
+            File.Delete(Path.Combine(target, "app_only_isolated.json"));
+            if (Directory.GetFileSystemEntries(target).Length == 0) Directory.Delete(target, false);
+            return 0;
+        }
+        catch (Exception error)
+        {
+            try { Console.Error.WriteLine("[APP_ONLY_NATIVE_UNINSTALL_FAILED] " + error.GetType().Name); } catch { }
+            return 6;
+        }
+    }
+
     public static int Main(string[] args)
     {
         var appOnly = HasOption(args, "--app-only");
-        if (HasOption(args, "--silent")) return RunSilentAppOnly(args);
+        var isolated = HasOption(args, "--isolated");
+        var uninstall = HasOption(args, "--uninstall");
+        var silent = HasOption(args, "--silent");
+        if (uninstall)
+        {
+            if (!isolated || !silent || appOnly) return 2;
+            var uninstallTarget = GetOption(args, "--install-root");
+            return String.IsNullOrWhiteSpace(uninstallTarget) ? 2 : RunIsolatedAppOnlyUninstall(uninstallTarget);
+        }
+        if (isolated && (!appOnly || !silent)) return 2;
+        if (silent) return RunSilentAppOnly(args);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new InstallerForm(appOnly, GetOption(args, "--install-root"),

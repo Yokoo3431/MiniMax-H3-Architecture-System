@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import json
 import ntpath
+import re
 import socket
 import subprocess
 import time
@@ -78,7 +79,7 @@ class PortManager:
         try:
             result = subprocess.run(
                 [powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-Command", command],
+                 "-Command", command],
                 capture_output=True, text=True, timeout=5,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -103,7 +104,7 @@ class PortManager:
         try:
             result = subprocess.run(
                 [powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
-                 "-ExecutionPolicy", "Bypass", "-Command", command],
+                 "-Command", command],
                 capture_output=True, text=True, timeout=5,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -112,13 +113,20 @@ class PortManager:
             return ""
 
     @staticmethod
-    def is_managed_commandline(commandline: str, service_kind: str) -> bool:
+    def is_managed_commandline(commandline: str, service_kind: str,
+                               expected_port: Optional[int] = None) -> bool:
         """Recognize only the two service shapes the launcher owns."""
         text = (commandline or "").lower().replace("/", "\\")
+        expected = expected_port
+        if expected is None:
+            expected = 8189 if service_kind == "comfyui" else 8788
+        match = re.search(r"(?:--port\s+|--port=)(\d+)\b", text)
+        if not match or int(match.group(1)) != int(expected):
+            return False
         if service_kind == "studio":
-            return ("run_architect_video_studio.py" in text or "run_prototype.py" in text) and "--port 8788" in text
+            return "run_architect_video_studio.py" in text or "run_prototype.py" in text
         if service_kind == "comfyui":
-            return "comfyui" in text and "main.py" in text and "--port 8189" in text
+            return "comfyui" in text and "main.py" in text
         return False
 
     @staticmethod
@@ -162,7 +170,7 @@ class PortManager:
             return {"status": "free", "pid": None, "commandline": ""}
         pid = cls.find_pid(port)
         commandline = cls.process_commandline(pid)
-        if not cls.is_managed_commandline(commandline, service_kind):
+        if not cls.is_managed_commandline(commandline, service_kind, expected_port=port):
             return {"status": "unknown", "pid": pid, "commandline": commandline}
         if not expected_executable:
             return {"status": "unknown", "pid": pid, "commandline": commandline}
@@ -221,7 +229,9 @@ class ProcessManager:
                  studio_app: Optional[Path] = None,
                  studio_workdir: Optional[Path] = None,
                  studio_data: Optional[Path] = None,
-                 bootstrap_python: Optional[Path] = None) -> None:
+                 bootstrap_python: Optional[Path] = None,
+                 studio_port: Optional[int] = None,
+                 app_only: bool = False) -> None:
         self.native_root = Path(native_root)
         self.repo_root = Path(repo_root)
         self.python = Path(python) if python else self.native_root / "python_embeded" / "python.exe"
@@ -230,6 +240,12 @@ class ProcessManager:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.dry_run = dry_run
         self._popen = popen or subprocess.Popen
+        self.app_only = bool(app_only)
+        if studio_port is not None:
+            port = int(studio_port)
+            if not 1 <= port <= 65535:
+                raise ValueError("Studio port must be between 1 and 65535")
+            self.STUDIO_PORT = port
         self.studio_app = Path(studio_app) if studio_app else self.repo_root / "apps" / "architect_video_studio"
         self.studio_workdir = Path(studio_workdir) if studio_workdir else self.repo_root
         self.studio_data = Path(studio_data) if studio_data else Path(
@@ -317,20 +333,28 @@ class ProcessManager:
 
     def studio_service(self, runtime: str = "real") -> Service:
         if "studio" not in self.services:
-            cmd = [str(self.bootstrap_python),
-                   str(self.studio_app / "run_architect_video_studio.py"),
+            cmd = [str(self.bootstrap_python)]
+            if self.app_only:
+                cmd.append("-B")
+            cmd.extend([str(self.studio_app / "run_architect_video_studio.py"),
                    "--runtime", runtime, "--port", str(self.STUDIO_PORT),
-                   "--data", str(self.studio_data)]
+                   "--data", str(self.studio_data)])
             studio_env = {
                 "H3_WINDOWS_SAFE_LOAD": "pread",
-                "H3_NATIVE_ROOT": str(self.native_root),
-                "H3_COMFY_INPUT": str(self.native_root / "ComfyUI" / "input"),
-                "H3_COMFY_OUTPUT": str(self.native_root / "ComfyUI" / "output"),
+                "H3_STUDIO_DATA": str(self.studio_data),
+                "H3_STUDIO_PORT": str(self.STUDIO_PORT),
+                "H3_PROJECT_ROOT": str(self.repo_root),
             }
-            configured_models = os.environ.get("H3_MODELS_ROOT", "").strip()
-            if configured_models:
-                studio_env["H3_MODELS_ROOT"] = configured_models
-                studio_env.update(h3_process_environment(configured_models))
+            if not self.app_only:
+                studio_env.update({
+                    "H3_NATIVE_ROOT": str(self.native_root),
+                    "H3_COMFY_INPUT": str(self.native_root / "ComfyUI" / "input"),
+                    "H3_COMFY_OUTPUT": str(self.native_root / "ComfyUI" / "output"),
+                })
+                configured_models = os.environ.get("H3_MODELS_ROOT", "").strip()
+                if configured_models:
+                    studio_env["H3_MODELS_ROOT"] = configured_models
+                    studio_env.update(h3_process_environment(configured_models))
             self._make_service(
                 "studio",
                 cmd,
@@ -357,8 +381,16 @@ class ProcessManager:
             service.state = "RUNNING"
             return service
         # Cache/temp routing is intentionally limited to the child process.
-        ensure_cache_dirs(self.repo_root)
-        env = process_environment(self.repo_root)
+        # App-only acceptance keeps its transient files outside the installed
+        # application tree, alongside (not inside) the explicit Studio data
+        # directory, so uninstall never leaves generated cache in the payload.
+        storage_root = self.studio_data.parent if self.app_only else self.repo_root
+        ensure_cache_dirs(storage_root)
+        env = process_environment(storage_root)
+        if self.app_only:
+            for name in tuple(env):
+                if name.startswith(("H3_", "MINIMAX_H3_")):
+                    env.pop(name, None)
         env.update(service.env_extra)
         with open(service.log_path, "a", encoding="utf-8") as log:
             log.write(f"\n===== START {service.name} =====\n")

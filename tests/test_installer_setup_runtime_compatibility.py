@@ -80,6 +80,52 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
         self.assertIn("will not overwrite its registration", setup)
         self.assertIn("will not overwrite it", setup)
 
+    def test_isolated_app_only_path_skips_shared_registration_and_auto_launch(self):
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        launcher = (ROOT / "installer" / "SetupLauncher.cs").read_text(encoding="utf-8")
+        isolated_install = setup[setup.index("function Invoke-AppOnlyInstall"):
+                                 setup.index("function Stop-ExistingDesktopShell")]
+        self.assertIn("Assert-AppOnlyIsolatedTarget $target", isolated_install)
+        self.assertIn("Write-AppOnlyIsolationMarker $target", isolated_install)
+        marker_write = isolated_install.index("Write-AppOnlyIsolationMarker $target")
+        isolated_branch_start = isolated_install.index("if ($Isolated) {", marker_write)
+        isolated_branch = isolated_install[
+            isolated_branch_start:isolated_install.index("Register-WindowsApplication $target")]
+        self.assertNotIn("Register-WindowsApplication", isolated_branch)
+        self.assertNotIn("Start-Process", isolated_branch)
+        self.assertIn("-Isolated", launcher)
+        self.assertIn("process.ExitCode == 0 && !isolated", launcher)
+
+    def test_isolated_uninstall_requires_marker_and_preserves_shared_registration(self):
+        uninstall = (ROOT / "installer" / "Uninstall.ps1").read_text(encoding="utf-8")
+        self.assertIn("Silent uninstall is restricted to an explicitly isolated", uninstall)
+        self.assertIn("Assert-IsolatedInstallMarker $root", uninstall)
+        self.assertIn("if (-not $TestFixture -and -not $Isolated) { Remove-Registration }", uninstall)
+        self.assertIn("if ($Isolated) { $arguments += ' -Isolated' }", uninstall)
+
+    def test_restricted_policy_isolated_lifecycle_uses_native_installer_without_powershell(self):
+        launcher = (ROOT / "installer" / "SetupLauncher.cs").read_text(encoding="utf-8")
+        build = (ROOT / "release" / "build_shareable_release.py").read_text(encoding="utf-8")
+        silent_install = launcher[launcher.index("private static int RunSilentAppOnly"):
+                                  launcher.index("private static string NormalizePath")]
+        native_install = launcher[launcher.index("private static int RunIsolatedAppOnlyInstall"):
+                                  launcher.index("private static void DeleteTreeWithoutFollowingLinks")]
+        archive_reader = launcher[launcher.index("private static void ExtractAppPayload"):
+                                  launcher.index("private static void CopyStagedPayload")]
+        native_uninstall = launcher[launcher.index("private static int RunIsolatedAppOnlyUninstall"):
+                                    launcher.index("public static int Main")]
+        self.assertIn("if (isolated) return RunIsolatedAppOnlyInstall", silent_install)
+        isolated_dispatch = silent_install[:silent_install.index("var powershell")]
+        self.assertNotIn("powershell", isolated_dispatch.lower())
+        self.assertIn("ZipArchive", archive_reader)
+        self.assertIn("SafeArchiveRelativePath", archive_reader)
+        self.assertIn("ReparsePoint", archive_reader)
+        self.assertIn("PathsOverlap", launcher)
+        self.assertIn("DeleteTreeWithoutFollowingLinks", native_uninstall)
+        self.assertIn("RunIsolatedAppOnlyUninstall", launcher[launcher.index("public static int Main"):])
+        self.assertIn("--uninstall", launcher[launcher.index("public static int Main"):])
+        self.assertIn("System.IO.Compression.dll", build)
+
     def test_app_only_install_reuses_python_and_never_touches_runtime(self):
         powershell = (
             Path(os.environ.get("WINDIR", r"C:\\Windows"))

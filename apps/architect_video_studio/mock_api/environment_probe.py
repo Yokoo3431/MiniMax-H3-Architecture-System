@@ -121,7 +121,7 @@ class EnvironmentProbe:
     def _windows_gpu_fallback(self) -> tuple[Dict[str, Any], str, str, Optional[int]]:
         powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
         command = [
-            str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+            str(powershell), "-NoProfile", "-NonInteractive", "-Command",
             "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA' } | Select-Object -First 1 Name,AdapterRAM,DriverVersion | ConvertTo-Json -Compress",
         ]
         detail = self._command(command, WINDOWS_GPU_TIMEOUT_SECONDS)

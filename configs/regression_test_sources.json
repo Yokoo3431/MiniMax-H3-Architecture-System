@@ -306,8 +306,8 @@
     {
       "path": "tests/test_installer_setup_runtime_compatibility.py",
       "tracked_status": "tracked",
-      "sha256": "E3AC65A389CEFCBC72735F1FD936592BAB27F868D2D38E7E80ADE5E270C5305B",
-      "discovered_test_count": 12,
+      "sha256": "F05CDE5DFE58DCA83B6F9021C7AEBA093DCF77B5FE8E8AE5B852998B141F4B66",
+      "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -467,8 +467,8 @@
     {
       "path": "tests/test_patch28b_launcher.py",
       "tracked_status": "tracked",
-      "sha256": "9CB2B88AC6AC68B09937DB3140E8E6CB8B09895F663D5807D8E046568036EF4A",
-      "discovered_test_count": 25,
+      "sha256": "B39A001A78899163ED694B7A216D80F64356D3F4276942055D44B9E20AE2C824",
+      "discovered_test_count": 31,
       "classification": "CORE_REGRESSION"
     },
     {

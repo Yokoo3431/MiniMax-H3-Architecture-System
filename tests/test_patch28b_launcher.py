@@ -20,7 +20,9 @@ sys.path.insert(0, str(SYSTEM_ROOT))
 
 from launcher.env_check import EnvChecker, EnvPaths  # noqa: E402
 from launcher.bootstrap import resolve_launch_python  # noqa: E402
-from launcher.launcher import Launcher, PortManager as LauncherPortManager  # noqa: E402
+from launcher.launcher import (  # noqa: E402
+    Launcher, PortManager as LauncherPortManager, validate_app_only_data_root,
+)
 from launcher.lock_manager import LockManager  # noqa: E402
 from launcher.process_manager import PortManager, ProcessManager, Service  # noqa: E402
 
@@ -162,6 +164,118 @@ class TestPortDetection(unittest.TestCase):
         self.assertFalse(PortManager.is_managed_commandline(
             r"D:\Experimental\python.exe ComfyUI\\main.py --port 8190",
             "comfyui"))
+
+    def test_managed_studio_identity_uses_explicit_isolated_port(self):
+        command = r"python.exe apps\\architect_video_studio\\run_architect_video_studio.py --port 18788"
+        self.assertTrue(PortManager.is_managed_commandline(
+            command, "studio", expected_port=18788))
+        self.assertFalse(PortManager.is_managed_commandline(
+            command, "studio", expected_port=8788))
+
+    def test_app_only_studio_service_is_port_and_runtime_isolated(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            root = Path(tmpd)
+            manager = ProcessManager(
+                native_root=root / "unused-runtime",
+                repo_root=root / "app",
+                python=Path(sys.executable),
+                bootstrap_python=Path(sys.executable),
+                logs_dir=root / "app" / "Logs",
+                studio_app=root / "app" / "apps" / "architect_video_studio",
+                studio_workdir=root / "app",
+                studio_data=root / "separate-data" / "studio",
+                studio_port=18788,
+                app_only=True,
+            )
+            service = manager.studio_service("mock")
+            self.assertEqual(service.command[1], "-B")
+            self.assertIn("18788", service.command)
+            self.assertIn("mock", service.command)
+            self.assertEqual(service.env_extra["H3_STUDIO_PORT"], "18788")
+            self.assertNotIn("H3_NATIVE_ROOT", service.env_extra)
+            self.assertNotIn("H3_MODELS_ROOT", service.env_extra)
+
+    def test_app_only_child_environment_drops_inherited_runtime_identity(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            root = Path(tmpd)
+            child = SimpleNamespace(poll=lambda: None)
+            manager = ProcessManager(
+                native_root=root / "unused-runtime",
+                repo_root=root / "app",
+                python=Path(sys.executable),
+                bootstrap_python=Path(sys.executable),
+                logs_dir=root / "app" / "Logs",
+                studio_app=root / "app" / "apps" / "architect_video_studio",
+                studio_workdir=root / "app",
+                studio_data=root / "separate-data" / "studio",
+                studio_port=18788,
+                app_only=True,
+                popen=mock.Mock(return_value=child),
+            )
+            service = manager.studio_service("mock")
+            with mock.patch.dict(os.environ, {
+                    "H3_NATIVE_ROOT": str(root / "production-comfy"),
+                    "H3_MODELS_ROOT": str(root / "production-models"),
+                    "MINIMAX_H3_WEIGHTS_ROOTS": str(root / "weights"),
+            }), mock.patch("launcher.process_manager.PortManager.port_in_use", return_value=False), \
+                 mock.patch("launcher.process_manager._http_ok", return_value=True):
+                result = manager.start(service, health_timeout=1)
+            self.assertEqual(result.state, "RUNNING")
+            child_env = manager._popen.call_args.kwargs["env"]
+            self.assertNotIn("H3_NATIVE_ROOT", child_env)
+            self.assertNotIn("H3_MODELS_ROOT", child_env)
+            self.assertNotIn("MINIMAX_H3_WEIGHTS_ROOTS", child_env)
+            self.assertEqual(child_env["H3_STUDIO_PORT"], "18788")
+            self.assertTrue(child_env["TEMP"].startswith(str(root / "separate-data")))
+            self.assertNotIn(str(root / "app"), child_env["TEMP"])
+
+    def test_app_only_data_root_must_not_overlap_application_root(self):
+        with tempfile.TemporaryDirectory() as tmpd:
+            root = Path(tmpd)
+            application = root / "app"
+            self.assertEqual(
+                validate_app_only_data_root(root / "separate-data", application),
+                (root / "separate-data").resolve(),
+            )
+            for data_root in (application, application / "data", root):
+                with self.subTest(data_root=data_root):
+                    with self.assertRaisesRegex(ValueError, "separate"):
+                        validate_app_only_data_root(data_root, application)
+
+    def test_app_only_logs_and_studio_data_are_outside_install_root(self):
+        with tempfile.TemporaryDirectory() as tmpd, mock.patch.dict(os.environ, {}, clear=False):
+            root = Path(tmpd)
+            application = root / "install"
+            application.mkdir()
+            config_path = application / "distribution_config.yaml"
+            config_path.write_text(
+                (SYSTEM_ROOT / "distribution_config.yaml").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            data_root = root / "external-data"
+            with mock.patch("launcher.launcher.REPO_ROOT", application):
+                launcher = Launcher(
+                    dry_run=True,
+                    app_only=True,
+                    studio_port=18788,
+                    studio_data=data_root,
+                    dist_config_path=config_path,
+                    lock_path=application / "launcher" / "runtime.lock",
+                    paths=_make_paths(root / "path-fixtures"),
+                )
+            self.assertEqual(launcher.pm.studio_data, data_root / "studio")
+            self.assertEqual(launcher.pm.logs_dir, data_root / "logs")
+            self.assertTrue((data_root / "logs").is_dir())
+            self.assertFalse((application / "Logs").exists())
+            self.assertFalse((application / "userdata").exists())
+
+    def test_app_launcher_process_probes_do_not_bypass_execution_policy(self):
+        for relative in (
+                "launcher/process_manager.py",
+                "apps/architect_video_studio/mock_api/environment_probe.py"):
+            source = (SYSTEM_ROOT / relative).read_text(encoding="utf-8")
+            self.assertNotIn("ExecutionPolicy", source)
+            self.assertNotIn("Bypass", source)
 
     def test_experimental_runtime_executable_is_never_killed_as_production(self):
         with mock.patch.object(PortManager, "port_in_use", return_value=True), \

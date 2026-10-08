@@ -4,6 +4,8 @@ param(
     [switch]$CleanupOnly,
     [switch]$PlanOnly,
     [switch]$TestFixture,
+    [switch]$Isolated,
+    [switch]$Silent,
     [int]$WaitForPid = 0
 )
 
@@ -27,6 +29,18 @@ function Resolve-InstallRoot([string]$Value) {
         throw "The installation folder is a link or junction. No files were changed."
     }
     return $root.TrimEnd('\', '/')
+}
+
+function Assert-IsolatedInstallMarker([string]$Root) {
+    $markerPath = Join-Path $Root 'app_only_isolated.json'
+    if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+        throw "Isolated uninstall requires a valid ownership marker. No files were changed."
+    }
+    try { $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json }
+    catch { throw "The isolated install ownership marker is invalid. No files were changed." }
+    if ($marker.schema_version -ne 1 -or $marker.install_scope -ne 'isolated_app_only') {
+        throw "The isolated install ownership marker does not match. No files were changed."
+    }
 }
 
 function Test-PathWithin([string]$Path, [string]$Root) {
@@ -148,6 +162,10 @@ function Remove-Registration {
 }
 
 $root = Resolve-InstallRoot $InstallRoot
+if ($Silent -and -not $Isolated) {
+    throw "Silent uninstall is restricted to an explicitly isolated App-only install. No files were changed."
+}
+if ($Isolated) { Assert-IsolatedInstallMarker $root }
 $preservedRoots = Get-PreservedRoots $root
 
 if ($PlanOnly) {
@@ -191,7 +209,7 @@ if ($CleanupOnly) {
     if (@(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue).Count -eq 0) {
         [IO.Directory]::Delete($root, $false)
     }
-    if (-not $TestFixture) { Remove-Registration }
+    if (-not $TestFixture -and -not $Isolated) { Remove-Registration }
     if (-not $TestFixture) {
         try { Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue } catch { }
     }
@@ -212,6 +230,9 @@ try {
     throw "Could not verify that Architect Video Studio is closed. Close Studio and ComfyUI, then retry. No files were changed."
 }
 if ($busy.Count -gt 0) {
+    if ($Silent) {
+        throw "Studio or an install-owned process is still running. No files were changed."
+    }
     Add-Type -AssemblyName System.Windows.Forms
     [Windows.Forms.MessageBox]::Show(
         'Studio or its ComfyUI runtime is still running. Close the application and retry. No files were changed.',
@@ -219,11 +240,16 @@ if ($busy.Count -gt 0) {
     exit 1
 }
 
-Add-Type -AssemblyName System.Windows.Forms
-$answer = [Windows.Forms.MessageBox]::Show(
-    'Remove Architect Video Studio program files? Projects, settings, and detected model directories will be preserved on disk.',
-    'Uninstall Architect Video Studio', 'YesNo', 'Warning')
-if ($answer -ne [Windows.Forms.DialogResult]::Yes) { exit 0 }
+if ($Silent) {
+    $confirmed = $true
+} else {
+    Add-Type -AssemblyName System.Windows.Forms
+    $answer = [Windows.Forms.MessageBox]::Show(
+        'Remove Architect Video Studio program files? Projects, settings, and detected model directories will be preserved on disk.',
+        'Uninstall Architect Video Studio', 'YesNo', 'Warning')
+    $confirmed = ($answer -eq [Windows.Forms.DialogResult]::Yes)
+}
+if (-not $confirmed) { exit 0 }
 
 $workerPath = Join-Path $env:TEMP ('ArchitectVideoStudio-Uninstall-' + [guid]::NewGuid().ToString('N') + '.ps1')
 Copy-Item -LiteralPath $PSCommandPath -Destination $workerPath
@@ -231,7 +257,10 @@ $powershell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.
 if (-not (Test-Path -LiteralPath $powershell)) { $powershell = 'powershell.exe' }
 $arguments = '-NoProfile -File "{0}" -InstallRoot "{1}" -CleanupOnly -WaitForPid {2}' -f `
     $workerPath, $root, $PID
+if ($Isolated) { $arguments += ' -Isolated' }
 Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden | Out-Null
-[Windows.Forms.MessageBox]::Show(
-    'Uninstall started. Your projects, settings, and detected model files are being kept.',
-    'Architect Video Studio', 'OK', 'Information') | Out-Null
+if (-not $Silent) {
+    [Windows.Forms.MessageBox]::Show(
+        'Uninstall started. Your projects, settings, and detected model files are being kept.',
+        'Architect Video Studio', 'OK', 'Information') | Out-Null
+}
