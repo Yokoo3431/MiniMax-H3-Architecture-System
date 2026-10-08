@@ -96,6 +96,14 @@ class TestSetupRuntimeCompatibility(unittest.TestCase):
         self.assertIn("-Isolated", launcher)
         self.assertIn("process.ExitCode == 0 && !isolated", launcher)
 
+    def test_registered_product_version_comes_from_packaged_release_identity(self):
+        setup = (ROOT / "installer" / "Setup.ps1").read_text(encoding="utf-8")
+        self.assertIn("function Get-AppOnlyReleaseVersion([string]$InstallRoot)", setup)
+        self.assertIn("$Version = Get-AppOnlyReleaseVersion $InstallRoot", setup)
+        self.assertIn("configs\\release_runtime_manifest.json", setup)
+        self.assertIn("$Matches.version", setup)
+        self.assertNotIn('[string]$Version = "0.8.0-rc1"', setup)
+
     def test_isolated_uninstall_requires_marker_and_preserves_shared_registration(self):
         uninstall = (ROOT / "installer" / "Uninstall.ps1").read_text(encoding="utf-8")
         self.assertIn("Silent uninstall is restricted to an explicitly isolated", uninstall)

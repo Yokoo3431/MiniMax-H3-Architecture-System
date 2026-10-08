@@ -1,5 +1,5 @@
 {
-  "version": "0.8.0-rc1",
+  "version": "0.8.0-rc3.3",
   "system_name": "Architect Video Studio Shareable RC Packager",
   "package_filename": "ArchitectVideoStudio-RC.zip",
   "include_directories": [

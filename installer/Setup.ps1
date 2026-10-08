@@ -854,7 +854,24 @@ function Stop-ExistingManagedServices([string]$InstallRoot) {
     }
 }
 
-function Register-WindowsApplication([string]$InstallRoot, [string]$Version = "0.8.0-rc1") {
+function Get-AppOnlyReleaseVersion([string]$InstallRoot) {
+    $manifestPath = Join-Path $InstallRoot "configs\release_runtime_manifest.json"
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "The installed release identity is missing; registration was not changed."
+    }
+    try { $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json }
+    catch { throw "The installed release identity is invalid; registration was not changed." }
+    $release = [string]$manifest.release
+    if ($release -notmatch '^v(?<version>\d+\.\d+\.\d+-rc\d+(?:\.\d+)?)-shareable$') {
+        throw "The installed release identity is unsupported; registration was not changed."
+    }
+    return $Matches.version
+}
+
+function Register-WindowsApplication([string]$InstallRoot, [string]$Version = "") {
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        $Version = Get-AppOnlyReleaseVersion $InstallRoot
+    }
     $exe = Join-Path $InstallRoot "launcher\ArchitectVideoStudioDesktop.exe"
     if (-not (Test-Path -LiteralPath $exe)) { return }
     $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"

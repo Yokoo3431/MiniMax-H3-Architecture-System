@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -191,6 +192,20 @@ def _payload_file_count(payload: Path) -> int:
     return sum(1 for item in payload.rglob("*") if item.is_file())
 
 
+def _release_candidate() -> str:
+    """Read the sole tracked release identity; reject stale or malformed versions."""
+    manifest_path = ROOT / "configs" / "release_runtime_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        candidate = manifest["release"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise RuntimeError("The tracked release identity is missing or invalid.") from exc
+    if not isinstance(candidate, str) or not re.fullmatch(
+            r"v\d+\.\d+\.\d+-rc\d+(?:\.\d+)?-shareable", candidate):
+        raise RuntimeError("The tracked shareable RC identity is not a valid version.")
+    return candidate
+
+
 def _find_csc() -> Path:
     compiler_candidates = [
         Path(os.environ.get("WINDIR", r"C:\Windows"))
@@ -310,6 +325,7 @@ def main() -> int:
         raise RuntimeError("The release must be built from a verified Git commit.") from exc
     if len(source_commit) != 40 or any(char not in "0123456789abcdef" for char in source_commit.lower()):
         raise RuntimeError(f"Invalid source commit returned by Git: {source_commit!r}")
+    candidate = _release_candidate()
     with tempfile.TemporaryDirectory(prefix="architect-video-studio-release-") as temp:
         stage = Path(temp)
         assemble_payload(stage)
@@ -326,7 +342,7 @@ def main() -> int:
     manifest = {
         "schema_version": 1,
         "product": "Architect Video Studio",
-        "candidate": "v0.8.0-rc1-shareable",
+        "candidate": candidate,
         "source_commit": source_commit,
         "source_commit_policy": "exact-frozen-commit",
         "installer": setup.name,
@@ -343,7 +359,7 @@ def main() -> int:
             )["selection_policy"],
             "profiles": ["COMPATIBILITY", "BALANCED", "QUALITY"],
         },
-        "gpu_product_acceptance": "PENDING_OWNER_AUTHORIZATION",
+        "gpu_product_acceptance": "PARTIAL_AUTONOMOUS_ACCEPTANCE_OWNER_REVIEW_PENDING",
         "hardware_policy": {"supported_vram_gb": 24, "lower_vram": "EXPERIMENTAL"},
         "runtime_contract": json.loads(
             (ROOT / "configs" / "release_runtime_manifest.json").read_text(encoding="utf-8")

@@ -9,6 +9,34 @@ from release import build_shareable_release as release_builder
 
 
 class TestShareableReleasePrivacy(unittest.TestCase):
+    def test_release_candidate_comes_from_tracked_runtime_manifest(self):
+        with tempfile.TemporaryDirectory(prefix="avs-release-version-") as temp:
+            root = Path(temp)
+            configs = root / "configs"
+            configs.mkdir()
+            (configs / "release_runtime_manifest.json").write_text(
+                '{"release":"v0.8.0-rc3.3-shareable"}', encoding="utf-8")
+            with mock.patch.object(release_builder, "ROOT", root):
+                self.assertEqual(
+                    release_builder._release_candidate(),
+                    "v0.8.0-rc3.3-shareable")
+
+    def test_release_candidate_rejects_stale_or_invalid_identity(self):
+        with tempfile.TemporaryDirectory(prefix="avs-release-version-") as temp:
+            root = Path(temp)
+            configs = root / "configs"
+            configs.mkdir()
+            manifest = configs / "release_runtime_manifest.json"
+            manifest.write_text(
+                '{"release":"v0.8.0-rc1-shareable"}', encoding="utf-8")
+            with mock.patch.object(release_builder, "ROOT", root):
+                self.assertEqual(
+                    release_builder._release_candidate(),
+                    "v0.8.0-rc1-shareable")
+                manifest.write_text('{"release":"latest"}', encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "valid version"):
+                    release_builder._release_candidate()
+
     def test_final_payload_file_count_tracks_unique_files(self):
         with tempfile.TemporaryDirectory(prefix="avs-payload-count-") as temp:
             payload = Path(temp) / "payload"

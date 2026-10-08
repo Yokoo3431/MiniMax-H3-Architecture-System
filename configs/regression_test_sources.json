@@ -306,8 +306,8 @@
     {
       "path": "tests/test_installer_setup_runtime_compatibility.py",
       "tracked_status": "tracked",
-      "sha256": "F05CDE5DFE58DCA83B6F9021C7AEBA093DCF77B5FE8E8AE5B852998B141F4B66",
-      "discovered_test_count": 15,
+      "sha256": "04E4CFCB044CCEB0F9DDA76202731FB0ACBE2FE4027809985A8F913D735E9CD4",
+      "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -775,8 +775,8 @@
     {
       "path": "tests/test_shareable_release_privacy.py",
       "tracked_status": "tracked",
-      "sha256": "788F01CEF8F4E40CDFA4D21EB348D43BE14ED5C00BEF6AD0E406C95891FD3C31",
-      "discovered_test_count": 5,
+      "sha256": "CC4ABC2B44E488C3204C03E540ACFE9D92BDECD07B8BF0C2CC40066561F67AFB",
+      "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
     {

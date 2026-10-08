@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release": "v0.8.0-rc1-shareable",
+  "release": "v0.8.0-rc3.3-shareable",
   "runtime": {
     "comfyui_version": "0.33.1",
     "frontend_version": "1.48.7",
