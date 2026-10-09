@@ -287,7 +287,7 @@ async function startComponents(components) {
 }
 
 function renderGroup(g) {
-  document.querySelectorAll('#group-nav button').forEach((b) => b.classList.toggle('on', b.dataset.g === g));
+  document.querySelectorAll('#group-nav sl-button[data-g]').forEach((b) => b.classList.toggle('on', b.dataset.g === g));
   const box = document.getElementById('inspector');
   const state = environmentState();
   const s = state.system, r = state.runtime, m = state.models,
@@ -421,7 +421,7 @@ function renderGroup(g) {
   if (inspectorComfy) inspectorComfy.addEventListener('click', openComfyUI);
 }
 
-document.querySelectorAll('#group-nav button').forEach((b) =>
+document.querySelectorAll('#group-nav sl-button[data-g]').forEach((b) =>
   b.addEventListener('click', () => renderGroup(b.dataset.g)));
 
 document.getElementById('save-btn').addEventListener('click', async () => {

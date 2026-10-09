@@ -2,6 +2,12 @@
 const jobId = qs('job');
 const requestedProjectId = qs('project');
 const errEl = document.getElementById('err');
+const resultsLibrary = document.getElementById('results-library');
+const jobOutputView = document.getElementById('job-output-view');
+let resultGroups = [];
+let assemblyResults = [];
+let resultProjectNames = new Map();
+let supplementaryIssueCount = 0;
 
 function showErr(msg) {
   errEl.className = 'error-banner';
@@ -93,6 +99,260 @@ function deliveryItemFailureMessage(code) {
   return code ? '处理未完成，可稍后重试' : '';
 }
 
+function resultResolution(width, height) {
+  return width && height ? `${width}×${height}` : '分辨率未知';
+}
+
+function resultFps(value) {
+  const fps = Number(value);
+  return Number.isFinite(fps) && fps > 0 ? `${Number.isInteger(fps) ? fps : fps.toFixed(2)} fps` : '帧率未知';
+}
+
+function resultDuration(value) {
+  const duration = Number(value);
+  return Number.isFinite(duration) && duration > 0 ? `${duration.toFixed(2)} 秒` : '';
+}
+
+function resultBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function resultDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+}
+
+function resultVersionMarkup(item) {
+  const mediaUrl = sameOriginMediaUrl(item.media_url);
+  if (!mediaUrl) return '';
+  const meta = [item.resolution, resultFps(item.fps), resultDuration(item.duration),
+    item.frame_count ? `${item.frame_count} 帧` : '', item.codec || '',
+    resultBytes(item.size_bytes), item.method || ''].filter(Boolean).join(' · ');
+  const identity = item.kind === 'native' ? 'native' : item.delivery_id || item.assembly_id || 'result';
+  return `<div class="results-version">
+    <div class="results-version-copy">
+      <strong>${esc(item.label)}</strong>
+      <div class="small muted results-version-meta">${esc(meta || '媒体信息待验证')}</div>
+      ${item.source_label ? `<div class="small muted">来源：${esc(item.source_label)}</div>` : ''}
+      ${item.output_sha256 ? `<div class="small muted">SHA-256：${esc(item.output_sha256.slice(0, 16))}…</div>` : ''}
+    </div>
+    <div class="row results-actions">
+      <button class="btn small ghost" type="button" data-result-preview="${esc(mediaUrl)}" data-result-title="${esc(item.label)}" data-result-meta="${esc(meta)}">预览</button>
+      <a class="btn small primary" href="${esc(mediaUrl)}" download="${esc(mediaDownloadName('avs', item.job_id || item.queue_id, identity))}">下载</a>
+      ${item.job_id ? `<a class="btn small ghost" href="output.html?project=${encodeURIComponent(item.project_id)}&job=${encodeURIComponent(item.job_id)}">结果详情</a>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderResultsLibrary() {
+  const projectId = document.getElementById('results-project')?.value || '';
+  const needle = String(document.getElementById('results-search')?.value || '').trim().toLowerCase();
+  const list = document.getElementById('results-list');
+  if (!list) return;
+  const visibleGroups = resultGroups.filter((group) => {
+    if (projectId && group.project_id !== projectId) return false;
+    return !needle || `${group.project_name} ${group.workflow} ${group.job_id}`.toLowerCase().includes(needle);
+  });
+  const visibleAssemblies = assemblyResults.filter((item) => {
+    if (projectId && item.project_id !== projectId) return false;
+    return !needle || `${item.project_name} ${item.queue_id} 长视频组装`.toLowerCase().includes(needle);
+  });
+  const rows = [];
+  for (const group of visibleGroups) {
+    const versions = group.versions.map(resultVersionMarkup).filter(Boolean).join('');
+    if (!versions && !group.unavailable_reason) continue;
+    rows.push(`<article class="results-group">
+      <div class="results-group-heading">
+        <div><h4>${esc(group.project_name)} <span class="muted">· ${esc(group.workflow || 'H3 视频')}</span></h4>
+          <div class="small muted">Job ${esc(group.job_id)}${group.created_at ? ` · ${esc(resultDate(group.created_at))}` : ''}</div></div>
+        <a class="btn small ghost" href="jobs.html?project=${encodeURIComponent(group.project_id)}&job=${encodeURIComponent(group.job_id)}">查看 Job</a>
+      </div>
+      ${versions ? `<div class="results-versions">${versions}</div>`
+        : `<div class="error-banner" role="status">${esc(group.unavailable_reason)}</div>`}
+    </article>`);
+  }
+  for (const item of visibleAssemblies) {
+    const versions = item.media_url ? resultVersionMarkup(item) : `<div class="small muted">组装成果当前不可用（${esc(item.status || '状态未知')}）。</div>`;
+    rows.push(`<article class="results-group results-assembly">
+      <div class="results-group-heading">
+        <div><h4>${esc(item.project_name)} <span class="muted">· 长视频组装</span></h4>
+          <div class="small muted">${esc(item.shot_count)} 个镜头 · ${esc(item.queue_id)}</div></div>
+        <a class="btn small ghost" href="workspace.html?project=${encodeURIComponent(item.project_id)}">查看 Study</a>
+      </div>
+      <div class="results-versions">${versions}</div>
+    </article>`);
+  }
+  list.innerHTML = rows.length ? rows.join('')
+    : '<div class="notice-banner">当前筛选条件下没有可访问的已保存成果。请尝试切换 Project，或到 Jobs 查看未完成任务。</div>';
+  const visibleCompleted = visibleGroups.length;
+  const accessibleNative = visibleGroups.filter((group) => group.versions.some((item) => item.kind === 'native')).length;
+  const visibleUnavailable = visibleGroups.filter((group) => Boolean(group.unavailable_reason)).length;
+  const versionCount = visibleGroups.reduce((sum, group) => sum + group.versions.length, 0)
+    + visibleAssemblies.filter((item) => Boolean(item.media_url)).length;
+  const deliveryCount = visibleGroups.reduce((sum, group) => sum
+    + group.versions.filter((item) => item.kind === 'delivery').length, 0);
+  const assemblyCount = visibleAssemblies.filter((item) => Boolean(item.media_url)).length;
+  document.getElementById('results-status').textContent =
+    `${visibleCompleted} 个已完成 Job · ${accessibleNative} 个有可访问原生视频 · ${versionCount} 个可访问版本（原生/交付） · ${assemblyCount} 个长视频组装${deliveryCount ? ` · 含 ${deliveryCount} 个交付副本` : ''}${visibleUnavailable ? ` · ${visibleUnavailable} 个已完成 Job 没有可验证视频` : ''}`;
+  list.querySelectorAll('[data-result-preview]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const preview = document.getElementById('results-preview');
+      const video = document.getElementById('results-preview-video');
+      const source = sameOriginMediaUrl(button.dataset.resultPreview);
+      if (!source) return;
+      video.src = source;
+      video.load();
+      preview.hidden = false;
+      document.getElementById('results-preview-title').textContent = button.dataset.resultTitle || '成果预览';
+      document.getElementById('results-preview-meta').textContent = button.dataset.resultMeta || '';
+      preview.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    });
+  });
+}
+
+async function loadResultsLibrary() {
+  const status = document.getElementById('results-status');
+  const list = document.getElementById('results-list');
+  status.textContent = '正在读取各 Project / Study 的已保存成果…';
+  list.textContent = '';
+  resultGroups = [];
+  assemblyResults = [];
+  supplementaryIssueCount = 0;
+  try {
+    const projects = await get('/api/projects');
+    resultProjectNames = new Map((projects || []).map((project) => [project.id, project.name || project.id]));
+    const select = document.getElementById('results-project');
+    const selectedProject = requestedProjectId && resultProjectNames.has(requestedProjectId)
+      ? requestedProjectId : select.value;
+    select.innerHTML = '<option value="">全部 Project</option>' + (projects || []).map((project) =>
+      `<option value="${esc(project.id)}">${esc(project.name || project.id)}</option>`).join('');
+    if (selectedProject && resultProjectNames.has(selectedProject)) select.value = selectedProject;
+
+    for (const project of projects || []) {
+      let jobs;
+      try {
+        jobs = await get(`/api/projects/${encodeURIComponent(project.id)}/jobs`);
+      } catch (_) {
+        supplementaryIssueCount += 1;
+        continue;
+      }
+      for (const job of jobs || []) {
+        if (job.state !== 'COMPLETED') continue;
+        try {
+          const result = await get(`/api/jobs/${encodeURIComponent(job.id)}/result`);
+          const output = result.output || {};
+          const nativeUrl = output.available ? sameOriginMediaUrl(output.media_url
+            || `/api/jobs/${encodeURIComponent(job.id)}/media`) : '';
+          if (!nativeUrl) {
+            resultGroups.push({
+              project_id: project.id, project_name: project.name || project.id,
+              job_id: job.id, workflow: job.workflow, created_at: job.created_at,
+              versions: [], unavailable_reason: '任务记录显示已完成，但当前没有可验证的视频文件；请打开 Job 查看状态。',
+            });
+            continue;
+          }
+          const probe = result.ffprobe || {};
+          const params = job.generation_parameters || {};
+          const versions = [{
+            kind: 'native', job_id: job.id, project_id: project.id,
+            label: 'H3 原生输出', media_url: nativeUrl,
+            resolution: resultResolution(probe.width || params.width, probe.height || params.height),
+            fps: probe.fps || params.fps, duration: probe.duration_seconds,
+            frame_count: probe.frame_count, codec: probe.video_codec,
+            size_bytes: output.size_bytes,
+          }];
+          const traceDeliveries = job.execution_trace?.delivery_outputs || [];
+          if (traceDeliveries.length) {
+            try {
+              const deliveryState = await get(`/api/jobs/${encodeURIComponent(job.id)}/deliveries`);
+              for (const delivery of deliveryState.items || []) {
+                if (delivery.status !== 'READY') continue;
+                const deliveryUrl = sameOriginMediaUrl(delivery.media_url);
+                if (!deliveryUrl) continue;
+                const size = delivery.delivery_resolution || {};
+                const isInterpolated = Number(delivery.delivery_fps)
+                  > Number(delivery.native_generation_fps || 0);
+                const targetLabel = delivery.target_resolution === 'ULTRA_2K' ? '2K 交付'
+                  : delivery.target_resolution === 'ULTRA_1080' ? '1080p 交付'
+                    : '原生画布交付';
+                versions.push({
+                  kind: 'delivery', job_id: job.id, project_id: project.id,
+                  delivery_id: delivery.delivery_id,
+                  label: `${targetLabel}${isInterpolated ? ` · ${delivery.delivery_fps} fps 插帧` : ` · ${delivery.delivery_fps} fps`}`,
+                  media_url: deliveryUrl,
+                  resolution: resultResolution(size.width, size.height),
+                  fps: delivery.delivery_fps, duration: delivery.duration_seconds,
+                  frame_count: delivery.frame_count, codec: delivery.video_codec,
+                  size_bytes: delivery.size_bytes, output_sha256: delivery.output_sha256,
+                  method: [delivery.upscale_method, delivery.frame_interpolation_method]
+                    .filter((value) => value && value !== 'NONE').join(' · '),
+                  source_label: `H3 原生 ${resultResolution(
+                    (delivery.native_generation_resolution || {}).width,
+                    (delivery.native_generation_resolution || {}).height)} / ${resultFps(delivery.native_generation_fps)}`,
+                });
+              }
+            } catch (_) { supplementaryIssueCount += 1; }
+          }
+          resultGroups.push({
+            project_id: project.id, project_name: project.name || project.id,
+            job_id: job.id, workflow: job.workflow, created_at: job.created_at,
+            versions,
+          });
+        } catch (_) {
+          resultGroups.push({
+            project_id: project.id, project_name: project.name || project.id,
+            job_id: job.id, workflow: job.workflow, created_at: job.created_at,
+            versions: [], unavailable_reason: '任务记录显示已完成，但成果服务暂时无法验证媒体；请打开 Job 后重试。',
+          });
+        }
+      }
+      try {
+        const longForm = await get(`/api/projects/${encodeURIComponent(project.id)}/long-form`);
+        for (const queue of longForm.queues || []) {
+          const assembly = queue.assembly || {};
+          if (!assembly.assembly_id) continue;
+          const media = assembly.media || {};
+          const mediaUrl = assembly.status === 'READY'
+            ? sameOriginMediaUrl(assembly.media_url) : '';
+          assemblyResults.push({
+            kind: 'assembly', project_id: project.id,
+            project_name: project.name || project.id,
+            queue_id: queue.queue_id, assembly_id: assembly.assembly_id,
+            status: assembly.status || queue.status,
+            shot_count: (queue.shots || []).length,
+            media_url: mediaUrl,
+            label: '长视频组装',
+            resolution: resultResolution(media.width || (queue.target || {}).width,
+              media.height || (queue.target || {}).height),
+            fps: media.fps || (queue.target || {}).fps,
+            duration: media.duration_seconds, frame_count: media.frame_count,
+            codec: media.video_codec, size_bytes: assembly.size_bytes || media.size_bytes,
+            output_sha256: assembly.output_sha256,
+          });
+        }
+      } catch (_) { supplementaryIssueCount += 1; }
+    }
+    resultGroups.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    assemblyResults.sort((a, b) => String(a.project_name).localeCompare(String(b.project_name)));
+    renderResultsLibrary();
+    const count = resultGroups.reduce((sum, group) => sum + group.versions.length, 0)
+      + assemblyResults.filter((item) => Boolean(item.media_url)).length;
+    if (supplementaryIssueCount) {
+      status.textContent += `；${supplementaryIssueCount} 个项目/交付/组装附加记录暂不可用。共找到 ${count} 个可访问版本。`;
+    }
+  } catch (_) {
+    status.textContent = '成果列表暂不可用，请稍后刷新；已有视频文件不会被修改。';
+    list.innerHTML = '<div class="error-banner">无法读取 Project / Study 成果清单。</div>';
+  }
+}
+
 async function loadDeliveries(currentJobId) {
   const list = document.getElementById('delivery-list');
   const form = document.getElementById('delivery-form');
@@ -175,15 +435,20 @@ async function loadDeliveries(currentJobId) {
 
 async function load() {
   if (!jobId) {
-    const form = document.getElementById('delivery-form');
-    form.hidden = true;
-    form.style.removeProperty('display');
-    document.getElementById('delivery-status').textContent = '请先从 Jobs 打开一个已完成任务，之后可在此创建交付副本。';
-    document.getElementById('delivery-list').textContent = '从 Jobs 打开已完成任务后，这里会显示交付记录。';
+    resultsLibrary.hidden = false;
+    jobOutputView.hidden = true;
+    document.getElementById('output-heading').textContent = '输出与成果';
     document.getElementById('job-id').textContent = '—';
-    showContextState('请选择一个已有输出，或从 Jobs 中打开具体任务。');
+    document.getElementById('err').style.display = 'none';
+    document.getElementById('results-project').addEventListener('change', renderResultsLibrary);
+    document.getElementById('results-search').addEventListener('input', renderResultsLibrary);
+    document.getElementById('results-refresh').addEventListener('click', loadResultsLibrary);
+    await loadResultsLibrary();
     return;
   }
+  resultsLibrary.hidden = true;
+  jobOutputView.hidden = false;
+  document.getElementById('output-heading').textContent = '输出审阅';
   document.getElementById('job-id').textContent = jobId;
   try {
     const detail = await get(`/api/jobs/${encodeURIComponent(jobId)}/detail`);

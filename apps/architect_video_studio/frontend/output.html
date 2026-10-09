@@ -28,9 +28,36 @@
     <span id="job-id" class="small">…</span>
   </header>
   <main id="main-content" tabindex="-1" class="wrap app-main">
-    <h2 style="margin-top:0;">输出审阅</h2>
+    <h2 id="output-heading" style="margin-top:0;">输出与成果</h2>
     <div id="err" class="error-banner" role="alert" aria-live="assertive" aria-atomic="true" style="display:none;"></div>
     <div id="output-context-actions" class="row mt" style="display:none;gap:8px;" aria-label="输出上下文导航"></div>
+    <section id="results-library" class="panel mt" aria-labelledby="results-heading" hidden>
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+        <div>
+          <h3 id="results-heading" style="margin-top:0;">Results · 已保存成果</h3>
+          <p class="small muted">按 Project / Study 查看原生视频、已验证交付副本和长视频组装。交付项始终关联其源 Job；这里不会重新生成或处理视频。</p>
+        </div>
+        <button id="results-refresh" class="btn small" type="button">刷新成果</button>
+      </div>
+      <div class="results-toolbar mt">
+        <label class="small" for="results-project">Project / Study
+          <select id="results-project"><option value="">全部 Project</option></select>
+        </label>
+        <label class="small" for="results-search">搜索 Job / 工作流
+          <input id="results-search" type="search" placeholder="例如：job-… 或 Drone Aerial" autocomplete="off">
+        </label>
+      </div>
+      <p id="results-status" class="small muted" role="status" aria-live="polite">正在读取已保存成果…</p>
+      <div id="results-preview" class="results-preview" hidden>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:8px;">
+          <strong id="results-preview-title">成果预览</strong>
+          <span id="results-preview-meta" class="small muted"></span>
+        </div>
+        <video id="results-preview-video" controls preload="metadata" playsinline></video>
+      </div>
+      <div id="results-list" class="results-list" aria-live="polite"></div>
+    </section>
+    <div id="job-output-view" hidden>
     <div class="workspace" style="grid-template-columns:1fr 1fr;">
       <div class="panel">
         <h3>视频</h3>
@@ -85,6 +112,7 @@
         </div>
       </div>
     </section>
+    </div>
   </main>
   <script src="js/api.js"></script>
   <script src="js/engine_status.js"></script>

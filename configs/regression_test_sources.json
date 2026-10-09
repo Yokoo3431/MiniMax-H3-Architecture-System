@@ -782,8 +782,8 @@
     {
       "path": "tests/test_studio_ux2_p1.py",
       "tracked_status": "tracked",
-      "sha256": "5A0EDD9C9332670B64F197A22B0489B678391A598C609BDAB37D9C40B633D732",
-      "discovered_test_count": 15,
+      "sha256": "50A0B141ACB424C71731FC086ABE6497A74153B89C5E523624940E6216E877CB",
+      "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {

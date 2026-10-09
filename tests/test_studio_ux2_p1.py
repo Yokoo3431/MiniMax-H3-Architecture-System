@@ -29,6 +29,14 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn("STORAGE_KEY = 'avs-theme'", theme)
         self.assertIn("localStorage", theme)
 
+    def test_environment_group_navigation_binds_shoelace_hosts(self):
+        setup_html = self.read("setup.html")
+        setup_script = self.read("js/setup.js")
+        self.assertIn('<sl-button data-g="runtime"', setup_html)
+        self.assertIn("document.querySelectorAll('#group-nav sl-button[data-g]')", setup_script)
+        self.assertEqual(setup_script.count("document.querySelectorAll('#group-nav sl-button[data-g]')"), 2)
+        self.assertNotIn("document.querySelectorAll('#group-nav button')", setup_script)
+
     def test_all_primary_pages_have_shared_shell_and_navigation(self):
         viewport = '<meta name="viewport" content="width=device-width, initial-scale=1">'
         for name, body_class in PAGES.items():
@@ -180,6 +188,10 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn('showContextState', output)
         self.assertNotIn('缺少 job 参数', output)
         output_html = self.read("output.html")
+        self.assertIn('id="results-library"', output_html)
+        self.assertIn('id="results-project"', output_html)
+        self.assertIn('id="results-search"', output_html)
+        self.assertIn('id="results-preview-video"', output_html)
         self.assertIn('<details id="output-technical-details" class="mt">', output_html)
         self.assertIn("生成记录与技术详情（可选）", output_html)
         self.assertIn('id="pkg-tree"', output_html)
@@ -206,8 +218,18 @@ class StudioUX2P1Tests(unittest.TestCase):
         no_job_branch = re.search(r"async function load\(\) \{(?P<body>.*?)\n  \}", output, re.S)
         self.assertIsNotNone(no_job_branch)
         self.assertIn("if (!jobId)", no_job_branch.group("body"))
-        self.assertIn("form.hidden = true", no_job_branch.group("body"))
+        self.assertIn("resultsLibrary.hidden = false", no_job_branch.group("body"))
+        self.assertIn("jobOutputView.hidden = true", no_job_branch.group("body"))
+        self.assertIn("await loadResultsLibrary()", no_job_branch.group("body"))
         self.assertIn("return;", no_job_branch.group("body"))
+        self.assertIn("async function loadResultsLibrary()", output)
+        self.assertIn("/api/projects/${encodeURIComponent(project.id)}/jobs", output)
+        self.assertIn("/api/projects/${encodeURIComponent(project.id)}/long-form", output)
+        self.assertIn("/api/jobs/${encodeURIComponent(job.id)}/deliveries", output)
+        self.assertIn("data-result-preview", output)
+        self.assertIn("sameOriginMediaUrl(item.media_url)", output)
+        self.assertIn("unavailable_reason", output)
+        self.assertIn("任务记录显示已完成，但当前没有可验证的视频文件", output)
         self.assertIn("form.hidden = !state.available", output)
         self.assertIn("form.addEventListener('submit'", output)
         self.assertIn(".video-box video[hidden]", self.read("css/studio.css"))
