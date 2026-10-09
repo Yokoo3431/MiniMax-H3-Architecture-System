@@ -363,8 +363,15 @@ async function loadDeliveries(currentJobId) {
     form.hidden = !state.available;
     form.style.removeProperty('display');
     if (!state.available) {
-      list.textContent = '当前运行环境未提供受管 FFmpeg 交付能力。';
-      statusEl.textContent = '当前运行环境暂不支持创建交付副本。';
+      const identityMissing = state.error_code === 'DELIVERY_RUNTIME_IDENTITY_INCOMPLETE'
+        || state.error_code === 'DELIVERY_EXECUTION_IDENTITY_INCOMPLETE';
+      const unavailableMessage = identityMissing
+        ? '该历史任务缺少创建交付副本所需的运行身份记录；已有原生视频仍可查看和下载。'
+        : '当前运行环境未提供受管 FFmpeg 交付能力。';
+      list.textContent = unavailableMessage;
+      statusEl.textContent = identityMissing
+        ? '无法为此历史任务创建新的交付副本；原生结果不受影响。'
+        : '当前运行环境暂不支持创建交付副本。';
       return;
     }
     const items = state.items || [];

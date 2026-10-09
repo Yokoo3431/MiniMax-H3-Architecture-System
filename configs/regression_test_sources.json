@@ -26,8 +26,8 @@
     {
       "path": "tests/test_a5_result_pipeline_recovery.py",
       "tracked_status": "tracked",
-      "sha256": "1E99464269875F57CB15ACCE1C9F0AF46671EFA776DF404AB759FEAC0B0B67A1",
-      "discovered_test_count": 24,
+      "sha256": "64668BA474E4DEF11FBEDB7A733271207EB7A94AC0A7B1D453AC787F907D9EF5",
+      "discovered_test_count": 27,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -47,8 +47,8 @@
     {
       "path": "tests/test_a8_delivery_pipeline.py",
       "tracked_status": "tracked",
-      "sha256": "E721655109E17F1F224B83962701DDA32A02F766C2C80B8D32F078E1F452B63C",
-      "discovered_test_count": 13,
+      "sha256": "0A9DEB19E9B278311B001B90424830E3CE0B6013BAB612447CB9F5ED625DAE67",
+      "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -684,7 +684,7 @@
     {
       "path": "tests/test_product_hardening.py",
       "tracked_status": "tracked",
-      "sha256": "69B5CB42AA4355040796C1D556FE898F9FD2467F17F79E0FF29A6D1D5520CD5D",
+      "sha256": "0D94998FA756EC5599B483C376D333A99C7222B5D2B1A5CBD2BF45DAA15E8FB4",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },

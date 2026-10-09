@@ -49,6 +49,26 @@ class OutputAPI:
         package = self.store.job_package_dir(project_id, job_id)
         items = self.delivery_pipeline.list_for_job(
             job_id=job_id, package_root=package)
+        if not items:
+            # Legacy completed Jobs can predate the A8 execution-identity
+            # contract. An empty derivative list does not need that identity;
+            # keep strict validation below for every persisted derivative.
+            # But do not expose a create action that would fail the same gate.
+            available = bool(self.delivery_pipeline.available
+                             and job.get("runtime") == "native")
+            error_code = None
+            if available:
+                try:
+                    self.delivery_pipeline._identity(job)
+                except DeliveryError as exc:
+                    available = False
+                    error_code = str(exc)
+            return {
+                "job_id": job_id,
+                "available": available,
+                "error_code": error_code,
+                "items": [],
+            }
         expected = self.delivery_pipeline._identity(job)
         source_sha = sha256_file(self.media_path(job_id))
         for item in items:
@@ -248,7 +268,27 @@ class OutputAPI:
         if not video_path.is_file() or video_path.stat().st_size <= 0:
             raise ValueError("OUTPUT_FILE_MISSING: verified runtime video is unavailable")
         project = self.store.load_project(project_id)
-        prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id)
+        prompt_snapshot = job.get("prompt_snapshot")
+        request_prompt = getattr(request, "prompt_payload", None)
+        if isinstance(prompt_snapshot, dict):
+            prompt = prompt_snapshot
+        elif isinstance(request_prompt, dict):
+            prompt = request_prompt
+        elif request is not None:
+            prompt = self.store.load_prompt(project_id) or {}
+        else:
+            # Reconciliation is not a new generation request. Never package
+            # mutable current Study Prompt data as if it belonged to a legacy
+            # completed Job whose immutable Prompt snapshot is unavailable.
+            prompt = {}
+        prompt_hash = (str((request_prompt or {}).get("prompt_hash") or "")
+                       or str(prompt.get("prompt_hash") or "")
+                       or str(job.get("prompt_hash") or "") or None)
+        prompt_text = ((request_prompt or {}).get("prompt")
+                       or prompt.get("prompt"))
+        prompt_content_status = (
+            "PERSISTED" if prompt_text else
+            "HASH_ONLY_LEGACY" if prompt_hash else "UNAVAILABLE_LEGACY")
         package = self.store.job_package_dir(project_id, str(job.get("id") or ""))
         for sub in ("input", "workflow", "prompt", "output", "report"):
             (package / sub).mkdir(parents=True, exist_ok=True)
@@ -268,9 +308,19 @@ class OutputAPI:
                 prior = json.loads(existing_report.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 prior = {}
+            try:
+                prior_prompt = json.loads(
+                    (package / "prompt" / "prompt.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                prior_prompt = {}
+            prompt_matches = (
+                prior_prompt.get("prompt_hash") == prompt_hash
+                and (bool(prompt_text)
+                     or not prior_prompt.get("prompt")))
             if (self._report_matches_job(prior, job)
                     and prior.get("media_sha256") == media_sha256
-                    and sha256_file(existing_video) == media_sha256):
+                    and sha256_file(existing_video) == media_sha256
+                    and prompt_matches):
                 return self.manifest(project_id, job)
 
         # input/ — approved reference files + manifest
@@ -358,14 +408,14 @@ class OutputAPI:
                     encoding="utf-8")
 
         # prompt/
-        request_prompt = getattr(request, "prompt_payload", None)
         prompt_record = {
             "study_id": project_id,
             "workflow_id": job.get("workflow"),
             "camera_motion": job.get("camera_motion"),
             "generation_parameters": job.get("generation_parameters"),
-            "prompt_hash": (request_prompt or {}).get("prompt_hash") or (prompt or {}).get("prompt_hash"),
-            "prompt": (request_prompt or {}).get("prompt") or (prompt or {}).get("prompt"),
+            "prompt_hash": prompt_hash,
+            "prompt": prompt_text,
+            "prompt_content_status": prompt_content_status,
             "execution_trace": dict(job.get("execution_trace") or {}),
         }
         (package / "prompt" / "prompt.json").write_text(
@@ -417,7 +467,8 @@ class OutputAPI:
         provenance = {
             "workflow": job.get("workflow"),
             "mode": (prompt or {}).get("mode"),
-            "prompt_hash": (prompt or {}).get("prompt_hash"),
+            "prompt_hash": prompt_hash,
+            "prompt_content_status": prompt_content_status,
             "reference_sha256": [r.get("sha256") for r in refs],
             "reference_approved": True,
             "seed": job.get("seed"),
@@ -438,7 +489,8 @@ class OutputAPI:
             "seed": job.get("seed"),
             "camera_motion": job.get("camera_motion"),
             "generation_parameters": job.get("generation_parameters"),
-            "prompt_hash": (prompt or {}).get("prompt_hash"),
+            "prompt_hash": prompt_hash,
+            "prompt_content_status": prompt_content_status,
             "runtime_info": runtime_info,
             "provenance": provenance,
             "execution_trace": dict(job.get("execution_trace") or {}),
@@ -448,6 +500,60 @@ class OutputAPI:
             json.dumps(generation_report, indent=2, ensure_ascii=False),
             encoding="utf-8")
         return self.manifest(project_id, job)
+
+    def reconcile_prompt_provenance(self, project_id: str,
+                                    job: Dict[str, Any]) -> bool:
+        """Repair a Job package that captured mutable Study Prompt state.
+
+        A legacy Job without a Prompt snapshot may retain its persisted hash,
+        but must not inherit the current Study's Prompt text during recovery.
+        This updates metadata only and never touches the video bytes.
+        """
+        package = self.store.job_package_dir(project_id, str(job.get("id") or ""))
+        prompt_path = package / "prompt" / "prompt.json"
+        video_path = package / "output" / "video.mp4"
+        if not prompt_path.is_file() or not video_path.is_file():
+            return False
+        snapshot = job.get("prompt_snapshot")
+        has_snapshot = isinstance(snapshot, dict) and bool(snapshot)
+        prompt_snapshot = snapshot if has_snapshot else {}
+        expected_hash = (str(prompt_snapshot.get("prompt_hash") or "")
+                         or str(job.get("prompt_hash") or "") or None)
+        expected_text = prompt_snapshot.get("prompt") if has_snapshot else None
+        current = self.store.load_json(prompt_path, {}) or {}
+        if (current.get("prompt_hash") == expected_hash
+                and current.get("prompt") == expected_text):
+            return False
+
+        content_status = (
+            "PERSISTED" if expected_text else
+            "HASH_ONLY_LEGACY" if expected_hash else "UNAVAILABLE_LEGACY")
+        repaired = {
+            **prompt_snapshot,
+            "study_id": project_id,
+            "workflow_id": job.get("workflow"),
+            "camera_motion": job.get("camera_motion"),
+            "generation_parameters": dict(job.get("generation_parameters") or {}),
+            "prompt_hash": expected_hash,
+            "prompt": expected_text,
+            "prompt_content_status": content_status,
+            "execution_trace": dict(job.get("execution_trace") or {}),
+        }
+        self.store.save_json(prompt_path, repaired)
+        for relative in ("report/provenance.json", "report/generation_report.json",
+                         "report/report.json"):
+            path = package / relative
+            record = self.store.load_json(path)
+            if not isinstance(record, dict):
+                continue
+            record["prompt_hash"] = expected_hash
+            record["prompt_content_status"] = content_status
+            provenance = record.get("provenance")
+            if isinstance(provenance, dict):
+                provenance["prompt_hash"] = expected_hash
+                provenance["prompt_content_status"] = content_status
+            self.store.save_json(path, record)
+        return True
 
     def copy_to_study_output(self, project_id: str, job: Dict[str, Any],
                              runtime_output_path: str | Path) -> Path:

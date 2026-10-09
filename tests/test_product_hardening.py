@@ -131,6 +131,12 @@ class TestProductHardening(unittest.TestCase):
         self.assertIn('id="restart-comfyui-btn"', setup_html)
         self.assertIn("/api/system/restart-comfyui", setup_js)
         self.assertIn("/api/system/restart-comfyui", engine_js)
+        self.assertIn("/api/system/repair-model-paths", setup_js)
+        self.assertIn("showNotice('模型路径配置已重新生成；不会下载或移动共享模型。", setup_js)
+        self.assertNotIn("showErr(`模型路径配置已生成", setup_js)
+        output_js = (root / "apps" / "architect_video_studio" / "frontend" / "js" / "output.js").read_text(encoding="utf-8")
+        self.assertIn("该历史任务缺少创建交付副本所需的运行身份记录", output_js)
+        self.assertIn("state.error_code === 'DELIVERY_RUNTIME_IDENTITY_INCOMPLETE'", output_js)
 
     def test_advanced_comfyui_uses_current_studio_workflow_handoff(self):
         root = Path(__file__).resolve().parent.parent

@@ -291,7 +291,8 @@ class JobAPI:
             "packaging_status": str(pipeline.get("packaging_status") or "NOT_STARTED"),
             "detail": {k: v for k, v in (detail or {}).items()
                        if k in {"history_status", "output_count", "media_bytes",
-                                "media_sha256", "probe_status", "package_built"}},
+                                "media_sha256", "probe_status", "package_built",
+                                "http_status", "range_request"}},
         }
         try:
             self.store.append_job_result_event(project_id, job_id, record)
@@ -321,6 +322,8 @@ class JobAPI:
         package_media = self.output_api._package_video_path(project_id, job)
         if package_media is None:
             return job
+
+        self.output_api.reconcile_prompt_provenance(project_id, job)
 
         job_id = str(job.get("id") or "")
         pipeline = dict(job.get("result_pipeline") or {})
@@ -1724,38 +1727,18 @@ class JobAPI:
         if job.get("state") == "COMPLETED":
             # Terminal owner state wins over late history/observer callbacks.
             if self.output_api._job_media_path(project_id, job) is not None:
+                self.output_api.reconcile_prompt_provenance(project_id, job)
                 return
         if (is_job_terminal(job)
                 and not (allow_failed_recovery
                          and job.get("state") in ("FAILED", "GPU_FAILED", "COMPLETED"))):
             return
         project = self.store.load_project(project_id)
-        refs = self.store.load_references(project_id)
-        ref_snapshots = list(job.get("reference_assets_snapshot") or [])
-        if ref_snapshots:
-            current_refs = []
-            for binding in ref_snapshots:
-                item = refs.get(binding.get("asset_id"))
-                if item:
-                    current_refs.append({**item, "state": binding.get("approval_state"),
-                                         "role": binding.get("role")})
-        else:
-            current = refs.get(project.get("current_reference_asset_id"))
-            current_refs = [current] if current else []
-        prompt = job.get("prompt_snapshot") or self.store.load_prompt(project_id) or {}
-        guide_bindings = self._restore_guide_bindings(project_id, job)
-        guide_prompt_metadata = prompt.get("guide_prompt_compilation")
-        persisted_guide_prompt = None
-        if isinstance(guide_prompt_metadata, dict):
-            execution_prompt = prompt.get("execution_prompt")
-            if isinstance(execution_prompt, str):
-                persisted_guide_prompt = {
-                    **guide_prompt_metadata, "prompt": execution_prompt,
-                }
-        request = self._build_request(
-            project_id, project, prompt, current_refs,
-            dict(job.get("generation_parameters") or {}), job.get("camera_motion"),
-            guide_bindings, guide_prompt=persisted_guide_prompt)
+        # Result reconciliation packages an already-completed execution; it
+        # must not reconstruct a new generation request from the current Study.
+        # Legacy Job snapshots may predate fields such as frame_count and
+        # resolved_duration_seconds, and current references/Prompt state may
+        # legitimately have changed since the original submission.
         runtime_adapter = self._adapter_for_job(job)
         if runtime_adapter is None:
             raise RuntimeError("persisted runtime target is no longer configured")
@@ -1841,6 +1824,9 @@ class JobAPI:
                     "collected media came from a different runtime output root")
         pipeline["expected_output_identity"] = expected
         runtime_info = output.get("runtime_info") or {}
+        identity_evidence = str(runtime_info.get("identity_evidence") or "")
+        if identity_evidence:
+            pipeline["output_identity_evidence"] = identity_evidence
         observed_output = runtime_info.get("observed_output") or {}
         pipeline["observed_output_identity"] = {
             "prompt_id": prompt_id,
@@ -1854,6 +1840,8 @@ class JobAPI:
             "size": observed_output.get("size"),
             "format": str(observed_output.get("format") or "")[:64],
         }
+        if identity_evidence:
+            pipeline["observed_output_identity"]["evidence_source"] = identity_evidence
         pipeline["current_stage"] = "OUTPUT_DISCOVERY"
         pipeline["status"] = "PASS"
         job["result_pipeline"] = pipeline
@@ -1877,7 +1865,7 @@ class JobAPI:
                     if Path(runtime_output).is_file() else None})
         self._record_result_event(project_id, job_id, "PACKAGING", "STARTED")
         try:
-            self.output_api.build_real_output_package(project_id, job, output, request)
+            self.output_api.build_real_output_package(project_id, job, output, None)
         except Exception as exc:
             self._record_result_event(
                 project_id, job_id, "PACKAGING", "FAILED", error=exc,
@@ -1996,6 +1984,117 @@ class JobAPI:
             # the existing OUTPUT_ERROR projection explains the missing file.
             return False
 
+    def _persisted_legacy_runtime_output(
+            self, project_id: str, job: Dict[str, Any], *,
+            runtime_adapter: Any, expected: Dict[str, Any],
+            prompt_id: str, workflow_sha: str, output_root_fingerprint: str,
+            ) -> Optional[Dict[str, Any]]:
+        """Build recovery evidence from a legacy Job's own saved output paths.
+
+        This fallback is intentionally limited to pre-runtime-identity
+        production Jobs. It never searches a directory: the source path must
+        be persisted on this Job, reside under the selected production
+        ComfyUI output root, match the frozen SaveVideo prefix, and hash-match
+        the Job's previously copied, Job-named delivery artifact. Experimental
+        Jobs and newer Jobs with runtime identity continue through the stricter
+        observed-output/history reconciliation path.
+        """
+        trace = job.get("execution_trace") or {}
+        runtime_identity = trace.get("runtime_identity")
+        if (job.get("runtime") != "native"
+                or str(job.get("runtime_target") or "production") != "production"
+                or (isinstance(runtime_identity, dict) and runtime_identity)):
+            return None
+
+        client = getattr(runtime_adapter, "client", None)
+        if client is None:
+            return None
+        try:
+            if urlsplit(str(getattr(client, "base_url", ""))).port != 8189:
+                return None
+        except ValueError:
+            return None
+        root_value = str(getattr(client, "output_root", "") or "").strip()
+        if not root_value or not output_root_fingerprint:
+            return None
+
+        source_value = str(job.get("runtime_output_path") or "").strip()
+        source_output_value = str(job.get("source_output_path") or "").strip()
+        final_value = str(job.get("final_output_path") or "").strip()
+        output_value = str(job.get("output_path") or "").strip()
+        if not all((source_value, source_output_value, final_value, output_value)):
+            return None
+
+        try:
+            root = Path(root_value).expanduser().resolve()
+            source = Path(source_value).expanduser().resolve()
+            source_output = Path(source_output_value).expanduser().resolve()
+            final = Path(final_value).expanduser().resolve()
+            output = Path(output_value).expanduser().resolve()
+            relative = source.relative_to(root)
+            expected_prefix = str(expected.get("filename_prefix") or "")
+            prefix_path = Path(expected_prefix.replace("\\", "/"))
+            expected_folder = ("" if str(prefix_path.parent) == "."
+                               else str(prefix_path.parent).replace("\\", "/"))
+            source_folder = ("" if str(relative.parent) == "."
+                             else relative.parent.as_posix())
+            filename = source.name
+            workflow = str(job.get("workflow") or "")
+            job_id = str(job.get("id") or "")
+            expected_delivery_name = f"{workflow}_{job_id}.mp4"
+            if (source_output != source or output != final or source == final
+                    or source.suffix.lower() != ".mp4"
+                    or not source.is_file() or source.stat().st_size <= 0
+                    or source_folder != expected_folder
+                    or not filename.startswith(prefix_path.name)
+                    or not job_id or job_id not in prefix_path.name
+                    or not workflow or Path(workflow).name != workflow
+                    or final.name != expected_delivery_name
+                    or not final.is_file() or final.stat().st_size != source.stat().st_size):
+                return None
+            from runtime.a8_delivery import sha256_file
+            source_sha = sha256_file(source)
+            if not source_sha or source_sha != sha256_file(final):
+                return None
+
+            # Never replace a different file at the current supported output
+            # location. An identical prior copy is safe to reconcile.
+            project = self.store.load_project(project_id)
+            destination_root = self.store.output_directory(project).resolve()
+            destination = (destination_root / expected_delivery_name).resolve()
+            destination.relative_to(destination_root)
+            if destination.exists() and (
+                    not destination.is_file()
+                    or sha256_file(destination) != source_sha):
+                return None
+
+            relative_parent = relative.parent.as_posix()
+            return {
+                "job_id": f"recovered-{job_id}",
+                "video_path": str(source),
+                "workflow_id": workflow,
+                "metadata": {},
+                "runtime_info": {
+                    "prompt_id": prompt_id,
+                    "studio_job_id": job_id,
+                    "workflow_sha256": workflow_sha,
+                    "output_root_fingerprint": output_root_fingerprint,
+                    "identity_evidence": "JOB_PERSISTED_RUNTIME_OUTPUT",
+                    "observed_output": {
+                        "node_id": str(expected.get("node_id") or ""),
+                        "filename_prefix": expected_prefix,
+                        "filename": filename,
+                        "subfolder": "" if relative_parent == "." else relative_parent,
+                        "size": source.stat().st_size,
+                        "format": "video/h264-mp4",
+                    },
+                },
+            }
+        except ResultIdentityError:
+            raise
+        except (OSError, TypeError, ValueError):
+            return None
+
     def recover_result(self, job_id: str) -> Dict[str, Any]:
         """Reconcile one already-submitted native Job without a new /prompt."""
         lock = self._recovery_locks.setdefault(job_id, threading.Lock())
@@ -2106,6 +2205,17 @@ class JobAPI:
                             },
                         },
                     }
+
+            if output is None:
+                output = self._persisted_legacy_runtime_output(
+                    project_id, job, runtime_adapter=runtime_adapter,
+                    expected=expected, prompt_id=prompt_id,
+                    workflow_sha=workflow_sha,
+                    output_root_fingerprint=current_root)
+                if output is not None:
+                    pipeline["recovery_source"] = "JOB_PERSISTED_RUNTIME_OUTPUT"
+                    job["result_pipeline"] = pipeline
+                    self._save_job(project_id, job)
 
             try:
                 if output is None:

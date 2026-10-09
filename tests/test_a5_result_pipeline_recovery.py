@@ -8,6 +8,7 @@ import sys
 import socketserver
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 import urllib.request
@@ -475,6 +476,31 @@ class TestResultPipelineContract(unittest.TestCase):
 
 
 class TestResultRecovery(unittest.TestCase):
+    @staticmethod
+    def _prepare_legacy_completed_job(harness):
+        project_id, job = harness.store.find_job(harness.job_id)
+        job["state"] = "COMPLETED"
+        job["lifecycle_state"] = "SUCCEEDED"
+        job["runtime_target"] = "production"
+        job["runtime_output_path"] = str(harness.media)
+        job["source_output_path"] = str(harness.media)
+        job["execution_trace"] = {"delivery": {"status": "NOT_PRODUCED"}}
+        # Historical Jobs predate the current frame-lattice snapshot fields.
+        job["generation_parameters"].pop("frame_count", None)
+        job["generation_parameters"].pop("resolved_duration_seconds", None)
+        job["guide_bindings_snapshot"] = []
+        job["result_pipeline"] = {}
+        old_delivery_root = harness.root / "legacy-delivery"
+        old_delivery_root.mkdir()
+        old_delivery = old_delivery_root / f"{job['workflow']}_{job['id']}.mp4"
+        old_delivery.write_bytes(harness.media.read_bytes())
+        job["final_output_path"] = str(old_delivery)
+        job["output_path"] = str(old_delivery)
+        harness.store.save_jobs(project_id, {harness.job_id: job})
+        harness.jobs.runtime_adapter = harness.adapter
+        harness.client.base_url = "http://127.0.0.1:8189"
+        return project_id, old_delivery
+
     def test_legacy_shared_package_from_another_job_is_never_associated(self):
         with RecoveryHarness() as harness:
             legacy = harness.store.package_dir(harness.project_id)
@@ -534,6 +560,165 @@ class TestResultRecovery(unittest.TestCase):
                 thread.join(timeout=2)
         finally:
             harness.close()
+
+    def test_legacy_job_recovers_from_its_persisted_runtime_output_without_history(self):
+        with RecoveryHarness(runtime_port=8189) as harness:
+            project_id, old_delivery = self._prepare_legacy_completed_job(harness)
+            recovered = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(recovered["state"], "COMPLETED")
+            self.assertEqual(recovered["result_pipeline"]["packaging_status"], "PASS")
+            self.assertEqual(recovered["result_pipeline"]["recovery_source"],
+                             "JOB_PERSISTED_RUNTIME_OUTPUT")
+            _, persisted = harness.store.find_job(harness.job_id)
+            self.assertNotIn("frame_count", persisted["generation_parameters"])
+            self.assertNotIn("resolved_duration_seconds",
+                             persisted["generation_parameters"])
+            self.assertEqual(recovered["result_pipeline"]["output_identity_evidence"],
+                             "JOB_PERSISTED_RUNTIME_OUTPUT")
+            self.assertEqual(recovered["result_pipeline"][
+                "observed_output_identity"]["evidence_source"],
+                "JOB_PERSISTED_RUNTIME_OUTPUT")
+            self.assertTrue(harness.output_api.media_path(harness.job_id).is_file())
+            self.assertEqual(harness.output_api.get_result(harness.job_id)["job_id"],
+                             harness.job_id)
+            self.assertEqual(harness.history_calls, 0)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+
+            harness.jobs._record_result_event(
+                project_id, harness.job_id, "HTTP_SERVING", "FAILED",
+                error_code="HTTP_MEDIA_SERVING_FAILURE")
+
+            server = StudioServer(
+                ("127.0.0.1", 0), harness.store,
+                {"job": harness.jobs, "output": harness.output_api})
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = (f"http://127.0.0.1:{server.server_address[1]}"
+                       f"/api/jobs/{harness.job_id}/media")
+                request = urllib.request.Request(url, headers={"Range": "bytes=0-0"})
+                with urllib.request.urlopen(request, timeout=3) as response:
+                    self.assertEqual(response.status, 206)
+                    self.assertEqual(len(response.read()), 1)
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    _, served_job = harness.store.find_job(harness.job_id)
+                    http_events = [item for item in served_job["result_pipeline"]["events"]
+                                   if item.get("stage") == "HTTP_SERVING"]
+                    if http_events and http_events[-1]["status"] == "PASS":
+                        break
+                    time.sleep(0.01)
+                self.assertTrue(http_events)
+                self.assertEqual(http_events[-1]["status"], "PASS", http_events)
+                self.assertEqual(http_events[-1]["detail"]["http_status"], 206)
+                event_count = len(http_events)
+                with urllib.request.urlopen(url, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+                    response.read(1)
+                _, served_again = harness.store.find_job(harness.job_id)
+                self.assertEqual(sum(
+                    item.get("stage") == "HTTP_SERVING"
+                    for item in served_again["result_pipeline"]["events"]),
+                    event_count)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+            package_video = (harness.store.job_package_dir(project_id, harness.job_id)
+                             / "output" / "video.mp4")
+            original_hash = hashlib.sha256(package_video.read_bytes()).hexdigest()
+            package_pass_count = sum(
+                event["stage"] == "PACKAGING" and event["status"] == "PASS"
+                for event in harness.store.load_job_result_events(
+                    project_id, harness.job_id))
+            again = harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(again["id"], recovered["id"])
+            self.assertEqual(hashlib.sha256(package_video.read_bytes()).hexdigest(),
+                             original_hash)
+            self.assertEqual(sum(
+                event["stage"] == "PACKAGING" and event["status"] == "PASS"
+                for event in harness.store.load_job_result_events(
+                    project_id, harness.job_id)), package_pass_count)
+            self.assertTrue(old_delivery.is_file())
+            self.assertEqual(harness.history_calls, 0)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+
+    def test_legacy_persisted_output_rejects_mismatched_delivery_copy(self):
+        with RecoveryHarness(history_override=lambda _history: {},
+                             runtime_port=8189) as harness:
+            self._prepare_legacy_completed_job(harness)
+            project_id, job = harness.store.find_job(harness.job_id)
+            Path(job["final_output_path"]).write_bytes(b"different-media")
+            with self.assertRaises(ResultIdentityError) as raised:
+                harness.jobs.recover_result(harness.job_id)
+            self.assertEqual(raised.exception.code,
+                             "COMFY_HISTORY_NOT_TERMINAL_SUCCESS")
+            _, after = harness.store.find_job(harness.job_id)
+            self.assertNotEqual(after.get("result_pipeline", {}).get(
+                "output_identity_evidence"), "JOB_PERSISTED_RUNTIME_OUTPUT")
+            self.assertIsNone(harness.output_api._job_media_path(project_id, after))
+            self.assertEqual(harness.history_calls, 1)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
+
+    def test_legacy_recovery_never_packages_mutable_current_study_prompt(self):
+        with RecoveryHarness(runtime_port=8189) as harness:
+            project_id, _ = self._prepare_legacy_completed_job(harness)
+            current_prompt = harness.store.load_prompt(project_id) or {}
+            current_prompt.update({
+                "prompt": "mutable synthetic Study Prompt",
+                "prompt_hash": "mutable-current-prompt-hash",
+            })
+            harness.store.save_prompt(project_id, current_prompt)
+            _, job = harness.store.find_job(harness.job_id)
+            job.pop("prompt_snapshot", None)
+            job["prompt_hash"] = "persisted-job-prompt-hash"
+            harness.store.save_jobs(project_id, {harness.job_id: job})
+
+            first = harness.jobs.recover_result(harness.job_id)
+            package = harness.store.job_package_dir(project_id, harness.job_id)
+            prompt_path = package / "prompt" / "prompt.json"
+            prompt_record = harness.store.load_json(prompt_path)
+            self.assertEqual(prompt_record["prompt_hash"],
+                             "persisted-job-prompt-hash")
+            self.assertIsNone(prompt_record["prompt"])
+            self.assertEqual(prompt_record["prompt_content_status"],
+                             "HASH_ONLY_LEGACY")
+
+            # Simulate a package persisted by the old builder, which copied
+            # mutable current Study Prompt content onto a legacy Job.
+            prompt_record["prompt_hash"] = "mutable-current-prompt-hash"
+            prompt_record["prompt"] = "mutable synthetic Study Prompt"
+            harness.store.save_json(prompt_path, prompt_record)
+            for relative in ("report/provenance.json",
+                             "report/generation_report.json"):
+                path = package / relative
+                record = harness.store.load_json(path)
+                record["prompt_hash"] = "mutable-current-prompt-hash"
+                harness.store.save_json(path, record)
+
+            second = harness.jobs.recover_result(harness.job_id)
+            prompt_record = harness.store.load_json(prompt_path)
+            self.assertEqual(prompt_record["prompt_hash"],
+                             "persisted-job-prompt-hash")
+            self.assertIsNone(prompt_record["prompt"])
+            provenance = harness.store.load_json(
+                package / "report" / "provenance.json")
+            generation_report = harness.store.load_json(
+                package / "report" / "generation_report.json")
+            self.assertEqual(provenance["prompt_hash"],
+                             "persisted-job-prompt-hash")
+            self.assertEqual(generation_report["prompt_hash"],
+                             "persisted-job-prompt-hash")
+            self.assertEqual(second["id"], first["id"])
+            self.assertEqual(harness.store.load_prompt(project_id)["prompt"],
+                             "mutable synthetic Study Prompt")
+            self.assertEqual(harness.history_calls, 0)
+            self.assertEqual(harness.submit_calls, 0)
+            self.assertEqual(harness.adapter.generate_calls, 0)
 
     def test_completed_package_repairs_stale_packaging_snapshot_idempotently(self):
         with RecoveryHarness() as harness:

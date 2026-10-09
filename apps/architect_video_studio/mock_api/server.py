@@ -101,7 +101,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             self.end_headers()
             self.wfile.write(body)
 
-        def _send_media(self, path: Path) -> None:
+        def _send_media(self, path: Path) -> int:
             """Stream one already-authorized Job MP4, with byte ranges."""
             size = path.stat().st_size
             start, end = 0, size - 1
@@ -113,7 +113,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                     self.send_header("Content-Range", f"bytes */{size}")
                     self.end_headers()
-                    return
+                    return int(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                 if match.group(1):
                     start = int(match.group(1))
                     if match.group(2):
@@ -128,7 +128,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                     self.send_header("Content-Range", f"bytes */{size}")
                     self.end_headers()
-                    return
+                    return int(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                 end = min(end, size - 1)
                 status = HTTPStatus.PARTIAL_CONTENT
             length = end - start + 1
@@ -149,6 +149,7 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                         break
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
+            return int(status)
 
         def _read_json(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
@@ -494,7 +495,26 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
             if m and method == "GET":
                 job_id = m.group(1)
                 try:
-                    self._send_media(apis["output"].media_path(job_id))
+                    status = self._send_media(apis["output"].media_path(job_id))
+                    job_api = apis.get("job")
+                    if status < 400 and job_api is not None and hasattr(
+                            job_api, "_record_result_event"):
+                        try:
+                            project_id, job = store.find_job(job_id)
+                            pipeline = job.get("result_pipeline") or {}
+                            latest_http = next((item for item in reversed(
+                                pipeline.get("events") or [])
+                                if item.get("stage") == "HTTP_SERVING"), None)
+                            if (job.get("runtime") == "native"
+                                    and (latest_http or {}).get("status") != "PASS"):
+                                job_api._record_result_event(
+                                    project_id, job_id, "HTTP_SERVING", "PASS",
+                                    detail={
+                                        "http_status": status,
+                                        "range_request": bool(self.headers.get("Range")),
+                                    })
+                        except Exception:
+                            pass
                 except Exception as exc:
                     job_api = apis.get("job")
                     if job_api is not None and hasattr(job_api, "_record_result_event"):

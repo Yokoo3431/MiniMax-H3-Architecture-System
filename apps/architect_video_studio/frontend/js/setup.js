@@ -496,8 +496,8 @@ document.getElementById('repair-model-paths-btn').addEventListener('click', asyn
   const button = document.getElementById('repair-model-paths-btn');
   button.disabled = true;
   try {
-    const result = await post('/api/system/repair-model-paths', {});
-    showErr(`模型路径配置已生成：${result.config_path}。请重启托管 ComfyUI 后重新检查环境。`);
+    await post('/api/system/repair-model-paths', {});
+    showNotice('模型路径配置已重新生成；不会下载或移动共享模型。重启托管 ComfyUI 后可重新检查环境。');
     await loadEnv();
   } catch (e) { showErr(e.message); }
   finally { button.disabled = false; }

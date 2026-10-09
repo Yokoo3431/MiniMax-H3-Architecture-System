@@ -249,6 +249,31 @@ class A8DeliveryFixture(unittest.TestCase):
                 package_root=self.store.job_package_dir(self.project["id"], self.job_id),
                 target_resolution="ULTRA_1080", delivery_fps=48)
 
+    def test_legacy_job_without_derivatives_lists_empty_without_runtime_identity(self):
+        legacy = dict(self.job)
+        legacy["execution_trace"] = {"workflow_sha256": self.workflow_sha}
+        self.store.save_jobs(self.project["id"], {self.job_id: legacy})
+
+        result = self.output.list_deliveries(self.job_id)
+
+        self.assertFalse(result["available"])
+        self.assertEqual(result["error_code"], "DELIVERY_RUNTIME_IDENTITY_INCOMPLETE")
+        self.assertEqual(result["items"], [])
+
+    def test_existing_derivative_still_requires_strong_runtime_identity(self):
+        created = self._create("ULTRA_1080", 48)
+        legacy = dict(self.store.load_jobs(self.project["id"])[self.job_id])
+        legacy["execution_trace"] = dict(legacy["execution_trace"])
+        legacy["execution_trace"]["runtime_identity"] = {
+            "runtime_role": "production",
+        }
+        self.store.save_jobs(self.project["id"], {self.job_id: legacy})
+
+        with self.assertRaisesRegex(
+                DeliveryError, "DELIVERY_RUNTIME_IDENTITY_INCOMPLETE"):
+            self.output.list_deliveries(self.job_id)
+        self.assertTrue(created["delivery_id"].startswith("delivery-"))
+
     def test_delivery_media_requires_current_strong_identity_and_range_route(self):
         result = self._create("ULTRA_1080", 48)
         package = self.store.job_package_dir(self.project["id"], self.job_id)
