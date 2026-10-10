@@ -163,7 +163,7 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertNotIn("row.addEventListener('click', open)", jobs)
         self.assertIn("if (initialJobId && !initialDetailOpened)", jobs)
         self.assertNotIn('onclick="event.stopPropagation()"', jobs)
-        self.assertIn("showProjectHint(projects.length", jobs)
+        self.assertIn("updateProjectHint()", jobs)
         self.assertIn("还没有 Study，请先在 Home 创建一个 Study。", jobs)
         self.assertNotIn("暂无可用 Study", jobs)
         workspace = self.read("js/workspace.js")

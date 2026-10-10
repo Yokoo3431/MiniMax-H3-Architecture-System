@@ -18,6 +18,18 @@ function showProjectHint(msg) {
   selectionHintEl.textContent = msg;
   selectionHintEl.hidden = !msg;
 }
+function updateProjectHint() {
+  if (!knownProjects.length) {
+    showProjectHint('还没有 Study，请先在 Home 创建一个 Study。');
+    return;
+  }
+  const selected = knownProjects.find((project) => project.id === activeProjectId);
+  if (selected) {
+    showProjectHint(`当前范围：${selected.name}。搜索仅限此项目；如需查找其他项目的历史任务，请切换为“全部项目”。`);
+    return;
+  }
+  showProjectHint('当前范围：全部项目。可按 Job ID、工作流、状态、运行环境和创建日期定位历史记录。');
+}
 function jobIsTerminal(job) { return !!(job && job.is_terminal); }
 function jobIsActive(job) { return !!(job && job.is_active); }
 const RESULT_RECOVERY_FAILURE_STAGES = new Set([
@@ -135,12 +147,11 @@ async function loadProjects() {
   activeProjectId = selected;
   sel.value = selected;
   if (initialJobId) document.getElementById('job-search').value = initialJobId;
-  showProjectHint(projects.length
-    ? '默认跨项目显示最近任务；可按 Job ID、工作流、状态、运行环境和创建日期定位历史记录。'
-    : '还没有 Study，请先在 Home 创建一个 Study。');
+  updateProjectHint();
   await searchJobs({reset: true});
   sel.addEventListener('change', () => {
     activeProjectId = sel.value || '';
+    updateProjectHint();
     searchJobs({reset: true});
   });
 }
@@ -149,6 +160,7 @@ async function loadJobs(pid) {
   if (typeof pid === 'string') {
     activeProjectId = pid;
     document.getElementById('project-select').value = pid;
+    updateProjectHint();
   }
   return searchJobs({reset: true});
 }

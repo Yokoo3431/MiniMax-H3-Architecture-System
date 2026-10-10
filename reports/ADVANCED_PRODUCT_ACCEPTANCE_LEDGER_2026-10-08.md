@@ -117,14 +117,13 @@ would require separate privacy, account, and cost approval.
   final workflow SHA, or runtime identity. The UI correctly presents it as
   unconfirmed and does not automatically resubmit it. Its historical state was
   not changed, and no ambiguous Comfy output was attached.
-- The running 8788 backend is behind the tracked source only for the global
-  `/api/jobs/search` route and its read-only search method. The live endpoint
-  currently returns 404, while the frontend's per-Project fallback still
-  returns all 24 Jobs and exact-ID filtering works. The source route has focused
-  tests; the running installation has not yet been reloaded, so this remains a
-  deployment-alignment item rather than a user-visible Jobs-list failure.
-- No `/prompt`, GPU inference, external media API, model download, runtime
-  restart, or production configuration change occurred.
+- At the time of this audit, the running 8788 backend lacked the global
+  `/api/jobs/search` route; the frontend's per-Project fallback still returned
+  all 24 Jobs and exact-ID filtering worked. The deployment was subsequently
+  aligned with the tracked source; see the dated follow-up below.
+- During the initial read-only audit, no `/prompt`, GPU inference, external
+  media API, model download, runtime restart, or production configuration
+  change occurred.
 - Production 8189 stayed at 0.33.1 with its queue idle; experimental 8190
   remained offline.
 - A9 remains a separate Sequence/Assembly result, not a Job-list row. The
@@ -138,3 +137,33 @@ would require separate privacy, account, and cost approval.
   the app-managed Results location remains the Studio playback source.
 - No progress value or acceptance classification was increased by this
   supplemental check.
+
+### Live deployment follow-up — 2026-10-10
+
+- The three scoped files (`mock_api/server.py`, `mock_api/job_api.py`, and
+  `frontend/workspace.html`) were copied into the existing RC TEST installation
+  after making a local rollback copy. No software, models, Job data, Golden
+  workflows, or media were downloaded or replaced.
+- The existing managed launcher restarted the Studio/production Comfy pair.
+  Studio health passed, production Comfy remained 0.33.1 with an idle queue,
+  and experimental 8190 remained offline. The deployed file fingerprints
+  matched the source files.
+- The live global Jobs endpoint now returns the exact requested Job, all 24
+  records, and the retained `SUBMISSION_LOST` record. This corrects the earlier
+  deployment-drift observation; the historical lost submission remains
+  unmodified and is not retried or associated with media.
+- A cross-project UI check showed why a historical ID appeared absent: opening
+  Jobs from Test 4 preselects that project, so an A6 ID correctly returns no
+  match in that scope; selecting “全部项目” shows the A6 Job. The page's prior
+  hint overstated cross-project scope and its button label implied a global
+  search despite the active project filter. The source now displays the active
+  search scope and labels the action “按当前范围搜索”.
+- The two Jobs UI files were backed up and synchronized to the same existing
+  installation. After reload, the scope hint correctly names Test 4; switching
+  to “全部项目” lists all 24 Jobs, and exact search finds the A6 Job. No Job,
+  Result, or media record was changed by this check.
+- The A9 Assembly media route still returns HTTP 206 for a byte-range request.
+  No `/prompt` call or GPU execution occurred during this deployment check.
+- Final regression after the Jobs scope clarification: 1102 tests passed, 15
+  skipped, 0 failed. Focused Jobs/UX tests passed (27), JavaScript syntax and
+  `git diff --check` passed.
