@@ -10,7 +10,7 @@ from typing import Any, Mapping
 from runtime.a4_profiles import H3_NATIVE_FPS
 from runtime.director_timeline import (
     CAMERA_INTENT_LABELS, DirectorTimelineError, compile_shot,
-    normalize_sequence, new_shot, stable_sha256,
+    normalize_sequence, new_shot, resolve_shot_timing, stable_sha256,
 )
 from runtime.multiframe_guides import (
     NATIVE_H3_FPS, compile_timeline_guide_prompt, resolve_guide_bindings,
@@ -28,7 +28,7 @@ class DirectorAPI:
         sequence = self.store.load_json(
             self.store.project_dir(project_id) / "director.json")
         return {
-            "sequence": sequence,
+            "sequence": self._with_timing(project_id, sequence),
             "camera_intents": [
                 {"id": key, "label": label,
                  "semantics": "PROMPT_CAMERA_INTENT"}
@@ -37,13 +37,36 @@ class DirectorAPI:
             "execution_model": "ONE_H3_JOB_PER_SHOT; ASSEMBLY_DEFERRED_TO_A9",
         }
 
+    def _with_timing(self, project_id: str,
+                     sequence: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(sequence, Mapping):
+            return None
+        result = copy.deepcopy(dict(sequence))
+        prompt = self.store.load_prompt(project_id) or {}
+        workflow_id = str(prompt.get("workflow") or "")
+        for shot in result.get("shots") or []:
+            if not isinstance(shot, dict):
+                continue
+            shot.pop("timeline_resolution", None)
+            quality = (shot.get("generation_settings") or {}).get(
+                "quality", "NATIVE_HIGH")
+            try:
+                shot["timeline_resolution"] = resolve_shot_timing(
+                    shot.get("duration_seconds"), quality, workflow_id)
+            except DirectorTimelineError:
+                # Invalid/incompatible drafts remain editable and are diagnosed
+                # by compile/preflight; the stored sequence is never mutated.
+                shot["timeline_resolution"] = {"available": False}
+        return result
+
     def create(self, project_id: str, title: str = "建筑分镜") -> dict[str, Any]:
         with self._lock:
             self.store.load_project(project_id)
             current = self.store.load_json(
                 self.store.project_dir(project_id) / "director.json")
             if current:
-                return {"sequence": current, "created": False}
+                return {"sequence": self._with_timing(project_id, current),
+                        "created": False}
             project = self.store.load_project(project_id)
             shot = new_shot(ordinal=0)
             prompt = self.store.load_prompt(project_id) or {}
@@ -71,7 +94,8 @@ class DirectorAPI:
             }, project_id)
             sequence["revision"] = 1
             self._save(project_id, sequence)
-            return {"sequence": sequence, "created": True}
+            return {"sequence": self._with_timing(project_id, sequence),
+                    "created": True}
 
     def save(self, project_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -107,7 +131,7 @@ class DirectorAPI:
                         raise DirectorTimelineError("DIRECTOR_EXECUTED_SHOT_IMMUTABLE")
             normalized["revision"] = int(current.get("revision", 0)) + 1
             self._save(project_id, normalized)
-            return {"sequence": normalized}
+            return {"sequence": self._with_timing(project_id, normalized)}
 
     def compile(self, project_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         project = self.store.load_project(project_id)

@@ -24,6 +24,7 @@ from apps.architect_video_studio.mock_api.server import make_server  # noqa: E40
 from apps.architect_video_studio.mock_api.store import StudioStore  # noqa: E402
 from runtime.director_timeline import (  # noqa: E402
     DirectorTimelineError, compile_shot, new_shot, normalize_sequence,
+    resolve_shot_timing,
 )
 
 
@@ -78,6 +79,18 @@ class DirectorFrontendRegressionTests(unittest.TestCase):
         first_reference = shot_renderer.index("guideCount")
         self.assertEqual(first_reference, declaration + len("const "))
 
+    def test_director_timing_display_uses_server_resolution_not_a_client_formula(self):
+        source = (ROOT / "apps" / "architect_video_studio" / "frontend" /
+                  "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertNotIn("function resolvedShotFrameCount", source)
+        self.assertIn("shot.timeline_resolution", source)
+        self.assertIn("待服务器预检", source)
+        self.assertIn("function directorTimingIsCurrent(shot)", source)
+        self.assertIn("function refreshDirectorTimingLabels()", source)
+        self.assertIn("input.dataset.field === 'duration_seconds' || input.dataset.field === 'quality'", source)
+        self.assertIn("async function selectVideoType()", source)
+        self.assertIn("function selectQuality()", source)
+
 
 class DirectorTimelineCompilerTests(unittest.TestCase):
     def setUp(self):
@@ -108,6 +121,24 @@ class DirectorTimelineCompilerTests(unittest.TestCase):
         self.assertIn("not geometric camera control", first["compiled_fragment"])
         self.assertEqual(first["provenance"]["reference_bindings"][0]["content_sha256"],
                          self.references["asset-1"]["sha256"])
+
+    def test_timing_preview_matches_the_execution_profile_resolver(self):
+        for duration in (4.0, 4.2, 10.5, 15.0):
+            shot = fixture_shot(
+                duration_seconds=duration,
+                reference_asset_ids=["asset-1"])
+            compiled = compile_shot(
+                self.base_prompt, shot,
+                {"duration": duration, "quality": "NATIVE_HIGH",
+                 "fps": 24, "seed": 42},
+                workflow_id="01_Exterior_Hero", project_id="project-1",
+                references=self.references, guide_frames=[])
+            preview = resolve_shot_timing(
+                duration, "NATIVE_HIGH", "01_Exterior_Hero")
+            self.assertEqual(preview["resolved_frame_count"],
+                             compiled["provenance"]["resolved_frame_count"])
+            self.assertEqual(preview["effective_duration_seconds"],
+                             compiled["provenance"]["effective_duration_seconds"])
 
     def test_camera_change_only_changes_director_compiled_fragment(self):
         before = self.compile()
@@ -217,6 +248,18 @@ class DirectorAPIContractTests(unittest.TestCase):
         self.assertEqual(shot["generation_settings"]["quality"], "PREVIEW")
         self.assertEqual(shot["duration_seconds"], 6.0)
 
+    def test_idempotent_create_returns_fresh_read_only_timing(self):
+        first = self.api.create("project-1")
+        second = self.api.create("project-1")
+        self.assertTrue(first["created"])
+        self.assertFalse(second["created"])
+        self.assertEqual(
+            first["sequence"]["shots"][0]["timeline_resolution"],
+            second["sequence"]["shots"][0]["timeline_resolution"])
+        stored = self.store.load_json(
+            self.store.project_dir("project-1") / "director.json")
+        self.assertNotIn("timeline_resolution", stored["shots"][0])
+
     def test_create_compile_and_retake_preserve_immutable_source_lineage(self):
         created = self.api.create("project-1")
         sequence = created["sequence"]
@@ -245,7 +288,9 @@ class DirectorAPIContractTests(unittest.TestCase):
                 },
             })
         original_contract = copy.deepcopy(sequence["shots"][0])
+        original_contract.pop("timeline_resolution", None)
         original_contract["last_job_id"] = "job-source"
+        sequence["shots"][0].pop("timeline_resolution", None)
         sequence["shots"][0] = original_contract
         sequence["revision"] += 1
         self.store.save_json(self.store.project_dir("project-1") / "director.json", sequence)
@@ -331,6 +376,10 @@ class DirectorHTTPAndJobIntegrationTests(unittest.TestCase):
                 sequence = request_json(director_url, "POST", {"title": "合成验收"})[
                     "sequence"]
                 shot = sequence["shots"][0]
+                self.assertEqual(shot["timeline_resolution"]["resolved_frame_count"], 107)
+                stored_sequence = server.apis["director"].store.load_json(
+                    server.apis["director"].store.project_dir(project_id) / "director.json")
+                self.assertNotIn("timeline_resolution", stored_sequence["shots"][0])
                 shot["action_intent"] = "从海岸上空展示建筑与场地关系。"
                 sequence = request_json(director_url, "PUT", {
                     "expected_revision": sequence["revision"],

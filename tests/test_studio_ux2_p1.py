@@ -372,6 +372,9 @@ class StudioUX2P1Tests(unittest.TestCase):
     def test_local_shoelace_kit_and_icon_contract(self):
         for name in PAGES:
             source = self.read(name)
+            for script in re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)', source):
+                if not re.match(r'^(?:[a-z]+:|//)', script, re.I):
+                    self.assertTrue((FRONTEND / script).is_file(), f"{name}: missing script {script}")
             if name != "workspace.html":
                 self.assertIn('vendor/shoelace/shoelace.js', source, name)
                 self.assertIn('vendor/shoelace/dark.css', source, name)

@@ -180,6 +180,40 @@ def normalize_sequence(sequence: Mapping[str, Any], project_id: str) -> dict[str
     }
 
 
+def resolve_shot_timing(duration_seconds: Any, quality: Any,
+                        workflow_id: str) -> dict[str, Any]:
+    """Return authoritative H3 frame-lattice timing for a Director shot.
+
+    The frontend may display this response, but must not independently
+    reproduce the 17k+5 frame calculation. The same profile resolver is used
+    by ``compile_shot`` immediately before execution.
+    """
+    try:
+        duration = float(duration_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise DirectorTimelineError("DIRECTOR_DURATION_INVALID") from exc
+    profile_id = str(quality or "NATIVE_HIGH")
+    if not workflow_id:
+        raise DirectorTimelineError("DIRECTOR_WORKFLOW_REQUIRED")
+    try:
+        params, profile = resolve_product_parameters(
+            workflow_id,
+            {"duration": duration, "quality": profile_id,
+             "fps": H3_NATIVE_FPS},
+            seed=42)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise DirectorTimelineError("DIRECTOR_TIMING_PROFILE_UNAVAILABLE") from exc
+    return {
+        "available": True,
+        "workflow_id": workflow_id,
+        "quality_profile": profile["quality_profile"],
+        "native_generation_fps": H3_NATIVE_FPS,
+        "requested_duration_seconds": float(params["requested_duration_seconds"]),
+        "resolved_frame_count": int(params["frame_count"]),
+        "effective_duration_seconds": float(params["resolved_duration_seconds"]),
+    }
+
+
 def _string_ids(items: Iterable[Any], error_code: str) -> list[str]:
     if not isinstance(items, (list, tuple)):
         raise DirectorTimelineError(error_code)

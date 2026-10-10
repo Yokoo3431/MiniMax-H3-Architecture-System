@@ -228,11 +228,35 @@ function directorShotById(shotId) {
   return director?.shots?.find((shot) => shot.shot_id === shotId) || null;
 }
 
-function resolvedShotFrameCount(seconds) {
-  const requested = Math.ceil(Number(seconds) * 24 - 1e-9);
-  let frames = requested + ((5 - requested) % 17 + 17) % 17;
-  while (frames / 24 < Number(seconds)) frames += 17;
-  return frames;
+function directorTimingIsCurrent(shot) {
+  const resolution = shot.timeline_resolution || {};
+  const duration = Number(shot.duration_seconds || 4);
+  const quality = shot.generation_settings?.quality || 'NATIVE_HIGH';
+  return resolution.available === true
+    && Number.isFinite(Number(resolution.resolved_frame_count))
+    && Number.isFinite(Number(resolution.effective_duration_seconds))
+    && Math.abs(Number(resolution.requested_duration_seconds) - duration) < 1e-9
+    && resolution.quality_profile === quality
+    && resolution.workflow_id === currentWorkflow();
+}
+
+function refreshDirectorTimingLabels() {
+  let timelineOffset = 0;
+  let priorTimelineResolved = true;
+  document.querySelectorAll('.director-shot').forEach((card) => {
+    const shot = directorShotById(card.dataset.shotId);
+    const label = card.querySelector('.director-shot-heading .muted.small');
+    if (!shot || !label) return;
+    const duration = Number(shot.duration_seconds || 4);
+    const resolved = directorTimingIsCurrent(shot);
+    const resolution = shot.timeline_resolution || {};
+    label.textContent = `${priorTimelineResolved ? '时间线位置' : '预计位置'} ${timelineOffset.toFixed(2)} 秒 · ${resolved
+      ? `有效片长 ${Number(resolution.effective_duration_seconds).toFixed(2)} 秒 · ${Number(resolution.resolved_frame_count)} 帧`
+      : `请求片长 ${duration.toFixed(2)} 秒 · 待服务器预检`}`;
+    timelineOffset += resolved
+      ? Number(resolution.effective_duration_seconds) : duration;
+    if (!resolved) priorTimelineResolved = false;
+  });
 }
 
 function newDirectorShot(title = '新镜头') {
@@ -289,11 +313,15 @@ function renderDirector() {
     ['controlled_drone', '平稳无人机镜头'],
   ];
   let timelineOffset = 0;
+  let priorTimelineResolved = true;
   const cards = shots.map((shot, index) => {
     const job = directorJobs.find((item) => item.id === shot.last_job_id);
     const duration = Number(shot.duration_seconds || 4);
-    const frames = resolvedShotFrameCount(duration);
-    const effective = frames / 24;
+    const timingCurrent = directorTimingIsCurrent(shot);
+    const resolution = shot.timeline_resolution || {};
+    const frames = timingCurrent ? Number(resolution.resolved_frame_count) : null;
+    const effective = timingCurrent
+      ? Number(resolution.effective_duration_seconds) : duration;
     const locked = !!shot.last_job_id;
     const refCount = (shot.reference_asset_ids || []).length;
     const guideCount = (shot.guide_asset_ids || []).length;
@@ -326,7 +354,7 @@ function renderDirector() {
     const rendered = `<article class="director-shot ${locked ? 'is-executed' : ''}" data-shot-id="${esc(shot.shot_id)}">
       <header class="director-shot-head">
         <span class="director-shot-index">${String(index + 1).padStart(2, '0')}</span>
-        <div class="director-shot-heading"><strong>${esc(shot.title || `镜头 ${index + 1}`)}</strong><span class="muted small">时间线位置 ${timelineOffset.toFixed(2)} 秒 · 实际片长 ${effective.toFixed(2)} 秒 · ${frames} 帧</span></div>
+        <div class="director-shot-heading"><strong>${esc(shot.title || `镜头 ${index + 1}`)}</strong><span class="muted small">${priorTimelineResolved ? '时间线位置' : '预计位置'} ${timelineOffset.toFixed(2)} 秒 · ${timingCurrent ? `有效片长 ${effective.toFixed(2)} 秒 · ${frames} 帧` : `请求片长 ${duration.toFixed(2)} 秒 · 待服务器预检`}</span></div>
         <span class="badge state">${status}</span>
         <div class="director-shot-actions">
           <button class="spectrum-Button btn ghost director-move-up" type="button" aria-label="上移镜头" ${index === 0 ? 'disabled' : ''}>↑</button>
@@ -354,6 +382,7 @@ function renderDirector() {
       ${video}${retake}
     </article>`;
     timelineOffset += effective;
+    if (!timingCurrent) priorTimelineResolved = false;
     return rendered;
   });
   shotList.innerHTML = cards.join('');
@@ -1602,10 +1631,12 @@ async function selectVideoType() {
   document.getElementById('video-type-help').textContent = TYPE_HELP[currentWorkflow()];
   renderArchitectureFidelity();
   renderRefs();
+  refreshDirectorTimingLabels();
   prompt = null; renderPrompt(); updateGate(); refreshEstimate(); schedulePromptRefresh();
 }
 
 function selectQuality() {
+  refreshDirectorTimingLabels();
   prompt = null; renderPrompt(); syncViewportParams(); updateGate(); refreshEstimate(); schedulePromptRefresh();
 }
 
@@ -1825,6 +1856,9 @@ function syncDirectorField(event) {
   if (input.dataset.field === 'duration_seconds') shot.duration_seconds = Number(input.value);
   else if (input.dataset.field === 'quality') shot.generation_settings.quality = input.value;
   else shot[input.dataset.field] = input.value;
+  if (input.dataset.field === 'duration_seconds' || input.dataset.field === 'quality') {
+    refreshDirectorTimingLabels();
+  }
 }
 document.getElementById('director-shot-list').addEventListener('input', syncDirectorField);
 document.getElementById('director-shot-list').addEventListener('change', (event) => {

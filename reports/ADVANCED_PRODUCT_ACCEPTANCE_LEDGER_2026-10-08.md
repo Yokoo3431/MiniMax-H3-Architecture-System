@@ -330,3 +330,92 @@ Therefore this work does **not** claim `READY_FOR_OWNER_FINAL_ACCEPTANCE` or
   60 seconds and produced no review conclusion; it changed zero files. The
   earlier successful overall review is recorded above and is not presented as
   a review of this CSS patch.
+
+### 2026-10-10 Director timing and Results discoverability follow-up
+
+- **A7 timeline display now has one authority.** Removed the duplicate H3
+  frame-lattice calculation from browser code. The Director read API decorates
+  response copies with timing from the same product-profile resolver used by
+  execution; stored sequence state remains free of derived timing fields. An
+  edited duration, quality, or workflow immediately invalidates the displayed
+  resolved timing and marks later offsets as estimates until server preflight.
+- **Removed a broken local script reference.** `workspace.html` referenced
+  `js/ux2_p111_labels.js`, which is not present in the repository or history
+  and has no remaining code consumers. The reference is removed; the UX
+  regression now verifies that local page scripts exist.
+- **Fresh synthetic-only UI evidence.** Existing Playwright and Edge were used;
+  source-tree HTML/CSS/JS were served through request interception, every
+  `/api/**` response used synthetic fixtures, and all non-local requests were
+  blocked. At 375, 768, and 1280 CSS pixels there was no horizontal overflow;
+  the Director timeline displayed authoritative 107/158-frame examples, and
+  changing duration or workflow showed “待服务器预检”. The Results page
+  displayed a synthetic five-shot Sequence/Assembly card with preview/download
+  controls. No real Project/Job/Result/media was read by this browser run.
+- **A9 owner route.** The ordinary path is **Outputs → Results · 已保存成果 →
+  长片 / Sequence / Assembly**. This is a separate Sequence result rather than
+  a row in Jobs; the UI card provides Preview and Download. Existing live
+  artifact identity/Range evidence remains recorded above.
+- Focused A7/A5/UX/A8/A9 tests: 84 passed. After explicitly refreshing the
+  tracked regression inventory/source manifest, full regression discovery:
+  1,105 tests, 15 skipped, 0 failures. `scripts/check_regression_inventory.py
+  --check` reports no added/removed/skip drift.
+- Read-only runtime check: Studio engine reports READY; production ComfyUI is
+  0.33.1 on 8189 with queue 0/0. `/object_info/MiniMaxH3AddGuide` returns no
+  registered node. No experimental runtime was started.
+- The running 8788 static asset was inspected before the source edit and still
+  contained the old duplicated browser calculation. Therefore this source fix
+  is **not yet deployed** to the running Studio; a safe source-to-install
+  deployment/refresh check remains necessary before calling the user-facing
+  timing fix complete.
+- No `/prompt`, Job creation, GPU run, model/software download, historical
+  artifact change, or cleanup was performed in this follow-up.
+
+### 2026-10-10 live-instance reconciliation follow-up
+
+- **Git truth:** the active feature branch and origin both resolve to
+  `dbec03cb29bd62e17281b2eabb1bad80418d82bd`; this is a descendant of the
+  prompt's older `a123e468…` reference. No rebase or reset was performed.
+- **Active instance identity:** one Studio listener was observed on 8788 and
+  the production ComfyUI listener on 8189; experimental 8190 was offline.
+  Studio reported `mode=production`, launched with the real backend, and used
+  a separate JSON-file `userdata/studio` root containing four Projects. The
+  install bundle has no Git metadata, so an installed build SHA is unavailable.
+  The production runtime reports ComfyUI 0.33.1 with an empty queue. No
+  production runtime or model was changed.
+- **Jobs visibility, verified in the real UI:** `jobs.html` loaded with
+  “全部项目” selected, showed 24 records, and rendered the named A5, A6, A7,
+  and A8 Jobs, including the historical failed A5 forensic Job. The five
+  A9 shot Jobs are also present and completed. Exact API search finds the
+  named historical records. These records are in two Projects; selecting a
+  different Project filters them out. The A6 Job's separate Project is a
+  legitimate scope distinction, not a missing/deleted record.
+- **A9 visibility, verified in the real UI:** `output.html#long-form-results`
+  rendered one READY five-shot Assembly card with Preview and Download. The
+  queue, Sequence and Assembly identities are persisted; each of the five
+  shots binds to a completed Job and Result identity. The Assembly media route
+  returned `206 Partial Content`; the exported MP4's SHA-256 matches the
+  Studio Assembly SHA-256. No media was regenerated.
+- **A9 location and date semantics:** the versioned owner-export package is
+  `Advanced_Acceptance/Owner_Export_20261010_01/A9/` and contains the matching
+  24,905,915-byte Assembly MP4. Studio records Assembly completion at
+  `2026-10-03T15:46:43+08:00`; the package manifest records export at
+  `2026-10-10T12:14:02+08:00`, matching the exported file's filesystem time.
+  These dates refer to different lifecycle events; no timestamp was rewritten.
+  The Project's configured output directory is under the requested owner
+  export root. The export package is an indexed copy, not the internal Comfy
+  output root.
+- **A8 quality evidence:** the verified delivery is 2048×1152 at 24 FPS,
+  derived from 1344×768 H3 native media by CPU FFmpeg Lanczos scaling/padding;
+  restoration is `NONE`. The existing diagnostic measured resolution success,
+  but explicitly does not establish added architectural detail; manual detail
+  review remains incomplete. The 48/60 FPS variants listed in Results are at
+  the 1344×768 native canvas, and no 2K/60 delivery is recorded. Therefore
+  `2K_RESOLUTION=PASS`, while `2K_QUALITY_ENHANCEMENT=BLOCKED`; no model or
+  software was downloaded.
+- **Deployment drift:** the installed backend, Jobs page and Results page
+  match the repository. The currently running Director API/timeline and
+  workspace HTML/JS do not include the current source-only timing-display fix.
+  That fix remains undeployed pending a controlled app-source refresh/restart.
+- This live audit was read-only: no Studio Job, Project, Result, queue, media,
+  model or Comfy state was mutated; no `/prompt`, GPU execution, installation,
+  download or cleanup occurred. D: had 134,830,002,176 bytes free at the check.

@@ -40,8 +40,8 @@
     {
       "path": "tests/test_a7_director_timeline.py",
       "tracked_status": "tracked",
-      "sha256": "B1CDAF11440378B034143F37ED03E2217AFFB6515AB5F88872E84CB4050B8208",
-      "discovered_test_count": 11,
+      "sha256": "85321D58584B924C5499C8BEBBD3D1113762A40519563FF771975778352878F8",
+      "discovered_test_count": 14,
       "classification": "CORE_REGRESSION"
     },
     {
@@ -278,7 +278,7 @@
     {
       "path": "tests/test_global_job_search.py",
       "tracked_status": "tracked",
-      "sha256": "AC8534E59B280739589A8BD2D07C31B0C4BFB3E90E6A9916FA6C3F831B14B113",
+      "sha256": "30E590369EDA89F0B4BDEE8083C5CBB8EFE41AA18381310D82E5E0840A96D722",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
@@ -334,7 +334,7 @@
     {
       "path": "tests/test_media_probe.py",
       "tracked_status": "tracked",
-      "sha256": "D75BCB663E32FFD9AF7E48D83F34E7910F6B3103AA0F636119752D9D482D8E9A",
+      "sha256": "A068A8D661704280D555772E2C30E466F97C57ACACE28882A2054A5349D434FC",
       "discovered_test_count": 8,
       "classification": "CORE_REGRESSION"
     },
@@ -789,7 +789,7 @@
     {
       "path": "tests/test_studio_ux2_p1.py",
       "tracked_status": "tracked",
-      "sha256": "5898610744EADBBFC1DF281BF1688403BE480BC141E7566ECDCA4CEB3B2482A5",
+      "sha256": "1EA085DBC4903A59FF668A9FEB742D322C6D5F558F7F1146599E9F72C6D0CE77",
       "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
