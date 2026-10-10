@@ -228,3 +228,105 @@ would require separate privacy, account, and cost approval.
   control, A9 source-completion and export dates differ by design, and A10 is
   cross-stage evidence rather than one composite execution DAG. No code was
   changed by the reviewer.
+
+## Full system reconciliation and product calibration — 2026-10-10
+
+### Four owner-reported issues
+
+1. **Jobs history visibility — resolved for the named Jobs.** Read-only live
+   global Job search found exactly one record for each requested A5/A6/A7/A8
+   identity, plus the A7 source/retake pair. The global index contains 24 Jobs
+   across four Projects. The earlier apparent absence is a scope issue: Jobs
+   opened from a Project starts with that Project selected; an A6 Job belongs
+   to a different Project. Selecting “全部项目” makes it searchable. The
+   retained legacy `SUBMISSION_LOST` entry remains visible but unconfirmed; it
+   still lacks a prompt identity and was not rewritten or retried.
+2. **Weak 2K detail — resolution is not enhancement.** The checked source is
+   native 1344×768; the 2048×1152 derivative uses CPU Lanczos scaling/padding
+   and H.264 `libx264` fast/CRF 18/yuv420p. It has no restoration or AI detail
+   reconstruction. The Results preview is capped at 520 CSS pixels high, so it
+   displays the 2K file downscaled. Sampled objective metrics do not show a
+   consistent detail gain and are not a perceptual pass. Input-reference
+   quality was not newly scored in this pass and is not ruled out as a
+   contributing factor. Classification remains: 2K resolution PASS, tested
+   encoding PASS, AI enhancement NOT PASSED, broad visual quality NOT TESTED.
+   No model weights were installed or downloaded.
+3. **Output-root/date difference — roles and event times differ.** The Owner
+   Acceptance directory is an export destination, not the canonical Comfy or
+   Studio Result root. The A9 source Assembly completed at
+   `2026-10-03T15:46:43+08:00`; the manifest export was created on
+   `2026-10-10T12:14:02+08:00`. Its A9 MP4 has 24,905,915 bytes and SHA-256
+   `580ed50e211f57355ec2b34f842b90c250afeb0751f2907c48802ba21ff31e9b`,
+   matching the Assembly index. The file modification time aligns with the
+   export copy, not the original assembly event. No timestamp was rewritten.
+4. **A9 long-form discoverability — the item is a Sequence/Assembly, not a
+   Job row.** The live record is a READY five-shot queue with all five shots
+   `RESULT_READY`, a persisted Sequence ID and Assembly ID, and a byte-range
+   media endpoint. A live request returned `206 Partial Content` with the
+   expected 24,905,915-byte total. In Studio, use **Outputs → Results · 已保存
+   成果 → 长片 / Sequence / Assembly**; the card has separate Preview and
+   Download actions. The copied owner deliverable is relative to the selected
+   Owner Export root at
+   `Advanced_Acceptance/Owner_Export_20261010_01/A9/`.
+
+### Responsive and Environment interaction follow-up
+
+- The three-viewport synthetic-only audit captured Home, Study, Jobs, Output,
+  and Environment at 375×812, 768×1024, and 1280×800. It initially found a
+  tablet-only Jobs filter overflow (document width 1012px at 768px). A scoped
+  761–900px two-column rule fixes the toolbar; the regenerated manifest shows
+  no horizontal overflow in all 15 captures. The regression assertion and
+  captured images are outside the user-media/export directories.
+- Environment group tabs, recheck, runtime-update status, plan refresh,
+  desktop-setting feedback, restart feedback, model-path-repair feedback, and
+  the advanced ComfyUI unavailable state were exercised with synthetic data.
+  All system API requests were intercepted by Playwright; no request reached
+  a real runtime. Install controls remained disabled in the all-ready fixture.
+- The temporary loopback fixture was stopped; its 266,665-byte synthetic data
+  directory was removed after path validation. The small screenshots/manifest
+  were retained as audit evidence. No real Project, Job, Result, or media was
+  changed.
+
+### Acceptance state after reconciliation
+
+| Dimension | Status | Evidence boundary |
+|---|---|---|
+| `ENGINEERING_IMPLEMENTATION` | `PASS` | Current source regressions and the tablet overflow fix pass. |
+| `DATA_CONSISTENCY` | `PARTIAL` | Named records and A9 artifact match; one legacy lost submission remains unconfirmed. |
+| `JOBS_VISIBILITY` | `PASS` | All named acceptance Jobs are found by exact global search; Project scoping is explicit. |
+| `RESULTS_VISIBILITY` | `PASS` | Export manifest artifacts and Studio media endpoints match; no ambiguous media was attached. |
+| `A9_LONG_FORM_VISIBILITY` | `PASS` | READY Assembly, UI section, download endpoint, SHA and Range 206 verified. |
+| `OUTPUT_PATH_CONTRACT` | `PASS` | Owner Export is a separately indexed copy; it does not replace internal Result storage. |
+| `DATE_TIME_CONSISTENCY` | `PASS` | Source completion and later export timestamps are separate, offset-bearing events. |
+| `2K_RESOLUTION` | `PASS` | Existing file probes at 2048×1152. |
+| `2K_QUALITY_ENHANCEMENT` | `BLOCKED` | Current file is Lanczos only; local AI weights are absent and no download was authorized. |
+| `ADVANCED_PARAMETER_CORRECTNESS` | `PARTIAL` | Capabilities are bounded; camera intent is not deterministic 6DoF and AI 2K is unavailable. |
+| `FULL_UI_INTERACTION` | `PARTIAL` | Responsive pages and Environment controls were exercised; the full multi-page action matrix is not complete. |
+| `END_TO_END_USER_WORKFLOW` | `PARTIAL` | Existing evidence is reusable; no new single composed A5–A10 execution was run. |
+| `ADVANCED_PRODUCT_QUALITY` | `PARTIAL` | Existing visual reviews are bounded; final Owner visual acceptance is not recorded. |
+| `RELEASE_READINESS` | `BLOCKED` | AI enhancement and final Owner acceptance remain open; no Release or tag was created. |
+
+Separate gates: `USER_WORKFLOW_ACCEPTANCE=PARTIAL`,
+`DATA_CONSISTENCY_ACCEPTANCE=PARTIAL`,
+`ADVANCED_QUALITY_ACCEPTANCE=BLOCKED`, `RELEASE_READINESS=BLOCKED`.
+Therefore this work does **not** claim `READY_FOR_OWNER_FINAL_ACCEPTANCE` or
+`OWNER_ACCEPTED`.
+
+### Final checks and safety
+
+- Current branch `feature/h3-advanced-workflows` is a descendant of the
+  supplied `a123e468…` SHA; the current source baseline is later. Production
+  Studio 8788 is healthy. Production ComfyUI remains 0.33.1/8189, queue 0/0,
+  with no native AddGuide; experimental 8190 is offline.
+- Full standard-library regression discovery: 1,102 tests, 15 skipped, 0
+  failures. Focused UX: 16/16. Python compile, 10 frontend JavaScript syntax
+  checks, 93 tracked JSON files, regression inventory, and `git diff --check`
+  pass. Existing Python environments did not contain pytest; no test package
+  was installed.
+- No new Project/Job, `/prompt`, GPU execution, Comfy update, software/model
+  download, model change, historical Job/Result mutation, or Release occurred.
+  D: had 134,876,348,416 bytes free at the final read-only check.
+- Targeted Antigravity review run `20261010091525-agy-d884b103` timed out after
+  60 seconds and produced no review conclusion; it changed zero files. The
+  earlier successful overall review is recorded above and is not presented as
+  a review of this CSS patch.

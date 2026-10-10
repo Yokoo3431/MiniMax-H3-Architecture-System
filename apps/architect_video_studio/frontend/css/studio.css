@@ -1427,6 +1427,12 @@ sl-details::part(content) { padding: 0 10px 10px; }
 .app-output .results-section-items { display:grid; gap:10px; }
 .app-output .results-long-form { margin-top:20px; padding-top:14px; border-top:1px solid var(--avs-border-subtle); }
 
+@media (min-width: 761px) and (max-width: 900px) {
+  .app-jobs .jobs-search-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .app-jobs .jobs-search-toolbar label:first-child { grid-column:1 / -1; }
+  .app-jobs .jobs-search-toolbar sl-button { width:100%; }
+}
+
 @media (max-width: 760px) {
   .app-output .delivery-workspace { grid-template-columns: minmax(0, 1fr); }
   .app-output #delivery-form { width: 100%; flex-wrap: wrap; }
