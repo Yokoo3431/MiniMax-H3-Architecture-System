@@ -402,6 +402,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_owner_export_manifest_reconciliation.py",
+      "tracked_status": "tracked",
+      "sha256": "3525F9592136CD19413D0AABC14639235764A3C073EF4F25A7C5987013FBD19D",
+      "discovered_test_count": 12,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_owner_visible_product_truth.py",
       "tracked_status": "tracked",
       "sha256": "23D6BC2A4A7B1B729EDA746B6A18680C24EE3F82DDDB622DE558A17E003266CF",
