@@ -585,6 +585,7 @@ class DeliveryPipeline:
                                 "raw_status": "COMPLETED",
                                 "raw_output_sha256": sha256_file(raw_interpolation),
                                 "raw_size_bytes": raw_interpolation.stat().st_size,
+                                "raw_artifact_retained": True,
                             })
                             self._save(manifest_path, existing)
                         else:
@@ -768,6 +769,19 @@ class DeliveryPipeline:
                 if interpolated and interpolation_path.is_file():
                     interpolation_path.unlink()
                     existing["stages"]["frame_interpolation"]["artifact_retained"] = False
+                if interpolation_needed:
+                    interpolation_stage = existing["stages"].get("frame_interpolation", {})
+                    try:
+                        raw_interpolation.unlink(missing_ok=True)
+                    except OSError:
+                        # A published delivery is already valid. A cleanup failure must
+                        # not turn it into a failed delivery; make the retained checkpoint
+                        # visible so a later maintenance pass can remove it safely.
+                        interpolation_stage["raw_artifact_retained"] = raw_interpolation.is_file()
+                        interpolation_stage["raw_cleanup_status"] = "CLEANUP_FAILED"
+                    else:
+                        interpolation_stage["raw_artifact_retained"] = False
+                        interpolation_stage["raw_cleanup_status"] = "CLEANED"
                 pending_interpolation.unlink(missing_ok=True)
                 pending_final.unlink(missing_ok=True)
                 existing["stages"]["encode"]["status"] = "COMPLETED"

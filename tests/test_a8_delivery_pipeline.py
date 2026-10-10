@@ -164,6 +164,16 @@ class A8DeliveryFixture(unittest.TestCase):
         self.assertEqual(first["terminal_padding_frames"], 2)
         self.assertEqual(first["timeline_alignment_method"],
                          "ffmpeg_tpad_clone_last")
+        work_root = (self.store.job_package_dir(self.project["id"], self.job_id)
+                     / "delivery" / "work" / first["delivery_id"])
+        self.assertFalse((work_root / "interpolated.raw.pending.mkv").exists())
+        manifest = self.pipeline.manifest_for_job(
+            job_id=self.job_id,
+            package_root=self.store.job_package_dir(self.project["id"], self.job_id),
+            delivery_id=first["delivery_id"],
+        )
+        self.assertFalse(manifest["stages"]["frame_interpolation"]["raw_artifact_retained"])
+        self.assertEqual(manifest["stages"]["frame_interpolation"]["raw_cleanup_status"], "CLEANED")
         saved = self.store.load_jobs(self.project["id"])[self.job_id]
         self.assertEqual(saved["execution_trace"]["delivery_outputs"][0]["delivery_id"],
                          first["delivery_id"])
@@ -187,8 +197,18 @@ class A8DeliveryFixture(unittest.TestCase):
         first_records = self.output.list_deliveries(self.job_id)["items"]
         self.assertEqual(first_records[0]["status"], "FAILED")
         self.assertEqual(first_records[0]["stage_status"]["frame_interpolation"], "COMPLETED")
+        work_root = (self.store.job_package_dir(self.project["id"], self.job_id)
+                     / "delivery" / "work" / first_records[0]["delivery_id"])
+        self.assertTrue((work_root / "interpolated.raw.pending.mkv").is_file())
+        failed_manifest = self.pipeline.manifest_for_job(
+            job_id=self.job_id,
+            package_root=self.store.job_package_dir(self.project["id"], self.job_id),
+            delivery_id=first_records[0]["delivery_id"],
+        )
+        self.assertTrue(failed_manifest["stages"]["frame_interpolation"]["raw_artifact_retained"])
         result = self._create("NATIVE", 48)
         self.assertEqual(result["status"], "READY")
+        self.assertFalse((work_root / "interpolated.raw.pending.mkv").exists())
         self.assertEqual(self.interpolation_calls, 1)
         self.assertEqual(self.alignment_calls, 1)
         self.assertEqual(calls["count"], 2)

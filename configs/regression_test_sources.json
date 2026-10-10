@@ -47,7 +47,7 @@
     {
       "path": "tests/test_a8_delivery_pipeline.py",
       "tracked_status": "tracked",
-      "sha256": "0A9DEB19E9B278311B001B90424830E3CE0B6013BAB612447CB9F5ED625DAE67",
+      "sha256": "4CDE868A09DFF25508CA285A7C207C815BC2AC9E0BE5612CD094D30FB7C73A2C",
       "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },
