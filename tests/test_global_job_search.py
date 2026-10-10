@@ -142,6 +142,11 @@ class TestDiscoveryUiContract(unittest.TestCase):
         self.assertIn("assembly-results-items", output_js)
         self.assertIn("sequence_id: queue.director_sequence_id", output_js)
         self.assertIn("Sequence ${esc(item.sequence_id", output_js)
+        self.assertIn("Job 创建时间：", output_js)
+        self.assertIn("Job 结束记录：", output_js)
+        self.assertIn("Assembly 完成时间", output_js)
+        self.assertIn("event_at: assembly.completed_at", output_js)
+        self.assertIn("delivery.updated_at || delivery.created_at", output_js)
         self.assertIn("非 AI 超分", output_html)
         self.assertIn("非 AI 超分", output_js)
 

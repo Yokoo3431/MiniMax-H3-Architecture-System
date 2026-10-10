@@ -64,14 +64,12 @@ class Harness:
         self.store = StudioStore(self.root / "data")
         self.native = _write_native(self.root / "native")
         self.models = _write_models(self.root / "models")
-        self.env_path = SYSTEM_ROOT / "native_env.path"
-        self.env_path_backup = self.env_path.read_text(encoding="utf-8") \
-            if self.env_path.is_file() else None
-        # The developer machine may already have a production native_env.path.
-        # First-run tests must exercise the clean-user state without deleting
-        # that configuration permanently; close() restores the saved content.
-        if self.env_path.exists():
-            self.env_path.unlink()
+        # Never alter the real installation's launcher configuration in tests.
+        self.env_path = self.root / "native_env.path"
+        self.real_env_path = SYSTEM_ROOT / "native_env.path"
+        self.real_env_path_snapshot = (
+            self.real_env_path.read_bytes() if self.real_env_path.is_file() else None
+        )
         self.path_env_backup = {
             key: os.environ.get(key)
             for key in ("H3_NATIVE_ROOT", "H3_MODELS_ROOT", "H3_BASELINE", "H3_ENV_REPORT")
@@ -91,14 +89,15 @@ class Harness:
             "support_dependencies_ready": True,
             "h3_model_root_ready": True,
         }
-        self.service = EnvironmentService(self.store, self.overrides)
+        self.service = EnvironmentService(
+            self.store, self.overrides, native_env_path=self.env_path,
+            allow_local_discovery=False)
 
     def close(self):
-        if self.env_path_backup is None:
-            if self.env_path.exists():
-                self.env_path.unlink()
-        else:
-            self.env_path.write_text(self.env_path_backup, encoding="utf-8")
+        current_real_env = (
+            self.real_env_path.read_bytes() if self.real_env_path.is_file() else None
+        )
+        real_env_modified = current_real_env != self.real_env_path_snapshot
         if self.pread_backup is None:
             os.environ.pop("H3_WINDOWS_SAFE_LOAD", None)
         else:
@@ -109,6 +108,8 @@ class Harness:
             else:
                 os.environ[key] = value
         self.tmp.cleanup()
+        if real_env_modified:
+            raise AssertionError("test modified the real native_env.path")
 
 
 class TestFirstRunSetup(unittest.TestCase):
@@ -161,9 +162,7 @@ class TestFirstRunSetup(unittest.TestCase):
             h.service.configure(native_root=str(h.native), models_root=str(h.models))
             state = h.service.state.load()
             self.assertEqual(state["native_root"], str(h.native))
-            env_path = SYSTEM_ROOT / "native_env.path"
-            if env_path.exists():
-                self.assertIn(str(h.native), env_path.read_text(encoding="utf-8"))
+            self.assertIn(str(h.native), h.env_path.read_text(encoding="utf-8"))
         finally:
             h.close()
 

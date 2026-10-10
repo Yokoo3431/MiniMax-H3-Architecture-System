@@ -142,11 +142,15 @@ function resultVersionMarkup(item) {
   const meta = [item.resolution, resultFps(item.fps), resultDuration(item.duration),
     item.frame_count ? `${item.frame_count} 帧` : '', item.codec || '',
     resultBytes(item.size_bytes), item.method || ''].filter(Boolean).join(' · ');
+  const eventTime = item.event_at
+    ? `<div class="small muted">${esc(item.event_label || '记录时间')}：${esc(resultDate(item.event_at))}</div>`
+    : '';
   const identity = item.kind === 'native' ? 'native' : item.delivery_id || item.assembly_id || 'result';
   return `<div class="results-version">
     <div class="results-version-copy">
       <strong>${esc(item.label)}</strong>
       <div class="small muted results-version-meta">${esc(meta || '媒体信息待验证')}</div>
+      ${eventTime}
       ${item.source_label ? `<div class="small muted">来源：${esc(item.source_label)}</div>` : ''}
       ${item.output_sha256 ? `<div class="small muted">SHA-256：${esc(item.output_sha256.slice(0, 16))}…</div>` : ''}
     </div>
@@ -180,7 +184,7 @@ function renderResultsLibrary() {
     jobRows.push(`<article class="results-group">
       <div class="results-group-heading">
         <div><h4>${esc(group.project_name)} <span class="muted">· ${esc(group.workflow || 'H3 视频')}</span></h4>
-          <div class="small muted">Job ${esc(group.job_id)}${group.created_at ? ` · ${esc(resultDate(group.created_at))}` : ''}</div></div>
+          <div class="small muted">Job ${esc(group.job_id)}${group.created_at ? ` · Job 创建时间：${esc(resultDate(group.created_at))}` : ''}${group.finished_at ? ` · Job 结束记录：${esc(resultDate(group.finished_at))}` : ''}</div></div>
         <a class="btn small ghost" href="jobs.html?project=${encodeURIComponent(group.project_id)}&job=${encodeURIComponent(group.job_id)}">查看 Job</a>
       </div>
       ${versions ? `<div class="results-versions">${versions}</div>`
@@ -268,6 +272,7 @@ async function loadResultsLibrary() {
             resultGroups.push({
               project_id: project.id, project_name: project.name || project.id,
               job_id: job.id, workflow: job.workflow, created_at: job.created_at,
+              finished_at: job.finished_at,
               versions: [], unavailable_reason: '任务记录显示已完成，但当前没有可验证的视频文件；请打开 Job 查看状态。',
             });
             continue;
@@ -277,6 +282,7 @@ async function loadResultsLibrary() {
           const versions = [{
             kind: 'native', job_id: job.id, project_id: project.id,
             label: 'H3 原生输出', media_url: nativeUrl,
+            event_label: 'Job 结束记录', event_at: job.finished_at,
             resolution: resultResolution(probe.width || params.width, probe.height || params.height),
             fps: probe.fps || params.fps, duration: probe.duration_seconds,
             frame_count: probe.frame_count, codec: probe.video_codec,
@@ -299,6 +305,7 @@ async function loadResultsLibrary() {
                 versions.push({
                   kind: 'delivery', job_id: job.id, project_id: project.id,
                   delivery_id: delivery.delivery_id,
+                  event_label: '交付记录更新时间', event_at: delivery.updated_at || delivery.created_at,
                   label: `${targetLabel}${isInterpolated ? ` · ${delivery.delivery_fps} fps 插帧` : ` · ${delivery.delivery_fps} fps`}`,
                   media_url: deliveryUrl,
                   resolution: resultResolution(size.width, size.height),
@@ -317,12 +324,14 @@ async function loadResultsLibrary() {
           resultGroups.push({
             project_id: project.id, project_name: project.name || project.id,
             job_id: job.id, workflow: job.workflow, created_at: job.created_at,
+            finished_at: job.finished_at,
             versions,
           });
         } catch (_) {
           resultGroups.push({
             project_id: project.id, project_name: project.name || project.id,
             job_id: job.id, workflow: job.workflow, created_at: job.created_at,
+            finished_at: job.finished_at,
             versions: [], unavailable_reason: '任务记录显示已完成，但成果服务暂时无法验证媒体；请打开 Job 后重试。',
           });
         }
@@ -341,6 +350,7 @@ async function loadResultsLibrary() {
             queue_id: queue.queue_id, assembly_id: assembly.assembly_id,
             sequence_id: queue.director_sequence_id || queue.sequence_id || '',
             status: assembly.status || queue.status,
+            event_label: 'Assembly 完成时间', event_at: assembly.completed_at,
             shot_count: (queue.shots || []).length,
             media_url: mediaUrl,
             label: '长视频组装',

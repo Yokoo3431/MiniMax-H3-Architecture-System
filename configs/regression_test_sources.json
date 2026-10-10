@@ -278,7 +278,7 @@
     {
       "path": "tests/test_global_job_search.py",
       "tracked_status": "tracked",
-      "sha256": "30E590369EDA89F0B4BDEE8083C5CBB8EFE41AA18381310D82E5E0840A96D722",
+      "sha256": "80C94EE6404D84A41D845327DB1724653DBEE64CE0F45A52CFA94C94B0BE5734",
       "discovered_test_count": 7,
       "classification": "CORE_REGRESSION"
     },
@@ -509,7 +509,7 @@
     {
       "path": "tests/test_patch28i1_first_run_setup.py",
       "tracked_status": "tracked",
-      "sha256": "CF5D728C733A054D6DCFC51F0531E4AF452D1D68064FA5879EE46B576EEB068C",
+      "sha256": "915E6DC0BA66E31684846F75A6E65309C66D1712743044422CA2B87F1005865D",
       "discovered_test_count": 15,
       "classification": "CORE_REGRESSION"
     },

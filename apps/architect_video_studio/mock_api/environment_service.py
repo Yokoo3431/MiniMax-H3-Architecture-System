@@ -177,10 +177,16 @@ def _free_commit_gb() -> float:
 class EnvironmentService:
     MODEL_SUBDIRS = MODEL_SUBDIRS
 
-    def __init__(self, store, env_overrides: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, store, env_overrides: Optional[Dict[str, Any]] = None,
+                 native_env_path: Optional[Path] = None,
+                 allow_local_discovery: Optional[bool] = None) -> None:
         self.store = store
         self.state = SetupState(store)
         self.overrides = env_overrides or {}
+        # Tests and embedded callers can isolate the launcher handoff file.
+        # Normal Studio instances continue to use the distribution-level file.
+        self.native_env_path = Path(native_env_path) if native_env_path else None
+        self.allow_local_discovery = allow_local_discovery
 
     @staticmethod
     def _existing_role(state: dict, key: str) -> str:
@@ -230,10 +236,13 @@ class EnvironmentService:
         return checker.check_all(light=True)
 
     def _active_environment(self):
-        try:
-            project_local = self.store.data_root.resolve().is_relative_to(REPO_ROOT.resolve())
-        except (AttributeError, OSError):
-            project_local = False
+        if self.allow_local_discovery is None:
+            try:
+                project_local = self.store.data_root.resolve().is_relative_to(REPO_ROOT.resolve())
+            except (AttributeError, OSError):
+                project_local = False
+        else:
+            project_local = self.allow_local_discovery
         return resolve_active_environment(REPO_ROOT, self.state.load(), os.environ,
                                           use_legacy_config=project_local,
                                           # The packaged userdata directory is
@@ -1015,10 +1024,13 @@ class EnvironmentService:
         return self.environment()
 
     def _write_native_env_path(self, native_root: str) -> None:
-        launcher_root = _LAUNCHER_DIR
-        if launcher_root is None:
-            return
-        env_path = launcher_root.parent / "native_env.path"
+        env_path = self.native_env_path
+        if env_path is None:
+            launcher_root = _LAUNCHER_DIR
+            if launcher_root is None:
+                return
+            env_path = launcher_root.parent / "native_env.path"
+        env_path.parent.mkdir(parents=True, exist_ok=True)
         env_path.write_text(native_root + "\n", encoding="utf-8")
 
     def _write_models_env_path(self, models_root: str) -> None:
