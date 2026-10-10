@@ -181,3 +181,50 @@ would require separate privacy, account, and cost approval.
 - Final regression after the Jobs scope clarification: 1102 tests passed, 15
   skipped, 0 failed. Focused Jobs/UX tests passed (27), JavaScript syntax and
   `git diff --check` passed.
+
+### Owner export and active-instance reconciliation — 2026-10-10
+
+- Rechecked the existing `Advanced_Acceptance/Owner_Export_20261010_01`
+  package without changing its contents. All 11 manifest-listed artifacts
+  exist under the package, and every file's length and SHA-256 match the
+  manifest. The manifest's total (86,946,996 bytes) matches the sum of the
+  files. Each artifact was also streamed from its Studio media endpoint
+  directly into an in-memory SHA-256 calculation; all 11 returned HTTP 200
+  with the same length and digest. No video was written to a temporary file.
+- The package records source Job/Sequence completion times separately from
+  the package's `export_created_at`. The source Jobs and Assembly completed
+  between 2026-09-30 and 2026-10-03; this export package was created on
+  2026-10-10. Persisted timestamps carry explicit offsets (`+08:00`) or
+  explicit UTC `Z` markers. File modification dates are not used to rewrite or
+  infer source completion dates.
+- The current Study model is Project-scoped: `study_state.json` deliberately
+  sets `study_id` equal to its owning `project_id`; Job records carry the
+  Project ID and do not have a separate Study primary key. The export
+  manifest repeats that identifier in its `study_id` field as a schema alias.
+  This is a model limitation, not evidence of cross-Project data mixing.
+- The running Studio and Comfy processes are the existing managed RC TEST
+  installation and its production runtime. Studio health is `PASS`; production
+  ComfyUI remains 0.33.1 on 8189 with an empty queue and no native AddGuide.
+  Experimental 8190 is offline. The live runtime registry reports the A5 route
+  as explicitly enabled, but the experimental runtime is unhealthy/unreachable
+  and the fallback policy is `FORBIDDEN`; this does not make an A5 Job
+  executable and must fail closed. Source and installed SHA-256 values match
+  for the backend route/job files and the Jobs, Outputs, and Workspace UI
+  files checked in this pass.
+- The installed Studio data root contains four Project directories and 207
+  files (about 1.43 GB). This is the existing indexed application data, not a
+  newly downloaded runtime/model or a duplicate ComfyUI installation. No
+  cleanup was performed. D: had about 125.70 GiB free after this audit.
+- Final verification for this pass: full regression 1102 passed / 15 skipped /
+  0 failed; A4–A9/runtime/Jobs/UX focused suite 181 passed; Golden workflow
+  zero-diff tests 5 passed; Python compile, frontend JavaScript syntax,
+  regression inventory (`ADDED 0 / REMOVED 0 / SKIP_CHANGED 0`), and
+  `git diff --check` passed. No `/prompt`, GPU inference, model/software
+  download, or historical Job/Result mutation occurred.
+- Independent text-only Antigravity review completed successfully
+  (`20261010062323-agy-063adbbe`, Gemini 3.8 Flash High). It agreed that the
+  bounded classification is accurate and highlighted the already-recorded
+  limits: A8 Lanczos is not AI restoration, A7 intent is not 6DoF camera
+  control, A9 source-completion and export dates differ by design, and A10 is
+  cross-stage evidence rather than one composite execution DAG. No code was
+  changed by the reviewer.
