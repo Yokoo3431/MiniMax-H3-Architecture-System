@@ -72,6 +72,20 @@ padding, H.264 High/yuv420p, and no restoration stage. Its larger bitrate and
 file size are encoding/resolution facts, not evidence of newly recovered
 architectural detail.
 
+The encoder implementation is CPU `libx264` (`preset=fast`, `CRF=18`,
+`yuv420p`) with AAC audio at 192 kb/s; it performs Lanczos scale plus centered
+padding, with no restoration or detail-reconstruction stage. The Results page
+sets the preview video to `max-height: 520px` and uses the same-origin media
+URL, so a 1152-pixel-high 2K file is further downscaled in the on-page preview.
+This is a display constraint, not a change to the downloaded file. The UI now
+states that preview scaling and file resolution are distinct, and that larger
+pixel dimensions do not imply increased detail.
+
+The preview explanation was synchronized into the existing RC installation
+after a rollback copy; the live Results page continues to show the source
+resolution and the explicit Lanczos/non-AI label. No media was regenerated or
+downloaded during this UI check.
+
 For diagnostic comparison only, frames 16, 53, and 90 of the 2K derivative
 were cropped to remove the centered side padding, downscaled to the native
 canvas, and compared with the corresponding native frames. PSNR was

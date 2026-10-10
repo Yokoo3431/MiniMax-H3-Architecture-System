@@ -195,6 +195,8 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIn('id="results-project"', output_html)
         self.assertIn('id="results-search"', output_html)
         self.assertIn('id="results-preview-video"', output_html)
+        self.assertIn("预览会按窗口缩放", output_html)
+        self.assertIn("分辨率放大不等于增加真实细节", output_html)
         self.assertIn('<details id="output-technical-details" class="mt">', output_html)
         self.assertIn("生成记录与技术详情（可选）", output_html)
         self.assertIn('id="pkg-tree"', output_html)
