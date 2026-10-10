@@ -111,6 +111,18 @@ would require separate privacy, account, and cost approval.
 
 - The supplemental regression run completed with 1102 tests, 15 skipped, and 0
   failures; the A9 UI copy tests also passed (16/16).
+- The live cross-Project Jobs table returned 24 records, including the expected
+  A5–A8 acceptance Jobs. One older record remains `SUBMISSION_LOST` after
+  `COMFY_COMMUNICATION_TIMEOUT`; its persisted snapshot has no `prompt_id`,
+  final workflow SHA, or runtime identity. The UI correctly presents it as
+  unconfirmed and does not automatically resubmit it. Its historical state was
+  not changed, and no ambiguous Comfy output was attached.
+- The running 8788 backend is behind the tracked source only for the global
+  `/api/jobs/search` route and its read-only search method. The live endpoint
+  currently returns 404, while the frontend's per-Project fallback still
+  returns all 24 Jobs and exact-ID filtering works. The source route has focused
+  tests; the running installation has not yet been reloaded, so this remains a
+  deployment-alignment item rather than a user-visible Jobs-list failure.
 - No `/prompt`, GPU inference, external media API, model download, runtime
   restart, or production configuration change occurred.
 - Production 8189 stayed at 0.33.1 with its queue idle; experimental 8190
