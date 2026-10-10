@@ -59,3 +59,70 @@ broader claim of deterministic camera control, exact storyboard timing, native
 2K/AI restoration, universal visual quality, or Owner-approved final product
 acceptance. This ledger does not change roadmap weights or progress values and
 does not create a public Release or tag.
+
+## Supplemental read-only verification (2026-10-10)
+
+### A8 2K derivative detail check
+
+The existing A8 source/result pair was decoded locally without changing either
+artifact. The 1344×768 native source is 107 frames at 24 FPS (4.458 s); its
+2048×1152 2K24 derivative is also 107 frames at 24 FPS (4.48 s). The derivative
+uses CPU FFmpeg Lanczos resampling with aspect-preserving scale and centered
+padding, H.264 High/yuv420p, and no restoration stage. Its larger bitrate and
+file size are encoding/resolution facts, not evidence of newly recovered
+architectural detail.
+
+For diagnostic comparison only, frames 16, 53, and 90 of the 2K derivative
+were cropped to remove the centered side padding, downscaled to the native
+canvas, and compared with the corresponding native frames. PSNR was
+38.390, 41.060, and 39.989 dB. Laplacian variance did not show a consistent
+detail gain across the three samples. These measurements are not a perceptual
+quality score and the manual architectural-detail review remains incomplete.
+Classification remains `NATIVE_2K_NOT_VALIDATED`; AI super-resolution and
+restoration remain unavailable.
+
+### Local AI restoration capability check
+
+Production 8189 remains ComfyUI 0.33.1 with an idle queue. Live `/object_info`
+shows SeedVR2 preprocessing, conditioning, temporal chunk/merge, and
+postprocessing nodes, but the model listing contains only the existing H3
+diffusion model and H3 VAEs. `UNETLoader` has no SeedVR2 model choice, the
+generic upscale-model list is empty, and the configured `upscale_models` and
+`latent_upscale_models` buckets are empty. Therefore node registration alone
+does not make a local AI restoration workflow executable. No model was
+downloaded or installed.
+
+The official Comfy-Org SeedVR2 model repository identifies its repackaged
+weights as Apache-2.0 and documents a 3B INT8 video-upscale template requiring
+both a diffusion checkpoint and a separate VAE; the referenced files are
+approximately 3.46 GB and 478 MB, and the runtime does not have those files
+installed. This is not promoted as a
+ready local option without a separately approved, isolated resource/quality
+evaluation. See the [official model card](https://huggingface.co/Comfy-Org/SeedVR2),
+[official video workflow](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/utility_seedvr2_3b_int8_upscale_video.json),
+and [ComfyUI SeedVR2 documentation](https://docs.comfy.org/tutorials/utility/seedvr2).
+
+The registered `WavespeedFlashVSRNode` is marked `api_node=true` and exposes a
+partner 2K option with hidden API credential inputs. It is not evidence of
+local processing and was not invoked; using it for owner architecture media
+would require separate privacy, account, and cost approval.
+
+### Safety and scope
+
+- The supplemental regression run completed with 1102 tests, 15 skipped, and 0
+  failures; the A9 UI copy tests also passed (16/16).
+- No `/prompt`, GPU inference, external media API, model download, runtime
+  restart, or production configuration change occurred.
+- Production 8189 stayed at 0.33.1 with its queue idle; experimental 8190
+  remained offline.
+- A9 remains a separate Sequence/Assembly result, not a Job-list row. The
+  existing five-shot assembly remains `READY`; the Studio Outputs page exposes
+  it under “长片成果 · Sequence / Assembly”.
+- The A9 app-managed Assembly and its dated owner-export copy were matched by
+  exact byte length and SHA-256. The source Assembly completed on 2026-10-03;
+  the owner-export manifest and copied MP4 were created on 2026-10-10. These
+  are distinct source-completion and export-copy timestamps, not a mismatch in
+  the generated media. The export is under the dated `Owner_Export` package;
+  the app-managed Results location remains the Studio playback source.
+- No progress value or acceptance classification was increased by this
+  supplemental check.

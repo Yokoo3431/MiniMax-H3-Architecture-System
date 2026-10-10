@@ -82,9 +82,9 @@
           <div id="director-status" class="muted small" role="status" aria-live="polite"></div>
         </div>
         <section class="a9-longform" id="a9-longform" hidden aria-label="长片队列">
-          <div class="a9-longform-head"><strong>长片合成</strong><span class="muted small">只合成已完成的视频，不会自动重新生成镜头。</span></div>
+          <div class="a9-longform-head"><strong>长片合成</strong><span class="muted small">只合成已完成的视频，不会自动重新生成镜头。输出尺寸使用 Lanczos 缩放/补边，不是 AI 超分。</span></div>
           <div class="a9-longform-controls">
-            <label>输出尺寸<select id="a9-resolution" class="avs-select"><option value="1344x768">原生 1344×768</option><option value="1920x1080">1080p</option><option value="2048x1152">2K</option></select></label>
+            <label>输出尺寸<select id="a9-resolution" class="avs-select"><option value="1344x768">保持画布 1344×768</option><option value="1920x1080">1080p · Lanczos 缩放（非 AI 超分）</option><option value="2048x1152">2K · Lanczos 缩放（非 AI 超分）</option></select></label>
             <label>输出帧率<select id="a9-fps" class="avs-select"><option value="24">24 FPS</option><option value="48">48 FPS</option><option value="60">60 FPS</option></select></label>
             <label>声音<select id="a9-audio" class="avs-select"><option value="KEEP_PER_SHOT_CUT">保留各镜头声音（硬切）</option><option value="MUTE">静音</option></select></label>
             <button class="spectrum-Button btn" id="a9-create-queue" type="button">创建/刷新队列</button>

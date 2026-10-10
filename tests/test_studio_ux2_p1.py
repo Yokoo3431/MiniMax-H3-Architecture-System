@@ -182,6 +182,9 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertNotIn("shotText || '无镜头'", workspace)
         self.assertIn("<strong>长片合成</strong>", workspace_html)
         self.assertIn("只合成已完成的视频，不会自动重新生成镜头。", workspace_html)
+        self.assertIn("输出尺寸使用 Lanczos 缩放/补边，不是 AI 超分。", workspace_html)
+        self.assertIn("1080p · Lanczos 缩放（非 AI 超分）", workspace_html)
+        self.assertIn("2K · Lanczos 缩放（非 AI 超分）", workspace_html)
         self.assertNotIn("CPU 装配", workspace_html)
         output = self.read("js/output.js")
         output_script = output
