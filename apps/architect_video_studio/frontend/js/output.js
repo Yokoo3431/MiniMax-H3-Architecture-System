@@ -70,9 +70,9 @@ function setContextLinks(projectId, currentJobId, outputPath) {
 function deliveryDescription(item) {
   const size = item.delivery_resolution || {};
   const resolution = size.width && size.height ? `${size.width}×${size.height}` : '—';
-  const methods = [item.frame_interpolation_method, item.upscale_method,
+  const methods = [item.frame_interpolation_method, deliveryMethodLabel(item.upscale_method),
     item.restoration_method && item.restoration_method !== 'NONE' ? item.restoration_method : null]
-    .filter(Boolean).join(' · ') || '仅转码';
+    .filter((value) => value && value !== 'NONE').join(' · ') || '仅转码';
   const padding = Number(item.terminal_padding_frames || 0);
   const alignment = padding > 0 ? ` · 末帧对齐 +${padding} 帧` : '';
   return `${resolution} · ${item.delivery_fps} fps · ${methods}${alignment}`;
@@ -123,6 +123,13 @@ function resultBytes(value) {
   return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
+function deliveryMethodLabel(value) {
+  const method = String(value || '').trim();
+  if (!method) return '';
+  if (/lanczos/i.test(method)) return 'Lanczos 画布缩放（非 AI 超分）';
+  return method;
+}
+
 function resultDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -155,20 +162,22 @@ function renderResultsLibrary() {
   const projectId = document.getElementById('results-project')?.value || '';
   const needle = String(document.getElementById('results-search')?.value || '').trim().toLowerCase();
   const list = document.getElementById('results-list');
-  if (!list) return;
+  const jobList = document.getElementById('job-results-items');
+  const assemblyList = document.getElementById('assembly-results-items');
+  if (!list || !jobList || !assemblyList) return;
   const visibleGroups = resultGroups.filter((group) => {
     if (projectId && group.project_id !== projectId) return false;
     return !needle || `${group.project_name} ${group.workflow} ${group.job_id}`.toLowerCase().includes(needle);
   });
   const visibleAssemblies = assemblyResults.filter((item) => {
     if (projectId && item.project_id !== projectId) return false;
-    return !needle || `${item.project_name} ${item.queue_id} 长视频组装`.toLowerCase().includes(needle);
+    return !needle || `${item.project_name} ${item.queue_id} ${item.assembly_id} ${item.sequence_id} 长视频组装`.toLowerCase().includes(needle);
   });
-  const rows = [];
+  const jobRows = [];
   for (const group of visibleGroups) {
     const versions = group.versions.map(resultVersionMarkup).filter(Boolean).join('');
     if (!versions && !group.unavailable_reason) continue;
-    rows.push(`<article class="results-group">
+    jobRows.push(`<article class="results-group">
       <div class="results-group-heading">
         <div><h4>${esc(group.project_name)} <span class="muted">· ${esc(group.workflow || 'H3 视频')}</span></h4>
           <div class="small muted">Job ${esc(group.job_id)}${group.created_at ? ` · ${esc(resultDate(group.created_at))}` : ''}</div></div>
@@ -178,19 +187,22 @@ function renderResultsLibrary() {
         : `<div class="error-banner" role="status">${esc(group.unavailable_reason)}</div>`}
     </article>`);
   }
+  const assemblyRows = [];
   for (const item of visibleAssemblies) {
     const versions = item.media_url ? resultVersionMarkup(item) : `<div class="small muted">组装成果当前不可用（${esc(item.status || '状态未知')}）。</div>`;
-    rows.push(`<article class="results-group results-assembly">
+    assemblyRows.push(`<article class="results-group results-assembly">
       <div class="results-group-heading">
         <div><h4>${esc(item.project_name)} <span class="muted">· 长视频组装</span></h4>
-          <div class="small muted">${esc(item.shot_count)} 个镜头 · ${esc(item.queue_id)}</div></div>
+          <div class="small muted">${esc(item.shot_count)} 个镜头 · Sequence ${esc(item.sequence_id || '未记录')} · Assembly ${esc(item.assembly_id)} · Queue ${esc(item.queue_id)}</div></div>
         <a class="btn small ghost" href="workspace.html?project=${encodeURIComponent(item.project_id)}">查看 Study</a>
       </div>
       <div class="results-versions">${versions}</div>
     </article>`);
   }
-  list.innerHTML = rows.length ? rows.join('')
-    : '<div class="notice-banner">当前筛选条件下没有可访问的已保存成果。请尝试切换 Project，或到 Jobs 查看未完成任务。</div>';
+  jobList.innerHTML = jobRows.length ? jobRows.join('')
+    : '<div class="notice-banner">当前筛选条件下没有单 Job 成果。</div>';
+  assemblyList.innerHTML = assemblyRows.length ? assemblyRows.join('')
+    : '<div class="notice-banner">当前筛选条件下没有长片组装成果。长片完成后会在此独立显示。</div>';
   const visibleCompleted = visibleGroups.length;
   const accessibleNative = visibleGroups.filter((group) => group.versions.some((item) => item.kind === 'native')).length;
   const visibleUnavailable = visibleGroups.filter((group) => Boolean(group.unavailable_reason)).length;
@@ -219,9 +231,11 @@ function renderResultsLibrary() {
 
 async function loadResultsLibrary() {
   const status = document.getElementById('results-status');
-  const list = document.getElementById('results-list');
+  const jobList = document.getElementById('job-results-items');
+  const assemblyList = document.getElementById('assembly-results-items');
   status.textContent = '正在读取各 Project / Study 的已保存成果…';
-  list.textContent = '';
+  jobList.textContent = '';
+  assemblyList.textContent = '';
   resultGroups = [];
   assemblyResults = [];
   supplementaryIssueCount = 0;
@@ -279,7 +293,7 @@ async function loadResultsLibrary() {
                 const size = delivery.delivery_resolution || {};
                 const isInterpolated = Number(delivery.delivery_fps)
                   > Number(delivery.native_generation_fps || 0);
-                const targetLabel = delivery.target_resolution === 'ULTRA_2K' ? '2K 交付'
+                const targetLabel = delivery.target_resolution === 'ULTRA_2K' ? '2K 画布放大（非 AI 超分）'
                   : delivery.target_resolution === 'ULTRA_1080' ? '1080p 交付'
                     : '原生画布交付';
                 versions.push({
@@ -291,7 +305,7 @@ async function loadResultsLibrary() {
                   fps: delivery.delivery_fps, duration: delivery.duration_seconds,
                   frame_count: delivery.frame_count, codec: delivery.video_codec,
                   size_bytes: delivery.size_bytes, output_sha256: delivery.output_sha256,
-                  method: [delivery.upscale_method, delivery.frame_interpolation_method]
+                  method: [deliveryMethodLabel(delivery.upscale_method), delivery.frame_interpolation_method]
                     .filter((value) => value && value !== 'NONE').join(' · '),
                   source_label: `H3 原生 ${resultResolution(
                     (delivery.native_generation_resolution || {}).width,
@@ -325,6 +339,7 @@ async function loadResultsLibrary() {
             kind: 'assembly', project_id: project.id,
             project_name: project.name || project.id,
             queue_id: queue.queue_id, assembly_id: assembly.assembly_id,
+            sequence_id: queue.director_sequence_id || queue.sequence_id || '',
             status: assembly.status || queue.status,
             shot_count: (queue.shots || []).length,
             media_url: mediaUrl,
@@ -349,7 +364,8 @@ async function loadResultsLibrary() {
     }
   } catch (_) {
     status.textContent = '成果列表暂不可用，请稍后刷新；已有视频文件不会被修改。';
-    list.innerHTML = '<div class="error-banner">无法读取 Project / Study 成果清单。</div>';
+    jobList.innerHTML = '<div class="error-banner">无法读取单 Job 成果清单。</div>';
+    assemblyList.innerHTML = '<div class="error-banner">无法读取长片组装清单。</div>';
   }
 }
 

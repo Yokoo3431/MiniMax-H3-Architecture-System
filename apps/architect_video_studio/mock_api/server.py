@@ -460,6 +460,19 @@ def _make_handler(store: StudioStore, apis: Dict[str, object]):
                     director_execution=body.get("director_execution"),
                     long_form_execution=body.get("long_form_execution"),
                 ))
+            if method == "GET" and path == "/api/jobs/search":
+                filters = parse_qs(query, keep_blank_values=True)
+                value = lambda key, default="": filters.get(key, [default])[-1]
+                return self._ok(apis["job"].search_jobs(
+                    query=value("q"),
+                    project_id=value("project_id"),
+                    state=value("state"),
+                    runtime_role=value("runtime_role"),
+                    created_from=value("created_from"),
+                    created_to=value("created_to"),
+                    limit=value("limit", "50"),
+                    offset=value("offset", "0"),
+                ))
             m = re.fullmatch(r"/api/jobs/([^/]+)", path)
             if m and method == "GET":
                 return self._ok(apis["job"].get_job(m.group(1)))

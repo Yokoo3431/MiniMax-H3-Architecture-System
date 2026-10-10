@@ -48,6 +48,10 @@
         </label>
       </div>
       <p id="results-status" class="small muted" role="status" aria-live="polite">正在读取已保存成果…</p>
+      <nav class="results-quick-links" aria-label="成果类型快速定位">
+        <a class="btn small ghost" href="#single-job-results">单 Job 成果</a>
+        <a class="btn small ghost" href="#long-form-results">长片 / Sequence / Assembly</a>
+      </nav>
       <div id="results-preview" class="results-preview" hidden>
         <div class="row" style="justify-content:space-between;align-items:center;gap:8px;">
           <strong id="results-preview-title">成果预览</strong>
@@ -55,7 +59,17 @@
         </div>
         <video id="results-preview-video" controls preload="metadata" playsinline></video>
       </div>
-      <div id="results-list" class="results-list" aria-live="polite"></div>
+      <div id="results-list" class="results-list" aria-live="polite">
+        <section class="results-section" id="single-job-results" aria-labelledby="single-job-heading">
+          <h4 id="single-job-heading">单 Job 成果</h4>
+          <div id="job-results-items" class="results-section-items"></div>
+        </section>
+        <section class="results-section results-long-form" id="long-form-results" aria-labelledby="long-form-heading">
+          <h4 id="long-form-heading">长片成果 · Sequence / Assembly</h4>
+          <p class="small muted">长片是多镜头 Sequence 的独立组装成果，不会作为单个 Job 出现在任务列表中。</p>
+          <div id="assembly-results-items" class="results-section-items"></div>
+        </section>
+      </div>
     </section>
     <div id="job-output-view" hidden>
     <div class="workspace" style="grid-template-columns:1fr 1fr;">
@@ -86,7 +100,7 @@
             <select id="delivery-resolution" name="target_resolution">
               <option value="NATIVE">保持原生画布</option>
               <option value="ULTRA_1080">1080p · 1920×1080</option>
-              <option value="ULTRA_2K">2K · 2048×1152</option>
+              <option value="ULTRA_2K">2K 画布放大 · 2048×1152（非 AI 超分）</option>
             </select>
           </label>
           <label class="small">交付帧率

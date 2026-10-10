@@ -3,6 +3,12 @@
 const initialProjectId = qs('project');
 const initialJobId = qs('job');
 let activeProjectId = initialProjectId || '';
+const JOB_PAGE_SIZE = 50;
+let jobsOffset = 0;
+let jobsTotal = 0;
+let jobsPollTimer = null;
+let initialDetailOpened = false;
+let knownProjects = [];
 const errEl = document.getElementById('err');
 const selectionHintEl = document.getElementById('selection-hint');
 
@@ -116,8 +122,9 @@ function progressText(job) {
 
 async function loadProjects() {
   const projects = await get('/api/projects');
+  knownProjects = Array.isArray(projects) ? projects : [];
   const sel = document.getElementById('project-select');
-  sel.innerHTML = projects.map((p) => `<sl-option value="${esc(p.id)}" ${p.id === initialProjectId ? 'selected' : ''}>${esc(p.name)}</sl-option>`).join('');
+  sel.innerHTML = '<sl-option value="">全部项目</sl-option>' + projects.map((p) => `<sl-option value="${esc(p.id)}">${esc(p.name)}</sl-option>`).join('');
   let selected = projects.find((p) => p.id === initialProjectId)?.id || '';
   if (!selected && initialJobId) {
     try {
@@ -126,37 +133,138 @@ async function loadProjects() {
     } catch (_) { /* the empty state below is the truthful fallback */ }
   }
   activeProjectId = selected;
-  if (selected) {
-    // Do not depend on the custom element having reflected its value yet.
-    sel.value = selected;
-    showProjectHint('');
-    await loadJobs(selected);
-  } else {
-    showProjectHint(projects.length
-      ? '请选择一个 Study 查看任务。'
-      : '还没有 Study，请先在 Home 创建一个 Study。');
-  }
+  sel.value = selected;
+  if (initialJobId) document.getElementById('job-search').value = initialJobId;
+  showProjectHint(projects.length
+    ? '默认跨项目显示最近任务；可按 Job ID、工作流、状态、运行环境和创建日期定位历史记录。'
+    : '还没有 Study，请先在 Home 创建一个 Study。');
+  await searchJobs({reset: true});
   sel.addEventListener('change', () => {
-    activeProjectId = sel.value || activeProjectId;
-    if (activeProjectId) location.href = `jobs.html?project=${encodeURIComponent(activeProjectId)}`;
+    activeProjectId = sel.value || '';
+    searchJobs({reset: true});
   });
 }
 
 async function loadJobs(pid) {
-  if (!pid) { showProjectHint('请先选择一个 Study 查看任务。'); return; }
+  if (typeof pid === 'string') {
+    activeProjectId = pid;
+    document.getElementById('project-select').value = pid;
+  }
+  return searchJobs({reset: true});
+}
+
+async function searchJobs({reset = false} = {}) {
+  if (reset) jobsOffset = 0;
+  if (jobsPollTimer) { clearTimeout(jobsPollTimer); jobsPollTimer = null; }
   try {
     const body = document.getElementById('jobs-body');
-    body.innerHTML = '<tr><td colspan="6" class="muted">正在加载任务…</td></tr>';
-    const jobs = await get(`/api/projects/${pid}/jobs`);
+    body.innerHTML = '<tr><td colspan="7" class="muted">正在检索任务…</td></tr>';
+    const params = new URLSearchParams({
+      q: document.getElementById('job-search').value.trim(),
+      project_id: activeProjectId,
+      state: document.getElementById('job-state-filter').value,
+      runtime_role: document.getElementById('job-runtime-filter').value,
+      created_from: document.getElementById('job-created-from').value,
+      created_to: document.getElementById('job-created-to').value,
+      limit: String(JOB_PAGE_SIZE),
+      offset: String(jobsOffset),
+    });
+    let result;
+    try {
+      result = await get(`/api/jobs/search?${params.toString()}`);
+    } catch (error) {
+      // Older installed Studio builds do not yet have the read-only index
+      // route. Fall back to their existing Project-scoped Job API so the
+      // owner can still find history without waiting for a backend restart.
+      if (!/HTTP 404|unknown api route: GET \/api\/jobs\/search|job not found: search/i.test(String(error?.message || error))) throw error;
+      result = await searchJobsFromProjectApis(params);
+    }
+    const jobs = result.items || [];
+    jobsTotal = Number(result.total) || 0;
     body.innerHTML = jobs.length ? jobs.map((j) => `
       <tr class="job-row" data-job="${esc(j.id)}">
-        <td data-label="Job"><a class="job-detail-link" href="jobs.html?project=${encodeURIComponent(pid)}&job=${encodeURIComponent(j.id)}" aria-label="查看任务详情：${esc(j.id)}">${esc(j.id)}</a></td><td data-label="Workflow">${esc(j.workflow)}</td><td data-label="状态">${badge(j.state, j)}${progressText(j)}</td>
-        <td data-label="Seed">${esc(j.seed)}</td><td data-label="创建时间">${esc(j.created_at)}</td>
-        <td data-label="操作">${j.state === 'COMPLETED' ? `<a href="output.html?project=${encodeURIComponent(pid)}&job=${esc(j.id)}">打开输出</a>` : `<span class="muted small">${esc(j.friendly_reason || friendlyState(j))}</span>`}</td>
-      </tr>`).join('') : '<tr><td colspan="6" class="muted">暂无任务</td></tr>';
-    if (initialJobId && jobs.some((j) => String(j.id) === String(initialJobId))) await openDetail(initialJobId, pid);
-    if (jobs.some((j) => jobIsActive(j))) setTimeout(() => loadJobs(pid), 2000);
-  } catch (e) { showErr(e.message); }
+        <td data-label="项目 / Study">${esc(j.project_name)}</td>
+        <td data-label="Job"><a class="job-detail-link" href="jobs.html?project=${encodeURIComponent(j.project_id)}&job=${encodeURIComponent(j.id)}" aria-label="查看任务详情：${esc(j.id)}">${esc(j.id)}</a></td>
+        <td data-label="Workflow">${esc(j.workflow)}</td><td data-label="状态">${badge(j.state, j)}${progressText(j)}</td>
+        <td data-label="Seed">${esc(j.seed ?? '—')}</td><td data-label="创建时间">${esc(j.created_at || '—')}</td>
+        <td data-label="输出">${j.state === 'COMPLETED' ? `<a href="output.html?project=${encodeURIComponent(j.project_id)}&job=${encodeURIComponent(j.id)}">打开输出</a>` : '<span class="muted small">—</span>'}</td>
+      </tr>`).join('') : '<tr><td colspan="7" class="muted">暂无匹配任务</td></tr>';
+    const start = jobsTotal ? jobsOffset + 1 : 0;
+    const end = Math.min(jobsOffset + jobs.length, jobsTotal);
+    document.getElementById('job-result-count').textContent = `${start}–${end} / ${jobsTotal} 条任务`;
+    document.getElementById('jobs-prev').disabled = jobsOffset <= 0;
+    document.getElementById('jobs-next').disabled = jobsOffset + JOB_PAGE_SIZE >= jobsTotal;
+    if (initialJobId && !initialDetailOpened) {
+      const match = jobs.find((j) => String(j.id) === String(initialJobId));
+      if (match) {
+        initialDetailOpened = true;
+        await openDetail(initialJobId, match.project_id);
+      }
+    }
+    if (jobs.some((j) => jobIsActive(j))) jobsPollTimer = setTimeout(() => searchJobs(), 2000);
+  } catch (e) {
+    showErr(e.message);
+    document.getElementById('jobs-body').innerHTML = '<tr><td colspan="7" class="muted">任务检索失败。</td></tr>';
+  }
+}
+
+function localCalendarDate(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value || '').slice(0, 10);
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+async function searchJobsFromProjectApis(params) {
+  const projectId = params.get('project_id') || '';
+  const projects = projectId
+    ? knownProjects.filter((project) => project.id === projectId)
+    : knownProjects;
+  const grouped = await Promise.all(projects.map(async (project) => {
+    const items = await get(`/api/projects/${encodeURIComponent(project.id)}/jobs`);
+    return (Array.isArray(items) ? items : []).map((job) => {
+      const identity = job.execution_trace?.runtime_identity || {};
+      return {
+        id: job.id,
+        project_id: project.id,
+        project_name: project.name,
+        workflow: job.workflow,
+        state: job.state,
+        seed: job.seed,
+        created_at: job.created_at,
+        progress: job.progress,
+        current_stage: job.current_stage,
+        eta_seconds: job.eta_seconds,
+        estimated_time: job.estimated_time,
+        status_label: job.status_label,
+        is_active: job.is_active,
+        is_terminal: job.is_terminal,
+        runtime_role: identity.runtime_role || job.runtime_target || 'unknown',
+      };
+    });
+  }));
+  const query = (params.get('q') || '').trim().toLocaleLowerCase();
+  const state = (params.get('state') || '').toUpperCase();
+  const role = (params.get('runtime_role') || '').toLowerCase();
+  const from = params.get('created_from') || '';
+  const to = params.get('created_to') || '';
+  const items = grouped.flat().filter((job) => {
+    const searchable = `${job.id} ${job.project_name} ${job.workflow} ${job.seed ?? ''}`.toLocaleLowerCase();
+    if (query && !searchable.includes(query)) return false;
+    if (state === 'ACTIVE' ? !job.is_active : state && job.state !== state) return false;
+    if (role && job.runtime_role !== role) return false;
+    const date = localCalendarDate(job.created_at);
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    return true;
+  }).sort((left, right) => {
+    const time = (value) => Date.parse(value || '') || 0;
+    return time(right.created_at) - time(left.created_at)
+      || String(right.id).localeCompare(String(left.id));
+  });
+  const offset = Math.max(0, Number(params.get('offset')) || 0);
+  const limit = Math.min(JOB_PAGE_SIZE, Math.max(1, Number(params.get('limit')) || JOB_PAGE_SIZE));
+  return {items: items.slice(offset, offset + limit), total: items.length};
 }
 
 async function openDetail(jobId, pid) {
@@ -249,5 +357,22 @@ async function openDetail(jobId, pid) {
   });
 }
 
-document.getElementById('refresh-btn').addEventListener('click', () => loadJobs(activeProjectId || document.getElementById('project-select').value));
+document.getElementById('refresh-btn').addEventListener('click', () => searchJobs({reset: true}));
+document.getElementById('job-search-btn').addEventListener('click', () => searchJobs({reset: true}));
+document.getElementById('job-search').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); searchJobs({reset: true}); }
+});
+document.getElementById('jobs-prev').addEventListener('click', () => {
+  jobsOffset = Math.max(0, jobsOffset - JOB_PAGE_SIZE);
+  searchJobs();
+});
+document.getElementById('jobs-next').addEventListener('click', () => {
+  if (jobsOffset + JOB_PAGE_SIZE < jobsTotal) {
+    jobsOffset += JOB_PAGE_SIZE;
+    searchJobs();
+  }
+});
+for (const id of ['job-state-filter', 'job-runtime-filter', 'job-created-from', 'job-created-to']) {
+  document.getElementById(id).addEventListener('change', () => searchJobs({reset: true}));
+}
 loadProjects().catch(showErr);

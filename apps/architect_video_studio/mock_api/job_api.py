@@ -22,6 +22,7 @@ import os
 import inspect
 import math
 import re
+from datetime import date, datetime, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -1423,6 +1424,124 @@ class JobAPI:
         for job in self.store.load_jobs(project_id).values():
             out.append(self.get_job(job["id"]))
         return sorted(out, key=lambda j: j["created_at"], reverse=True)
+
+    def search_jobs(self, *, query: str = "", project_id: str = "",
+                    state: str = "", runtime_role: str = "",
+                    created_from: str = "", created_to: str = "",
+                    limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """Search persisted Job snapshots across Studies without touching runtimes.
+
+        This is deliberately a read-only index operation: unlike ``list_jobs`` it
+        does not run idle-memory management, reconcile a Job, or resolve media.
+        The response is an allowlist for the Jobs table, never a full snapshot.
+        """
+        query = str(query or "").strip().casefold()[:160]
+        project_id = str(project_id or "").strip()
+        state = str(state or "").strip().upper()
+        runtime_role = str(runtime_role or "").strip().lower()
+        if state and not re.fullmatch(r"[A-Z_]{1,32}", state):
+            raise ValueError("invalid Job state filter")
+        if runtime_role and runtime_role not in ("production", "experimental", "mock", "unknown"):
+            raise ValueError("invalid runtime role filter")
+
+        def parse_date(value: str) -> date | None:
+            value = str(value or "").strip()
+            if not value:
+                return None
+            try:
+                return date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("date filters must use YYYY-MM-DD") from exc
+
+        date_from = parse_date(created_from)
+        date_to = parse_date(created_to)
+        if date_from and date_to and date_from > date_to:
+            raise ValueError("start date must not be after end date")
+        try:
+            page_limit = max(1, min(100, int(limit)))
+            page_offset = max(0, min(1_000_000, int(offset)))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid pagination") from exc
+
+        projects = self.store.list_projects()
+        if project_id:
+            projects = [item for item in projects if item.get("id") == project_id]
+            if not projects:
+                raise KeyError("project not found")
+
+        rows: List[Dict[str, Any]] = []
+        for project in projects:
+            pid = str(project.get("id") or "")
+            pname = str(project.get("name") or pid)
+            for stored in self.store.load_jobs(pid).values():
+                job = stored if isinstance(stored, dict) else {}
+                job_id = str(job.get("id") or "")
+                workflow = str(job.get("workflow") or "")
+                created_at = str(job.get("created_at") or "")
+                if query and query not in f"{job_id} {workflow} {pname}".casefold():
+                    continue
+                if state == "ACTIVE" and not is_job_active(job):
+                    continue
+                if state and state != "ACTIVE" and str(job.get("state") or "").upper() != state:
+                    continue
+                created_day = None
+                try:
+                    created_day = date.fromisoformat(created_at[:10])
+                except ValueError:
+                    pass
+                if date_from and (created_day is None or created_day < date_from):
+                    continue
+                if date_to and (created_day is None or created_day > date_to):
+                    continue
+                trace = job.get("execution_trace") or {}
+                if not isinstance(trace, dict):
+                    trace = {}
+                runtime_identity = trace.get("runtime_identity") or {}
+                if not isinstance(runtime_identity, dict):
+                    runtime_identity = {}
+                role = str(runtime_identity.get("runtime_role")
+                           or job.get("runtime_target")
+                           or ("mock" if job.get("runtime") == "mock" else "unknown")).lower()
+                if runtime_role and role != runtime_role:
+                    continue
+
+                decorated = _decorate_job(job)
+                rows.append({
+                    "id": job_id,
+                    "project_id": pid,
+                    "project_name": pname,
+                    "workflow": workflow,
+                    "state": str(job.get("state") or ""),
+                    "status_label": decorated.get("status_label", ""),
+                    "seed": job.get("seed"),
+                    "created_at": created_at,
+                    "runtime_role": role,
+                    "runtime_id": str(runtime_identity.get("runtime_id")
+                                      or job.get("runtime_id") or ""),
+                    "is_terminal": decorated.get("is_terminal", False),
+                    "is_active": decorated.get("is_active", False),
+                    "progress": job.get("progress"),
+                    "current_stage": str(job.get("current_stage") or ""),
+                })
+        def created_sort_key(item: Dict[str, Any]) -> tuple[int, float | str, str]:
+            value = str(item.get("created_at") or "")
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    return 0, parsed.isoformat(), str(item.get("id") or "")
+                return (1, parsed.astimezone(timezone.utc).timestamp(),
+                        str(item.get("id") or ""))
+            except ValueError:
+                return 0, value, str(item.get("id") or "")
+
+        rows.sort(key=created_sort_key, reverse=True)
+        total = len(rows)
+        return {
+            "items": rows[page_offset:page_offset + page_limit],
+            "total": total,
+            "limit": page_limit,
+            "offset": page_offset,
+        }
 
     def maybe_release_idle_memory(self, threshold_seconds: float = 600.0) -> Dict[str, Any]:
         """Release model memory only after a proven, safe idle window.
