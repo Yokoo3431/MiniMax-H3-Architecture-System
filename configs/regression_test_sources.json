@@ -332,6 +332,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_launcher_service_isolation.py",
+      "tracked_status": "tracked",
+      "sha256": "5B6FBDB674466F4B88823E90B7A77988C85881D7F05740277301EC3C847F6880",
+      "discovered_test_count": 15,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_media_probe.py",
       "tracked_status": "tracked",
       "sha256": "A068A8D661704280D555772E2C30E466F97C57ACACE28882A2054A5349D434FC",
@@ -481,7 +488,7 @@
     {
       "path": "tests/test_patch28b_launcher.py",
       "tracked_status": "tracked",
-      "sha256": "B39A001A78899163ED694B7A216D80F64356D3F4276942055D44B9E20AE2C824",
+      "sha256": "85B104D503BCBFA28CFF15234B8E171C135C4D5A8D78D3F6FBAC5DE5271A6AB2",
       "discovered_test_count": 31,
       "classification": "CORE_REGRESSION"
     },

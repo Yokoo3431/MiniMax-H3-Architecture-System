@@ -145,6 +145,7 @@ class TestPortDetection(unittest.TestCase):
     def test_find_pid_from_netstat_output(self):
         canned = (
             "  TCP    127.0.0.1:8189    0.0.0.0:0    LISTENING    4242\n"
+            "  TCP    127.0.0.1:18788   0.0.0.0:0    LISTENING    6161\n"
             "  TCP    127.0.0.1:8788    0.0.0.0:0    LISTENING    5151\n")
         self.assertEqual(PortManager.find_pid(8189, netstat_output=canned), 4242)
         self.assertEqual(PortManager.find_pid(8788, netstat_output=canned), 5151)
@@ -198,7 +199,7 @@ class TestPortDetection(unittest.TestCase):
     def test_app_only_child_environment_drops_inherited_runtime_identity(self):
         with tempfile.TemporaryDirectory() as tmpd:
             root = Path(tmpd)
-            child = SimpleNamespace(poll=lambda: None)
+            child = SimpleNamespace(poll=lambda: None, pid=4243)
             manager = ProcessManager(
                 native_root=root / "unused-runtime",
                 repo_root=root / "app",
@@ -218,6 +219,7 @@ class TestPortDetection(unittest.TestCase):
                     "H3_MODELS_ROOT": str(root / "production-models"),
                     "MINIMAX_H3_WEIGHTS_ROOTS": str(root / "weights"),
             }), mock.patch("launcher.process_manager.PortManager.port_in_use", return_value=False), \
+                 mock.patch("launcher.process_manager.PortManager.find_pid", return_value=child.pid), \
                  mock.patch("launcher.process_manager._http_ok", return_value=True):
                 result = manager.start(service, health_timeout=1)
             self.assertEqual(result.state, "RUNNING")
@@ -384,7 +386,8 @@ class TestLockProtection(unittest.TestCase):
 
 class TestProcessLifecycle(unittest.TestCase):
     class FakeProc:
-        def __init__(self, exit_code=None):
+        def __init__(self, exit_code=None, pid=4242):
+            self.pid = pid
             self._exit = exit_code
             self.returncode = exit_code
             self.terminated = False
@@ -444,7 +447,8 @@ class TestProcessLifecycle(unittest.TestCase):
                                 dry_run=False)
             proc = self.FakeProc()
             svc = Service(name="test", command=[], cwd=tmp, health_url="",
-                          log_path=tmp / "test.log", proc=proc, state="RUNNING")
+                          log_path=tmp / "test.log", proc=proc,
+                          owned_pid=proc.pid, state="RUNNING")
             pm.services["test"] = svc
             pm.stop("test")
             self.assertEqual(svc.state, "STOPPED")

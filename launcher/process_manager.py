@@ -29,6 +29,16 @@ from runtime.h3_model_root import (
 from runtime.h3_low_memory_profiles import detect_hardware_facts, profile_runtime_flags, select_profile
 
 
+STUDIO_SERVICE = "studio"
+PRODUCTION_COMFY_SERVICE = "comfyui"
+EXPERIMENTAL_COMFY_SERVICE = "comfyui_experimental"
+SERVICE_RUNTIME_ROLES = {
+    STUDIO_SERVICE: "studio",
+    PRODUCTION_COMFY_SERVICE: "production",
+    EXPERIMENTAL_COMFY_SERVICE: "experimental",
+}
+
+
 class PortManager:
     @staticmethod
     def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
@@ -48,11 +58,17 @@ class PortManager:
         else:
             out = netstat_output
         for line in out.splitlines():
-            if f":{port}" in line and "LISTENING" in line:
-                try:
-                    return int(line.split()[-1])
-                except ValueError:
-                    return None
+            fields = line.split()
+            if (len(fields) < 5 or fields[0].upper() != "TCP"
+                    or fields[-2].upper() != "LISTENING"):
+                continue
+            try:
+                local_port = int(fields[1].rsplit(":", 1)[-1])
+                pid = int(fields[-1])
+            except ValueError:
+                continue
+            if local_port == int(port):
+                return pid
         return None
 
     @staticmethod
@@ -215,11 +231,18 @@ class Service:
     env_extra: dict = field(default_factory=dict)
     port: Optional[int] = None
     proc: Optional[subprocess.Popen] = None
+    owned_pid: Optional[int] = None
     state: str = "STOPPED"
     dry_run: bool = False
+    failure: str = ""
+    exit_code: Optional[int] = None
+    runtime_role: str = "unknown"
 
 
 class ProcessManager:
+    STUDIO_SERVICE = STUDIO_SERVICE
+    PRODUCTION_COMFY_SERVICE = PRODUCTION_COMFY_SERVICE
+    EXPERIMENTAL_COMFY_SERVICE = EXPERIMENTAL_COMFY_SERVICE
     COMFYUI_PORT = 8189
     STUDIO_PORT = 8788
 
@@ -260,9 +283,40 @@ class ProcessManager:
             name=name, command=command, cwd=cwd, health_url=health_url,
             log_path=self.logs_dir / log_name, env_extra=env_extra or {},
             dry_run=self.dry_run,
+            runtime_role=SERVICE_RUNTIME_ROLES.get(name, "unknown"),
         )
         self.services[name] = svc
         return svc
+
+    @staticmethod
+    def _process_handle_matches(service: Service) -> bool:
+        """Confirm the stored Popen handle still represents this owned child.
+
+        Termination below is performed through the Popen object (a retained OS
+        process handle on Windows), never by looking up and killing a PID. The
+        PID comparison is an additional fail-closed guard against a replaced
+        or incorrectly reattached Service object; it is not the authority used
+        to signal the process.
+        """
+        if service.proc is None:
+            return False
+        try:
+            pid = int(service.proc.pid)
+            return pid > 0 and service.owned_pid == pid
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    def _listener_matches_owned_process(self, service: Service) -> bool:
+        """Require the healthy listener to belong to the spawned child."""
+        if service.dry_run:
+            return True
+        if not self._process_handle_matches(service) or service.proc.poll() is not None:
+            return False
+        try:
+            listener_pid = PortManager.find_pid(int(self._port_of(service)))
+            return listener_pid is not None and int(listener_pid) == service.owned_pid
+        except (OSError, TypeError, ValueError):
+            return False
 
     def comfyui_service(self) -> Service:
         if "comfyui" not in self.services:
@@ -371,35 +425,69 @@ class ProcessManager:
     def start(self, service: Service, health_timeout: float = 120.0) -> Service:
         if service.state in ("RUNNING", "STARTING"):
             return service
+        if (service.proc is not None and service.proc.poll() is None
+                and self._process_handle_matches(service)):
+            service.state = "FAILED"
+            service.failure = (
+                f"{service.name} has a live owned process without a healthy state; "
+                "use the service-specific restart operation")
+            return service
         if not service.dry_run and PortManager.port_in_use(int(self._port_of(service))):
             service.state = "FAILED"
             service.failure = f"port {self._port_of(service)} already in use"
             return service
+        service.failure = ""
+        service.exit_code = None
         service.state = "STARTING"
         if service.dry_run:
             service.proc = None
             service.state = "RUNNING"
             return service
-        # Cache/temp routing is intentionally limited to the child process.
-        # App-only acceptance keeps its transient files outside the installed
-        # application tree, alongside (not inside) the explicit Studio data
-        # directory, so uninstall never leaves generated cache in the payload.
-        storage_root = self.studio_data.parent if self.app_only else self.repo_root
-        ensure_cache_dirs(storage_root)
-        env = process_environment(storage_root)
-        if self.app_only:
-            for name in tuple(env):
-                if name.startswith(("H3_", "MINIMAX_H3_")):
-                    env.pop(name, None)
-        env.update(service.env_extra)
-        with open(service.log_path, "a", encoding="utf-8") as log:
-            log.write(f"\n===== START {service.name} =====\n")
-            log.flush()
-            service.proc = self._popen(
-                service.command, cwd=str(service.cwd), env=env,
-                stdout=log, stderr=subprocess.STDOUT,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
+        try:
+            # Cache/temp routing is intentionally limited to the child process.
+            # App-only acceptance keeps its transient files outside the installed
+            # application tree, alongside (not inside) the explicit Studio data
+            # directory, so uninstall never leaves generated cache in the payload.
+            storage_root = self.studio_data.parent if self.app_only else self.repo_root
+            ensure_cache_dirs(storage_root)
+            env = process_environment(storage_root)
+            if self.app_only:
+                for name in tuple(env):
+                    if name.startswith(("H3_", "MINIMAX_H3_")):
+                        env.pop(name, None)
+            env.update(service.env_extra)
+            with open(service.log_path, "a", encoding="utf-8") as log:
+                log.write(f"\n===== START {service.name} =====\n")
+                log.flush()
+                service.proc = self._popen(
+                    service.command, cwd=str(service.cwd), env=env,
+                    stdout=log, stderr=subprocess.STDOUT,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            service.owned_pid = int(service.proc.pid)
+        except Exception as exc:  # noqa: BLE001
+            # If Popen succeeded but its identity could not be recorded, clean
+            # up only the handle returned by this exact spawn operation. Never
+            # fall back to a PID/name-based process search.
+            proc = service.proc
+            if proc is not None:
+                try:
+                    if proc.poll() is None:
+                        proc.terminate()
+                        proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=2.0)
+                    except (OSError, subprocess.SubprocessError):
+                        pass
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            service.proc = None
+            service.owned_pid = None
+            service.state = "FAILED"
+            service.failure = f"{service.name} could not start ({type(exc).__name__})"
+            return service
         deadline = time.time() + health_timeout
         while time.time() < deadline:
             if service.proc.poll() is not None:
@@ -407,8 +495,11 @@ class ProcessManager:
                 service.failure = f"{service.name} exited early (code {service.proc.returncode})"
                 return service
             if _http_ok(service.health_url):
+                if not self._listener_matches_owned_process(service):
+                    service.failure = f"{service.name} health endpoint is not owned by its launched process"
+                    break
                 service.state = "RUNNING"
-                if service.name == "comfyui":
+                if service.name == PRODUCTION_COMFY_SERVICE:
                     # A successful fresh health check supersedes any crash
                     # marker left by the previous child.  Otherwise the
                     # desktop shell can surface a historical crash after a
@@ -419,8 +510,12 @@ class ProcessManager:
                         pass
                 return service
             time.sleep(2)
+        failure = service.failure or f"{service.name} health check timeout after {health_timeout:.0f}s"
+        if service.proc is not None and service.proc.poll() is None:
+            if not self._stop_owned_process(service, timeout=2.0):
+                failure = f"{failure}; cleanup incomplete: {service.failure}"
         service.state = "FAILED"
-        service.failure = f"{service.name} health check timeout after {health_timeout:.0f}s"
+        service.failure = failure
         return service
 
     def start_comfyui(self, health_timeout: float = 120.0) -> Service:
@@ -430,17 +525,116 @@ class ProcessManager:
                      setup_mode: bool = False) -> Service:
         return self.start(self.studio_service("mock" if setup_mode else "real"), health_timeout)
 
-    def stop(self, name: str) -> Service:
+    def start_studio_only(self, health_timeout: float = 60.0,
+                          setup_mode: bool = False) -> Service:
+        """Start only Studio; this operation never starts or stops ComfyUI."""
+        return self.start_studio(health_timeout=health_timeout, setup_mode=setup_mode)
+
+    def health_studio_only(self) -> bool:
+        """Report healthy only when the tracked Studio child owns port 8788."""
+        service = self.services.get(STUDIO_SERVICE)
+        if service is None or service.state != "RUNNING":
+            return False
+        if service.dry_run:
+            return True
+        return bool(self._listener_matches_owned_process(service)
+                    and _http_ok(service.health_url))
+
+    def stop_studio_only(self, timeout: float = 10.0) -> Service:
+        """Stop only the tracked Studio child, refusing unowned processes."""
+        return self.stop(STUDIO_SERVICE, timeout=timeout)
+
+    def restart_studio_only(self, health_timeout: float = 60.0,
+                            stop_timeout: float = 10.0,
+                            port_timeout: float = 2.0) -> Service:
+        """Restart the tracked Studio child without touching either Comfy service.
+
+        A listener that remains after the owned child exits is treated as an
+        occupied port. It is never adopted or terminated by this operation.
+        Startup failure cleans up only the new Popen-owned child and leaves the
+        production Comfy service untouched.
+        """
+        service = self.services.get(STUDIO_SERVICE)
+        if service is None:
+            service = self.studio_service("real")
+        if service.proc is not None:
+            if not self._process_handle_matches(service):
+                service.state = "FAILED"
+                service.failure = "Studio process identity mismatch; refusing restart"
+                return service
+            stopped = self.stop_studio_only(timeout=stop_timeout)
+            if stopped.state != "STOPPED":
+                return stopped
+        elif service.state in ("RUNNING", "STARTING") and not service.dry_run:
+            service.state = "FAILED"
+            service.failure = "Studio has no tracked process handle; refusing restart"
+            return service
+        if not service.dry_run and not PortManager.wait_until_free(
+                int(self._port_of(service)), timeout=port_timeout):
+            service.state = "FAILED"
+            service.failure = f"Studio port {self._port_of(service)} remains occupied by an unowned listener"
+            return service
+        # Keep the already-selected runtime mode from the existing command.
+        try:
+            runtime_index = service.command.index("--runtime")
+            setup_mode = service.command[runtime_index + 1] == "mock"
+        except (ValueError, IndexError):
+            setup_mode = False
+        return self.start_studio_only(health_timeout=health_timeout,
+                                      setup_mode=setup_mode)
+
+    def _stop_owned_process(self, service: Service, timeout: float) -> bool:
+        """Signal and wait on the exact Popen handle owned by this manager."""
+        proc = service.proc
+        if proc is None:
+            return service.dry_run or service.state == "STOPPED"
+        if not self._process_handle_matches(service):
+            service.state = "FAILED"
+            service.failure = f"{service.name} process identity mismatch; refusing to signal it"
+            return False
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=max(0.1, timeout))
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=max(0.1, timeout))
+                except (OSError, subprocess.SubprocessError):
+                    service.state = "FAILED"
+                    service.failure = f"{service.name} did not stop within the bounded timeout"
+                    return False
+            except (OSError, subprocess.SubprocessError):
+                service.state = "FAILED"
+                service.failure = f"{service.name} could not be stopped safely"
+                return False
+        if proc.poll() is None:
+            service.state = "FAILED"
+            service.failure = f"{service.name} remains alive after stop request"
+            return False
+        service.proc = None
+        service.owned_pid = None
+        service.state = "STOPPED"
+        service.failure = ""
+        return True
+
+    def stop(self, name: str, timeout: float = 10.0) -> Service:
         svc = self.services.get(name)
         if svc is None:
             raise KeyError(f"unknown service {name}")
-        if svc.proc is not None and svc.proc.poll() is None:
-            svc.proc.terminate()
-            try:
-                svc.proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                svc.proc.kill()
-        svc.state = "STOPPED"
+        if svc.dry_run:
+            svc.proc = None
+            svc.owned_pid = None
+            svc.state = "STOPPED"
+            return svc
+        if svc.proc is None:
+            if svc.state in ("RUNNING", "STARTING"):
+                svc.state = "FAILED"
+                svc.failure = f"{svc.name} has no tracked process handle; refusing to stop an unowned service"
+                return svc
+            svc.state = "STOPPED"
+            return svc
+        self._stop_owned_process(svc, timeout=timeout)
         return svc
 
     def status(self) -> Dict[str, str]:

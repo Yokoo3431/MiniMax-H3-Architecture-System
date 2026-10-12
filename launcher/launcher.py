@@ -34,7 +34,14 @@ from apps.architect_video_studio.mock_api.store import StudioStore
 from runtime.h3_model_root import h3_process_environment
 from lock_manager import LockManager
 from logger import LauncherLogger
-from process_manager import PortManager, ProcessManager, _http_ok
+from process_manager import (
+    PortManager,
+    ProcessManager,
+    PRODUCTION_COMFY_SERVICE,
+    Service,
+    STUDIO_SERVICE,
+    _http_ok,
+)
 
 DEFAULT_LOCK = Path(__file__).resolve().parent / "runtime.lock"
 DEFAULT_LOGS = REPO_ROOT / "Logs"
@@ -389,9 +396,8 @@ class Launcher:
             studio = self.pm.start_studio()
             if studio.state == "FAILED":
                 self.logger.error(f"Studio failed: {studio.failure}")
-                self.pm.stop("comfyui")
-                self.lock.release()
-                return 1
+                print("[STUDIO_FAILED] Production ComfyUI remains running; launcher will supervise Studio recovery.")
+                return self._serve()
             print("[OK] Architect Video Studio RUNNING (8788)")
 
             url = "http://127.0.0.1:8788"
@@ -412,6 +418,7 @@ class Launcher:
 
     def _serve(self) -> int:
         crash_published = False
+        studio_failure_published = False
         while True:
             try:
                 time.sleep(30)
@@ -420,7 +427,7 @@ class Launcher:
             self.lock.heartbeat()
             for name, state in self.pm.status().items():
                 if state == "FAILED":
-                    if name == "comfyui" and not crash_published:
+                    if name == PRODUCTION_COMFY_SERVICE and not crash_published:
                         # ComfyUI is a replaceable child service. Keep Studio
                         # alive so the user can see the crash state and use
                         # Restart Engine; do not misclassify a native crash as
@@ -429,10 +436,53 @@ class Launcher:
                         self.logger.error("service comfyui FAILED; Studio remains available for recovery")
                         print("[COMFYUI_CRASHED] Studio remains available; use Restart Engine.")
                         continue
-                    if name == "comfyui":
+                    if name == PRODUCTION_COMFY_SERVICE:
+                        continue
+                    if name == STUDIO_SERVICE:
+                        if not studio_failure_published:
+                            self.logger.error(
+                                "service studio FAILED; production ComfyUI and Launcher remain running")
+                            print("[STUDIO_FAILED] Production ComfyUI remains available; recovering Studio only.")
+                            studio_failure_published = True
+                        try:
+                            service = self.restart_studio_only()
+                        except Exception as exc:  # noqa: BLE001
+                            self.logger.error(f"Studio-only restart blocked: {exc}")
+                            continue
+                        if service.state == "RUNNING":
+                            self.logger.info("Studio-only recovery succeeded")
+                            studio_failure_published = False
+                        else:
+                            self.logger.error(f"Studio-only recovery failed: {service.failure}")
                         continue
                     self.logger.error(f"service {name} FAILED; stopping")
                     return self._shutdown()
+
+    def health_studio_only(self) -> bool:
+        """Check the tracked Studio service without inspecting ComfyUI health."""
+        return self.pm.health_studio_only()
+
+    def start_studio_only(self, health_timeout: float = 60.0,
+                          setup_mode: bool = False) -> Service:
+        """Start Studio without starting, stopping, or restarting ComfyUI."""
+        return self.pm.start_studio_only(health_timeout=health_timeout,
+                                         setup_mode=setup_mode)
+
+    def stop_studio_only(self, timeout: float = 10.0) -> Service:
+        """Stop only Studio, refusing while the launcher records an active Job."""
+        self.lock.assert_safe_shutdown()
+        return self.pm.stop_studio_only(timeout=timeout)
+
+    def restart_studio_only(self, health_timeout: float = 60.0,
+                            stop_timeout: float = 10.0,
+                            port_timeout: float = 2.0) -> Service:
+        """Restart only Studio; the ComfyUI child remains owned and untouched."""
+        self.lock.assert_safe_shutdown()
+        return self.pm.restart_studio_only(
+            health_timeout=health_timeout,
+            stop_timeout=stop_timeout,
+            port_timeout=port_timeout,
+        )
 
     def _shutdown(self) -> int:
         try:
@@ -442,7 +492,7 @@ class Launcher:
             print(f"[BLOCK] {exc}")
             return 3
         self.logger.info("shutting down")
-        for name in ("studio", "comfyui"):
+        for name in (STUDIO_SERVICE, PRODUCTION_COMFY_SERVICE):
             if name in self.pm.services:
                 self.pm.stop(name)
         self.lock.release()
