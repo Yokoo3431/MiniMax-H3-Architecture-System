@@ -334,8 +334,8 @@
     {
       "path": "tests/test_launcher_service_isolation.py",
       "tracked_status": "tracked",
-      "sha256": "5B6FBDB674466F4B88823E90B7A77988C85881D7F05740277301EC3C847F6880",
-      "discovered_test_count": 15,
+      "sha256": "CCA0B3BE036F73B3C7721879993BDF1F5983523D6CEFD22745DB9C7A1AC6ACC1",
+      "discovered_test_count": 16,
       "classification": "CORE_REGRESSION"
     },
     {

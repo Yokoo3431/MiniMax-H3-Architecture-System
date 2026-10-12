@@ -52,6 +52,22 @@ class FakeProcess:
         return self.returncode
 
 
+class UnidentifiableProcess:
+    pid = object()
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        raise PermissionError("synthetic terminate denial")
+
+    def kill(self):
+        raise PermissionError("synthetic kill denial")
+
+    def wait(self, timeout=None):
+        raise subprocess.TimeoutExpired("synthetic-child", timeout)
+
+
 def _manager(root: Path, popen=None) -> ProcessManager:
     return ProcessManager(
         native_root=root / "runtime",
@@ -206,6 +222,19 @@ class TestStudioLifecycleIsolation(unittest.TestCase):
             self.assertIn("PermissionError", result.failure)
             self.assertEqual(comfy.state, "RUNNING")
             self.assertFalse(comfy_proc.terminated)
+
+    def test_startup_cleanup_failure_retains_unidentified_child_handle(self):
+        with tempfile.TemporaryDirectory() as temp:
+            proc = UnidentifiableProcess()
+            manager = _manager(Path(temp), popen=mock.Mock(return_value=proc))
+            with mock.patch("launcher.process_manager.PortManager.port_in_use",
+                            return_value=False):
+                result = manager.start_studio_only(health_timeout=0.01)
+
+            self.assertEqual(result.state, "FAILED")
+            self.assertIn("cleanup incomplete", result.failure)
+            self.assertIs(result.proc, proc)
+            self.assertIsNone(result.owned_pid)
 
     def test_pid_mismatch_refuses_to_signal_studio_handle(self):
         with tempfile.TemporaryDirectory() as temp:

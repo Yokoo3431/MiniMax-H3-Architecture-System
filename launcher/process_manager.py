@@ -470,23 +470,37 @@ class ProcessManager:
             # up only the handle returned by this exact spawn operation. Never
             # fall back to a PID/name-based process search.
             proc = service.proc
+            cleanup_complete = proc is None
             if proc is not None:
                 try:
                     if proc.poll() is None:
-                        proc.terminate()
-                        proc.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
+                        try:
+                            proc.terminate()
+                            proc.wait(timeout=2.0)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        if proc.poll() is None:
+                            proc.kill()
+                            proc.wait(timeout=2.0)
+                    cleanup_complete = proc.poll() is not None
+                except Exception:  # noqa: BLE001
+                    cleanup_complete = False
+                if cleanup_complete:
+                    service.proc = None
+                    service.owned_pid = None
+                else:
+                    # Keep the exact Popen handle so a later supervised
+                    # recovery can fail closed or retry cleanup without losing
+                    # track of a possibly live child.
+                    service.proc = proc
                     try:
-                        proc.kill()
-                        proc.wait(timeout=2.0)
-                    except (OSError, subprocess.SubprocessError):
-                        pass
-                except (OSError, subprocess.SubprocessError):
-                    pass
-            service.proc = None
-            service.owned_pid = None
+                        service.owned_pid = int(proc.pid)
+                    except (AttributeError, TypeError, ValueError):
+                        service.owned_pid = None
             service.state = "FAILED"
             service.failure = f"{service.name} could not start ({type(exc).__name__})"
+            if not cleanup_complete:
+                service.failure += "; cleanup incomplete; child handle retained"
             return service
         deadline = time.time() + health_timeout
         while time.time() < deadline:
