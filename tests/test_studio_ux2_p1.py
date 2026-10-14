@@ -294,6 +294,14 @@ class StudioUX2P1Tests(unittest.TestCase):
         self.assertIsNotNone(tablet_jobs)
         self.assertIn(".app-jobs .jobs-search-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }",
                       tablet_jobs.group("body"))
+        narrow_desktop_jobs = re.search(
+            r"@media \(min-width: 901px\) and \(max-width: 1024px\) \{(?P<body>.*?)\n\}",
+            source,
+            re.S,
+        )
+        self.assertIsNotNone(narrow_desktop_jobs)
+        self.assertIn(".app-jobs .jobs-search-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }",
+                      narrow_desktop_jobs.group("body"))
         self.assertIn("UX2-P1: viewport-first shell hooks", source)
         self.assertIn("max-width: 1365px", source)
         self.assertIn("prefers-reduced-motion", source)

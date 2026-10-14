@@ -78,3 +78,10 @@ This checkpoint is a targeted UX reliability improvement, not a Final E/F accept
 | Environment | `environment_mobile_375x812.png` | `environment_tablet_768x1024.png` | `environment_desktop_1280x800.png` |
 
 Evidence directory (local, ignored): `.codex_tmp/closeout-final-ux-20261008/screenshots/`.
+
+## Jobs toolbar narrow-desktop follow-up — 2026-10-15
+
+- A fresh synthetic-only CUA review at approximately 920 CSS pixels exposed a gap between the existing tablet breakpoint (900 px) and the next responsive layout: the Jobs filter toolbar kept its six-column minimum widths and caused page-level horizontal overflow.
+- Added a narrow-desktop 901–1024 px two-column layout. The project/search control spans the toolbar width; remaining filters wrap into two columns and the action button fills its cell.
+- Revisited the same synthetic Jobs view after the CSS change: the filters fit the viewport and the page-level horizontal scrollbar is gone. A focused regression assertion locks the breakpoint and layout contract.
+- This was a targeted responsive correction, not a full accessibility audit. The CUA capture was inspected in-session but was not saved as a new screenshot artifact; the existing ignored 15-image viewport set remains the saved visual evidence for the other page/breakpoint combinations.
