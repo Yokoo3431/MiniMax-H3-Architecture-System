@@ -801,6 +801,13 @@
       "classification": "CORE_REGRESSION"
     },
     {
+      "path": "tests/test_storage_maintenance.py",
+      "tracked_status": "tracked",
+      "sha256": "036244F03D77E097E6E1A7F9E4A5A29E42D23794F2DD2D5DFC221FC2DEC2CFEA",
+      "discovered_test_count": 23,
+      "classification": "CORE_REGRESSION"
+    },
+    {
       "path": "tests/test_studio_ux2_p1.py",
       "tracked_status": "tracked",
       "sha256": "1EA085DBC4903A59FF668A9FEB742D322C6D5F558F7F1146599E9F72C6D0CE77",
